@@ -1,0 +1,12 @@
+{
+  "name": "finref-online",
+  "version": "0.2.0",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/build.cjs",
+    "start": "node scripts/serve.cjs",
+    "test": "node --test tests/*.test.cjs",
+    "setup:accounts": "node scripts/create-accounts.cjs"
+  },
+  "engines": { "node": ">=22" }
+}
