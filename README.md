@@ -1,5 +1,6 @@
+feature/escalation-referee
 # FinRef · The Escalation Referee
-
+Dự án hướng tới website quản trị nhân sự và tài chính cho doanh nghiệp. Phiên bản hiện tại tập trung vào nhánh tài chính, cụ thể là duyệt hóa đơn và đề nghị thanh toán. Nhánh nhân sự dự kiến phát triển sau.
 FinRef xử lý đề nghị thanh toán: tự hoàn tất hồ sơ thường quy và dừng để hỏi đúng người khi có nghi vấn, ngoài chính sách hoặc vượt thẩm quyền. Bản hackathon áp dụng **chính sách mẫu FIN-DEMO-1** và hạn mức tự phê duyệt **20.000.000 VNĐ (bao gồm đúng 20 triệu)**. Sản phẩm dừng ở phê duyệt, không chuyển tiền.
 
 ## Trải nghiệm
@@ -75,3 +76,14 @@ Chưa kiểm thử dịch vụ OpenAI/Supabase thật trong lần bàn giao này
 ## Làm việc nhóm
 
 Tạo nhánh → `pnpm test` và build → review → PR → merge sau khi kiểm thử Preview. Không đưa `.env`, `.local/accounts.txt`, OpenAI key hoặc service role key lên GitHub. Khi thay SQL, cung cấp migration và kiểm thử; không chạy lại schema gốc trên database đã có.
+=======
+Web quản trị nhân sự và tài chính cho doanh nghiệp
+
+URL: https://ctrlc-ctrlv-hackathon-o57cncpsy-shinowhi.vercel.app/
+
+Tiến độ:
+Hiện đang tập trung phát triển nhánh tài chính và nhánh nhân sự sẽ được phát triển trong thời gian tới
+Nhánh tài chính tập trung vào duyệt hóa đơn 
+
+
+main
