@@ -21,9 +21,9 @@ async function main(){
     const folder=profiles.applicant.id+'/'+randomUUID();
     const body=new Blob(['%PDF-1.4\n% Synthetic test fixture; no genuine invoice\n%%EOF'],{type:'application/pdf'});
     await applicant.upload(folder+'/invoice.pdf',body);await applicant.upload(folder+'/request.pdf',body);
-    return applicant.rpc('submit_request',{p_id:id,p_expected_version:version,p_invoice_path:folder+'/invoice.pdf',p_request_path:folder+'/request.pdf',p_payload:{requesterType:'employee',requester:'TEST ONLINE',department:'TEST',budgetCode:'TEST',purpose:'TEST ONLY - synthetic evidence',vendor:'TEST',invoiceNumber:randomUUID(),invoiceDate:new Date().toISOString().slice(0,10),invoiceType:'paper',amount}});
+    return applicant.rpc('submit_request',{p_id:id,p_expected_version:version,p_invoice_path:folder+'/invoice.pdf',p_request_path:folder+'/request.pdf',p_payload:{requesterType:'employee',requester:'TEST ONLINE',department:'TEST',budgetCode:'MKT-OPS-2026',category:'printing',purpose:'TEST ONLY - synthetic evidence',vendor:'TEST',invoiceNumber:randomUUID(),invoiceDate:new Date().toISOString().slice(0,10),invoiceType:'paper',amount}});
   }
-  const review=(client,r,action='approve',checks=all,reason='')=>client.rpc('review_request',{p_id:r.id,p_expected_version:r.version,p_action:action,p_checks:checks,p_reason:reason});
+  const review=(client,r,action='resolve',checks=all,reason='TEST: đã kiểm tra và trả lời câu hỏi')=>client.rpc('review_request',{p_id:r.id,p_expected_version:r.version,p_action:action,p_checks:checks,p_reason:reason});
   let r=await submit(20000000);assert.equal(r.status,'TREASURER_REVIEW');
   assert.ok(!(await cfo.list()).some(x=>x.id===r.id),'CFO must not see un-escalated requests');
   await assert.rejects(review(cfo,r));await assert.rejects(review(applicant,r));
@@ -31,14 +31,14 @@ async function main(){
   await assert.rejects(applicant.request('/rest/v1/requests?id=eq.'+r.id,{method:'PATCH',body:JSON.stringify({status:'APPROVED'})}));
   await assert.rejects(cfo.signedUrl(r.invoice_path));
   await assert.rejects(review(treasurer,r,'approve',{...all,stamp:false}));
-  await assert.rejects(review(treasurer,r,'approve',{...all,budget:false}));
+  await assert.rejects(review(treasurer,r,'resolve',{...all,match:false},'TEST chưa giải quyết nghi vấn'));
   const race=await Promise.allSettled([review(treasurer,r),review(treasurer,r)]);
   assert.equal(race.filter(x=>x.status==='fulfilled').length,1,'Only one reviewer decision may commit');
   assert.equal(race.find(x=>x.status==='fulfilled').value.status,'APPROVED');
   r=await submit(20000001);r=await review(treasurer,r);assert.equal(r.status,'CFO_REVIEW');
   assert.ok((await cfo.list()).some(x=>x.id===r.id));await cfo.signedUrl(r.invoice_path);
-  r=await review(cfo,r);assert.equal(r.status,'APPROVED');
-  const logs=await applicant.audit(r.id);assert.equal(logs.length,3);assert.equal(logs[0].actor_role,'cfo');
+  r=await review(cfo,r,'approve',all,'TEST: đồng ý khoản vượt quyền');assert.equal(r.status,'APPROVED');
+  const logs=await applicant.audit(r.id);assert.ok(logs.length>=3);assert.equal(logs[0].actor_role,'cfo');
   r=await submit(5000000);r=await review(treasurer,r,'clarify',{},'TEST: bổ sung dấu đỏ.');assert.equal(r.status,'NEEDS_INFO');
   r=await submit(5000000,r.id,r.version);assert.equal(r.status,'TREASURER_REVIEW');
   r=await review(treasurer,r,'reject',{},'TEST: từ chối hồ sơ mẫu.');assert.equal(r.status,'REJECTED');

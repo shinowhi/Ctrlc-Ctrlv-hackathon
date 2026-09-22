@@ -61,6 +61,14 @@
       if (typeof result.signedURL !== 'string' || !result.signedURL.startsWith('/object/sign/')) throw new Error('Không tạo được liên kết minh chứng.');
       return this.url + '/storage/v1' + result.signedURL;
     }
+    async analyzeEvidence(request, paths) {
+      if(!this.session?.access_token) throw new Error('Vui lòng đăng nhập để phân tích minh chứng.');
+      if(this.session.expires_at<Date.now()/1000+60) await this.refresh();
+      const response=await fetch('/api/analyze-evidence',{method:'POST',signal:AbortSignal.timeout(90000),headers:{Authorization:'Bearer '+this.session.access_token,'Content-Type':'application/json'},body:JSON.stringify({request,paths})});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok) throw new Error(data.error||'Không phân tích được minh chứng.');
+      return data;
+    }
   }
   root.FinRefApi=FinRefApi;
   if (typeof module!=='undefined') module.exports=FinRefApi;

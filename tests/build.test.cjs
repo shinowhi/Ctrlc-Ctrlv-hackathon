@@ -1,6 +1,6 @@
 const test=require('node:test');const assert=require('node:assert/strict');
 const fs=require('node:fs');const path=require('node:path');const os=require('node:os');const {spawnSync}=require('node:child_process');
-const publicFiles=['index.html','app.js','api.js','rules.js','styles.css','demo.html','demo.js'];
+const publicFiles=['index.html','app.js','api.js','rules.js','verify-ui.js','styles.css','demo.html','demo.js'];
 function fixture(){
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'finref-build-test-'));
   fs.mkdirSync(path.join(root,'scripts'));fs.mkdirSync(path.join(root,'.local'));
