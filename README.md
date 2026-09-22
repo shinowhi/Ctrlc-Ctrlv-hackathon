@@ -6,7 +6,7 @@ URL: https://ctrlc-ctrlv-hackathon-two.vercel.app/
 Tiến độ:
 Hiện đang tập trung phát triển nhánh tài chính và nhánh nhân sự sẽ được phát triển trong thời gian tới
 
-Nhóm đã xây dựng MVP cho quy trình đề nghị và phê duyệt thanh toán. Hệ thống hỗ trợ đăng nhập theo 3 vai trò (người nộp đơn, thủ quỹ, Giám đốc Tài chính), tạo hồ sơ và tải lên hóa đơn/chứng từ, kiểm tra ngân sách – chính sách, tự chuyển các khoản trên 20 triệu đồng lên Giám đốc Tài chính, đồng thời hỗ trợ phê duyệt, từ chối, yêu cầu bổ sung và theo dõi nhật ký xử lý.
+Nhóm đã xây dựng MVP cho quy trình đề nghị và phê duyệt thanh toán hóa đơn. Hệ thống hỗ trợ đăng nhập theo 3 vai trò (người nộp đơn, thủ quỹ, Giám đốc Tài chính), tạo hồ sơ và tải lên hóa đơn/chứng từ, kiểm tra ngân sách – chính sách, tự chuyển các khoản trên 20 triệu đồng lên Giám đốc Tài chính, đồng thời hỗ trợ phê duyệt, từ chối, yêu cầu bổ sung và theo dõi nhật ký xử lý.
 
 
 
