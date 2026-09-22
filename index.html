@@ -28,7 +28,7 @@
         <button class="nav-item" id="newRequest" data-scroll="request-card"><span>＋</span> Tạo đề nghị</button>
         <button class="nav-item" data-scroll="audit-card"><span>◌</span> Nhật ký hồ sơ</button>
       </nav>
-      <div class="sidebar-note clay-inset"><span class="eyebrow">HẠN MỨC TỰ ĐỘNG</span><strong>20.000.000 ₫</strong><p>Hồ sơ đủ điều kiện được tự duyệt. Có nghi vấn → làm rõ; vượt quyền hoặc ngoài chính sách → GĐTC.</p></div>
+      <div class="sidebar-note clay-inset"><span class="eyebrow">HẠN MỨC TỰ ĐỘNG</span><strong>20.000.000 ₫</strong><p>Hồ sơ dưới 20 triệu và đủ điều kiện được tự duyệt. Có nghi vấn → làm rõ; vượt quyền hoặc ngoài chính sách → GĐTC.</p></div>
       <div class="profile clay-inset"><div class="avatar">F</div><div><strong id="profileName"></strong><span id="profileRole"></span></div></div>
     </aside>
     <main class="main-content">
@@ -65,7 +65,7 @@
               <label class="field file-field">Hóa đơn giấy<input id="invoiceFile" type="file" accept="application/pdf,image/jpeg,image/png" required></label>
               <label class="field file-field">Đơn đề nghị thanh toán<input id="requestFile" type="file" accept="application/pdf,image/jpeg,image/png" required></label>
               <label class="plain-check"><input id="paperConfirm" type="checkbox" required> Tôi gửi bản chụp/scan hóa đơn giấy, không phải hóa đơn điện tử.</label>
-              <p class="muted">Khi gửi, hai chứng từ được chuyển tới OpenAI để đọc và đối chiếu. Chính sách hackathon: mỗi ngân sách mẫu 100 triệu; chỉ dùng chứng từ giả để thử nghiệm.</p>
+              <p class="muted">Khi gửi, hai chứng từ được chuyển tới dịch vụ AI do nhóm cấu hình (AI Shop hoặc OpenAI) để đọc và đối chiếu. Chính sách hackathon: mỗi ngân sách mẫu 100 triệu; chỉ dùng chứng từ giả để thử nghiệm.</p>
               <div id="analysisResult" class="notice" role="status" aria-live="polite"></div>
             </div>
             <div class="form-actions"><button class="primary-button clay-button" id="submitButton" type="submit">Gửi và tự động đánh giá →</button></div>

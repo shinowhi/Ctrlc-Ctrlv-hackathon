@@ -13,6 +13,7 @@ async function main(){
  create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
  create table storage.objects(name text,bucket_id text);alter table storage.objects enable row level security;grant usage on schema public,auth,storage to authenticated;grant select on storage.objects to authenticated;`);
  await db.exec(fs.readFileSync(path.join(root,'supabase/schema.sql'),'utf8'));await db.exec(fs.readFileSync(path.join(root,'supabase/sprint1.sql'),'utf8'));
+ await db.exec(fs.readFileSync(path.join(root,'supabase/migrations/20260922_ai_under_20m.sql'),'utf8'));
  for(const [role,id] of Object.entries(ids)){await db.query('insert into auth.users values($1)',[id]);await db.query('insert into profiles values($1,$2,$3)',[id,role,role]);}
  let gate=Promise.resolve();
  function locked(fn){const next=gate.then(fn);gate=next.catch(()=>{});return next;}
@@ -56,19 +57,19 @@ async function main(){
    await page.locator('#paperConfirm').check();await page.locator('#submitButton').click();await page.waitForFunction(()=>document.getElementById('message').textContent.startsWith('Đã gửi:'));await page.locator('#decisionResult .decision-banner').waitFor();
    return await page.locator('#decisionResult').innerText();
  }
- await login('applicant');assert.match(await submit(12500000),/Đã duyệt/);assert.match(await submit(20000000),/Đã duyệt/);
+ await login('applicant');assert.match(await submit(12500000),/Đã duyệt/);assert.match(await submit(19999999),/Đã duyệt/);assert.match(await submit(20000000),/U3/);
  assert.match(await submit(20000001),/U3/);
  await page.locator('#logoutButton').click();await login('cfo');await page.locator('#queueBody button').first().click();await page.locator('#reviewReason').fill('Đồng ý khoản vượt quyền trong demo');await page.locator('[data-action="approve"]').click();await page.waitForFunction(()=>document.getElementById('decisionResult').textContent.includes('Đã duyệt'));
  await page.locator('#logoutButton').click();await login('applicant');aiFlags=['Số tiền trên hóa đơn chưa đọc rõ'];assert.match(await submit(1000),/U1/);await page.locator('#supplementButton').click();aiFlags=[];assert.match(await submit(1000),/Đã duyệt/);
  assert.match(await submit(1000,'other'),/U2/);
  aiFailure=true;assert.match(await submit(1000),/U1/);assert.match(await page.locator('#message').innerText(),/AI test outage/);
  await page.locator('#logoutButton').click();await login('treasurer');await page.locator('#queueBody button').first().click();await page.locator('#reviewReason').fill('Đã đối chiếu chứng từ gốc trong ca kiểm thử');for(const input of await page.locator('#reviewForm input').all())await input.check();await page.locator('[data-action="approve"]').click();await page.waitForFunction(()=>document.getElementById('decisionResult').textContent.includes('Đã duyệt'));
- await page.locator('.verification summary').click();await page.locator('#verifyButton').click();assert.match(await page.locator('#verifyResult').innerText(),/5\/5 PASS · 3 tự xử lý · 2 chuyển tiếp/);await page.locator('#verifyAll').click();assert.match(await page.locator('#verifyResult').innerText(),/15\/15 PASS/);
+ await page.locator('.verification summary').click();await page.locator('#verifyButton').click();assert.match(await page.locator('#verifyResult').innerText(),/5\/5 PASS · 2 tự xử lý · 3 chuyển tiếp/);await page.locator('#verifyAll').click();assert.match(await page.locator('#verifyResult').innerText(),/15\/15 PASS/);
  for(const width of [320,768,1024,1440]){await page.setViewportSize({width,height:1000});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'online overflow '+width);}
  await page.goto(origin+'/demo.html');await page.locator('[data-enter-role="applicant"]').click();await page.locator('#verifyButton').click();assert.match(await page.locator('#verifyResult').innerText(),/5\/5 PASS/);
  await page.locator('#hasStamp').uncheck();await page.locator('#paymentForm button[type="submit"]').click();await page.locator('[data-action="supplement"]').click();await page.locator('#hasStamp').check();await page.locator('#paymentForm button[type="submit"]').click();assert.match(await page.locator('#decisionResult').innerText(),/Đã duyệt/);
  if(process.env.QA_SCREENSHOT)await page.screenshot({path:process.env.QA_SCREENSHOT,fullPage:true});
- assert.deepEqual(errors,[]);console.log('PASS browser: auto <=20m, U1 supplement, U2, U3 + CFO approval, AI outage, manual resolution, Verify 5/15, four widths, zero page errors.');
+ assert.deepEqual(errors,[]);console.log('PASS browser: auto <20m, exactly 20m escalates, U1 supplement, U2, U3 + CFO approval, AI outage, manual resolution, Verify 5/15, four widths, zero page errors.');
  }finally{if(browser)await browser.close();if(server)await new Promise(resolve=>server.close(resolve));await db.close();}
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});

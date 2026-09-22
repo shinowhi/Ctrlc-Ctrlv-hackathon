@@ -28,11 +28,14 @@ test('PostgreSQL: auto approval, escalation, ownership, flags, reuse and budget 
   const row=(await as(applicant,'select * from submit_request($1,$2,$3,$4,$5,$6)',args)).rows[0];
   return {row,args,aid};
  }
- let {row:r,args}=await submit(20000000);assert.equal(r.status,'APPROVED');assert.equal(r.decision_actor,'agent');
+ await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20260922_ai_under_20m.sql'),'utf8'));
+ let {row:r,args}=await submit(19999999);assert.equal(r.status,'APPROVED');assert.equal(r.decision_actor,'agent');
  await assert.rejects(as(applicant,'select submit_request($1,$2,$3,$4,$5,$6)',[crypto.randomUUID(),...args.slice(1)]),/đã dùng|hết hạn/);
  await assert.rejects(as(applicant,"update requests set status='APPROVED' where id=$1",[r.id]),/permission/);
  await assert.rejects(as(applicant,'select apply_referee($1)',[r.id]),/permission/);
  await assert.rejects(as(applicant,"insert into agent_assessments(owner_id,payload,invoice_path,request_path) values($1,'{}','x','y')",[applicant]),/permission/);
+ ({row:r}=await submit(20000000));assert.equal(r.code,'U3');assert.equal(r.status,'CFO_REVIEW');
+ assert.equal((await db.query("select committed from demo_budgets where code='MKT-OPS-2026'")).rows[0].committed,19999999);
  ({row:r}=await submit(20000001));assert.equal(r.code,'U3');assert.equal(r.status,'CFO_REVIEW');
  await assert.rejects(as(applicant,"select review_request($1,$2,'approve','yes','{}')",[r.id,r.version]),/Không có quyền/);
  r=(await as(cfo,"select * from review_request($1,$2,'approve','Đồng ý khoản vượt hạn mức','{}')",[r.id,r.version])).rows[0];assert.equal(r.status,'APPROVED');

@@ -16,7 +16,7 @@ const makeId = () => `PAY-${String(Date.now()).slice(-6)}`;
 const roleMeta = {
   applicant: { label: 'Người nộp đơn', person: 'Nguyễn Minh An', initials: 'NA', title: 'Cổng nộp đề nghị', eyebrow: 'REQUESTER WORKSPACE', copy: 'Tạo hồ sơ, gửi minh chứng và theo dõi trạng thái xử lý.' },
   treasurer: { label: 'Thủ quỹ', person: 'Thủ quỹ Trâm', initials: 'TT', title: 'Hàng đợi thủ quỹ', eyebrow: 'TREASURER WORKSPACE', copy: 'Kiểm tra hồ sơ trong hạn mức và chuyển ca cần thẩm quyền.' },
-  cfo: { label: 'Giám đốc Tài chính', person: 'Giám đốc Tài chính', initials: 'GĐ', title: 'Phê duyệt cấp trên', eyebrow: 'CFO WORKSPACE', copy: 'Quyết định các đề nghị vượt ngưỡng 20 triệu đồng.' },
+  cfo: { label: 'Giám đốc Tài chính', person: 'Giám đốc Tài chính', initials: 'GĐ', title: 'Phê duyệt cấp trên', eyebrow: 'CFO WORKSPACE', copy: 'Quyết định các đề nghị từ 20 triệu đồng.' },
 };
 const seed = [
   { requestId: 'PAY-0318', requester: 'Nguyễn Minh An', department: 'Marketing', amount: 12500000, vendor: 'Công ty In Sao Mai', purpose: 'In ấn tài liệu sự kiện', invoiceNumber: 'INV-2026-0318', status: 'APPROVED', code: 'CLEAR', createdAt: '20/09/2026 · 09:14', hasStamp: true, hasSignature: true, hasAcceptance: true },
@@ -74,7 +74,7 @@ function handleAction(requestId, action) {
     for(const key of ['hasStamp','hasSignature','hasAcceptance','policyIssue'])document.getElementById(key).checked=item[key]===true;
     form.scrollIntoView({behavior:'smooth'});return;
   }
-  if (!((currentRole === 'treasurer' && item.status === 'TREASURER_REVIEW' && item.amount <= 20000000 && ['approve','clarify'].includes(action)) || (currentRole === 'cfo' && item.status === 'CFO_REVIEW' && ['approve','reject'].includes(action)))) return;
+  if (!((currentRole === 'treasurer' && item.status === 'TREASURER_REVIEW' && item.amount < 20000000 && ['approve','clarify'].includes(action)) || (currentRole === 'cfo' && item.status === 'CFO_REVIEW' && ['approve','reject'].includes(action)))) return;
   if (action === 'approve') item.status = currentRole === 'cfo' ? 'APPROVED' : 'PAID_READY';
   if (action === 'clarify') item.status = 'NEEDS_INFO';
   if (action === 'reject') item.status = 'REJECTED';
