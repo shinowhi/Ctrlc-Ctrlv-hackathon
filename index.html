@@ -28,7 +28,7 @@
         <button class="nav-item" id="newRequest" data-scroll="request-card"><span>＋</span> Tạo đề nghị</button>
         <button class="nav-item" data-scroll="audit-card"><span>◌</span> Nhật ký hồ sơ</button>
       </nav>
-      <div class="sidebar-note clay-inset"><span class="eyebrow">HẠN MỨC PHÊ DUYỆT</span><strong>20.000.000 ₫</strong><p>Thủ quỹ kiểm tra trước. Khoản chi trên hạn mức cần Giám đốc Tài chính duyệt.</p></div>
+      <div class="sidebar-note clay-inset"><span class="eyebrow">HẠN MỨC TỰ ĐỘNG</span><strong>20.000.000 ₫</strong><p>Hồ sơ đủ điều kiện được tự duyệt. Có nghi vấn → làm rõ; vượt quyền hoặc ngoài chính sách → GĐTC.</p></div>
       <div class="profile clay-inset"><div class="avatar">F</div><div><strong id="profileName"></strong><span id="profileRole"></span></div></div>
     </aside>
     <main class="main-content">
@@ -53,7 +53,8 @@
               <label class="field">Loại người đề nghị<select id="requesterType"><option value="employee">Nhân viên</option><option value="department">Phòng ban</option></select></label>
               <label class="field">Họ tên / phòng ban<input id="requester" required maxlength="1000"></label>
               <label class="field">Bộ phận<input id="department" required maxlength="1000"></label>
-              <label class="field">Mã ngân sách<input id="budgetCode" required maxlength="1000"></label>
+              <label class="field">Mã ngân sách mẫu<select id="budgetCode"><option value="MKT-OPS-2026">MKT-OPS-2026 · In ấn</option><option value="OPS-2026">OPS-2026 · Văn phòng phẩm</option><option value="HR-2026">HR-2026 · Đào tạo</option><option value="UNDEFINED">Chưa có ngân sách phù hợp</option></select></label>
+              <label class="field">Danh mục chi<select id="category"><option value="printing">In ấn</option><option value="office_supplies">Văn phòng phẩm</option><option value="training">Đào tạo</option><option value="other">Ngoài danh mục mẫu</option></select></label>
               <label class="field">Mục đích chi<input id="purpose" required maxlength="1000"></label>
               <label class="field">Nhà cung cấp<input id="vendor" required maxlength="1000"></label>
               <label class="field">Số hóa đơn<input id="invoiceNumber" required maxlength="1000"></label>
@@ -64,18 +65,20 @@
               <label class="field file-field">Hóa đơn giấy<input id="invoiceFile" type="file" accept="application/pdf,image/jpeg,image/png" required></label>
               <label class="field file-field">Đơn đề nghị thanh toán<input id="requestFile" type="file" accept="application/pdf,image/jpeg,image/png" required></label>
               <label class="plain-check"><input id="paperConfirm" type="checkbox" required> Tôi gửi bản chụp/scan hóa đơn giấy, không phải hóa đơn điện tử.</label>
+              <p class="muted">Khi gửi, hai chứng từ được chuyển tới OpenAI để đọc và đối chiếu. Chính sách hackathon: mỗi ngân sách mẫu 100 triệu; chỉ dùng chứng từ giả để thử nghiệm.</p>
+              <div id="analysisResult" class="notice" role="status" aria-live="polite"></div>
             </div>
-            <div class="form-actions"><button class="primary-button clay-button" id="submitButton" type="submit">Gửi đến thủ quỹ →</button></div>
+            <div class="form-actions"><button class="primary-button clay-button" id="submitButton" type="submit">Gửi và tự động đánh giá →</button></div>
           </form>
         </article>
         <article class="clay-card decision-card" id="decisionCard"><div class="card-heading"><div><span class="eyebrow">CHI TIẾT HỒ SƠ</span><h2>Thông tin & xử lý</h2></div></div><div id="decisionResult"><p class="muted">Chọn “Mở” ở danh sách để xem hồ sơ và minh chứng.</p></div></article>
       </section>
       <article class="clay-card audit-card" id="audit-card"><div class="card-heading"><div><span class="eyebrow">LỊCH SỬ XỬ LÝ</span><h2>Nhật ký hồ sơ đang chọn</h2></div></div><div id="auditList"><p class="muted">Chưa chọn hồ sơ.</p></div></article>
-      <details class="verification clay-card"><summary>Kiểm tra quy tắc mẫu</summary><p class="muted">Kiểm tra logic dự kiến ở giao diện. Quyền và quyết định online được kiểm tra lại trong database.</p><button class="text-button" id="verifyButton">Chạy 15 ca kiểm tra</button><div id="verifyResult"></div></details>
-      <footer class="footer-note">FinRef · Dừng tại phê duyệt, chưa thực hiện chuyển tiền. Minh chứng do người xử lý kiểm tra; chưa tích hợp OCR/AI xác minh.</footer>
+      <details class="verification clay-card"><summary>Verify · tự xử lý và chuyển tiếp</summary><button class="text-button" id="verifyButton">Chạy Verify 5 ca</button><button class="text-button" id="verifyAll">Chạy đủ 15 ca</button><div id="verifyResult" aria-live="polite"></div></details>
+      <footer class="footer-note">FinRef · Dừng tại phê duyệt, chưa thực hiện chuyển tiền. AI chỉ trích xuất và nêu điểm cần làm rõ; quyền quyết định vẫn do rules engine và người có thẩm quyền.</footer>
     </main>
   </div>
   <noscript>Bạn cần bật JavaScript để đăng nhập.</noscript>
-  <script src="config.js"></script><script src="api.js"></script><script src="rules.js"></script><script src="app.js"></script>
+  <script src="config.js"></script><script src="api.js"></script><script src="rules.js"></script><script src="verify-ui.js"></script><script src="app.js"></script>
 </body>
 </html>

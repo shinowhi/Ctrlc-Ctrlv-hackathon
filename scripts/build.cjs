@@ -14,7 +14,7 @@ if (!(supabaseAnonKey.startsWith('sb_publishable_') || role === 'anon')) {
 }
 fs.mkdirSync(out, { recursive: true });
 // Explicit allowlist: SQL, account scripts and .local credentials are never deployed.
-for (const name of ['index.html','app.js','api.js','rules.js','styles.css','demo.html','demo.js']) {
+for (const name of ['index.html','app.js','api.js','rules.js','verify-ui.js','styles.css','demo.html','demo.js']) {
   fs.copyFileSync(path.join(root, name), path.join(out, name));
 }
 fs.writeFileSync(path.join(out, 'config.js'), 'window.FINREF_CONFIG = ' + JSON.stringify({supabaseUrl, supabaseAnonKey}) + ';\n');
