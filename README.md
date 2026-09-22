@@ -1,6 +1,7 @@
 
 Web quản trị nhân sự và tài chính cho doanh nghiệp
 
+Link Video: https://drive.google.com/drive/folders/1lYAtANlfRtEfsqp-cihvlo8kT-dxD3tJ?usp=sharing
 URL: https://ctrlc-ctrlv-hackathon-two.vercel.app/
 
 Tiến độ:
