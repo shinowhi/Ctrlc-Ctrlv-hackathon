@@ -4,7 +4,7 @@
     if(!Number.isSafeInteger(amount)||amount<=0||amount>999999999999) return 'U1';
     if(['paper','stamp','signature','match'].some(k=>checks[k]!==true)) return 'U1';
     if(checks.budget!==true||checks.policy!==true) return 'U2';
-    return amount>20000000?'U3':'CLEAR';
+    return amount>=20000000?'U3':'CLEAR';
   }
   function money(amount) { return new Intl.NumberFormat('vi-VN').format(amount) + ' ₫'; }
   function decide(amount,checks={}) {
@@ -17,16 +17,16 @@
       return {action:'ESCALATE',code,receiver:'treasurer',question:`Chưa xác minh được ${missing.join(', ')}. Vui lòng bổ sung hoặc xác nhận minh chứng tương ứng trước khi xử lý hồ sơ.`};
     }
     if(code==='U2') return {action:'ESCALATE',code,receiver:'cfo',question:'Khoản chi chưa được xác định là phù hợp với ngân sách hoặc chính sách hiện hành. Có phê duyệt ngoại lệ cho hồ sơ này không?'};
-    return {action:'ESCALATE',code,receiver:'cfo',question:`Khoản chi ${money(amount)} vượt hạn mức tự động 20.000.000 ₫. Giám đốc Tài chính có phê duyệt khoản này không?`};
+    return {action:'ESCALATE',code,receiver:'cfo',question:`Khoản chi ${money(amount)} đạt hoặc vượt ngưỡng 20.000.000 ₫. Giám đốc Tài chính có phê duyệt khoản này không?`};
   }
   function execute(amount,checks={}) {
     const decision=decide(amount,checks);
-    return {...decision,status:decision.code==='CLEAR'?'APPROVED':decision.code==='U1'?'NEEDS_INFO':'CFO_REVIEW',reason:decision.code==='CLEAR'?'Đủ điều kiện mẫu và trong quyền tự động 20 triệu.':decision.code==='U1'?'Thông tin chưa xác minh.':decision.code==='U2'?'Cần quyết định ngoại lệ chính sách/ngân sách.':'Vượt quyền tự động.'};
+    return {...decision,status:decision.code==='CLEAR'?'APPROVED':decision.code==='U1'?'NEEDS_INFO':'CFO_REVIEW',reason:decision.code==='CLEAR'?'Đủ điều kiện mẫu và dưới 20 triệu.':decision.code==='U1'?'Thông tin chưa xác minh.':decision.code==='U2'?'Cần quyết định ngoại lệ chính sách/ngân sách.':'Vượt quyền tự động.'};
   }
   function verify() {
     const all={paper:true,stamp:true,signature:true,match:true,budget:true,policy:true};
     const cases=[
-      ['1 đồng',1,all,'CLEAR'],['12,5 triệu',12500000,all,'CLEAR'],['Đúng 20 triệu',20000000,all,'CLEAR'],
+      ['1 đồng',1,all,'CLEAR'],['12,5 triệu',12500000,all,'CLEAR'],['Đúng 20 triệu',20000000,all,'U3'],
       ['20 triệu + 1',20000001,all,'U3'],['Thiếu chữ ký',1000,{...all,signature:false},'U1'],
       ['Thiếu dấu',1000,{...all,stamp:false},'U1'],['Chưa đối chiếu',1000,{...all,match:false},'U1'],
       ['Không phải hóa đơn giấy',1000,{...all,paper:false},'U1'],['Vượt ngân sách',1000,{...all,budget:false},'U2'],

@@ -1,23 +1,28 @@
 'use strict';
 const {evidenceSchema,buildPrompt,normalizeAnalysis}=require('../ai.js');
+const {providerConfig,providerError}=require('../ai-provider.cjs');
 const send=(res,status,body)=>{res.statusCode=status;res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');res.end(JSON.stringify(body));};
 const fields=['requesterType','requester','department','budgetCode','purpose','vendor','invoiceNumber','invoiceDate','amount','invoiceType','category'];
 function validPayload(p){return p&&Object.keys(p).length===fields.length&&fields.every(k=>k==='amount'?Number.isSafeInteger(p[k])&&p[k]>0&&p[k]<=999999999999:typeof p[k]==='string'&&p[k].trim().length>0&&p[k].length<=1000);}
 function extractText(data){
  if(data.status!=='completed') throw new Error('incomplete');
- return (data.output||[]).flatMap(x=>x.content||[]).filter(x=>x.type==='output_text').map(x=>x.text).join('');
+ const content=(data.output||[]).flatMap(x=>x.content||[]);
+ if(content.some(x=>x.type==='refusal'))throw new Error('refusal');
+ return content.filter(x=>x.type==='output_text').map(x=>x.text).join('');
 }
 // Dependency injection is only for tests; no client input selects a transport or key.
 function createHandler(env=process.env,fetcher=fetch){return async(req,res)=>{
  if(req.method!=='POST'){res.setHeader('Allow','POST');return send(res,405,{error:'Chỉ hỗ trợ POST.'});}
  const auth=req.headers.authorization||'';
  if(!/^Bearer [^\s]+$/.test(auth)) return send(res,401,{error:'Cần đăng nhập.'});
+ let config;
+ try{config=providerConfig(env);}catch{return send(res,503,{error:'OPENAI_BASE_URL chỉ hỗ trợ https://api.openai.com/v1 hoặc https://aishop.proxy-api.shop/v1.'});}
  const url=(env.SUPABASE_URL||'').replace(/\/$/,'');
  if(!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(url)||!env.SUPABASE_ANON_KEY||!env.SUPABASE_SERVICE_ROLE_KEY||!env.OPENAI_API_KEY) return send(res,503,{error:'Chưa cấu hình đủ AI trên máy chủ. Bạn có thể gửi hồ sơ để thủ quỹ kiểm tra.'});
  const userHeaders={apikey:env.SUPABASE_ANON_KEY,Authorization:auth,'Content-Type':'application/json'};
  const adminHeaders={apikey:env.SUPABASE_SERVICE_ROLE_KEY,Authorization:'Bearer '+env.SUPABASE_SERVICE_ROLE_KEY,'Content-Type':'application/json'};
  const request=(path,options={})=>fetcher(url+path,{redirect:'error',signal:AbortSignal.timeout(15000),headers:userHeaders,...options});
- let assessmentId;
+ let assessmentId,upstreamError;
  try{
    const identity=await request('/auth/v1/user');if(!identity.ok)return send(res,401,{error:'Phiên đăng nhập không hợp lệ.'});
    const user=await identity.json();const body=req.body;
@@ -42,15 +47,16 @@ function createHandler(env=process.env,fetcher=fetch){return async(req,res)=>{
      const data='data:'+mime+';base64,'+bytes.toString('base64');
      content.push(mime==='application/pdf'?{type:'input_file',filename:path.split('/').pop(),file_data:data}:{type:'input_image',image_url:data});
    }
-   const upstream=await fetcher('https://api.openai.com/v1/responses',{method:'POST',redirect:'error',signal:AbortSignal.timeout(45000),headers:{Authorization:'Bearer '+env.OPENAI_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({model:env.OPENAI_MODEL||'gpt-4.1-mini',store:false,instructions:buildPrompt(),input:[{role:'user',content}],text:{format:{type:'json_schema',name:'evidence_analysis',strict:true,schema:evidenceSchema}},max_output_tokens:2200})});
-   if(!upstream.ok)throw new Error('upstream');
+   const upstream=await fetcher(config.baseUrl+'/responses',{method:'POST',redirect:'error',signal:AbortSignal.timeout(45000),headers:{Authorization:'Bearer '+env.OPENAI_API_KEY.trim(),'Content-Type':'application/json'},body:JSON.stringify({model:config.model,store:false,instructions:buildPrompt(),input:[{role:'user',content}],text:{format:{type:'json_schema',name:'evidence_analysis',strict:true,schema:evidenceSchema}},max_output_tokens:2200})});
+   if(!upstream.ok){upstreamError=await providerError(upstream,config.provider);throw new Error('upstream');}
    const analysis=normalizeAnalysis(JSON.parse(extractText(await upstream.json())),body.request);
+   analysis.provider=config.provider;analysis.model=config.model;analysis.reviewedAt=new Date().toISOString();
    const saved=await request('/rest/v1/agent_assessments?id=eq.'+encodeURIComponent(assessmentId)+'&state=eq.pending',{method:'PATCH',headers:{...adminHeaders,Prefer:'return=representation'},body:JSON.stringify({state:'complete',analysis})});
    if(!saved.ok||(await saved.json()).length!==1)throw new Error('save');
-   return send(res,200,{analysis,assessmentId});
+   return send(res,200,{analysis,assessmentId,provider:config.provider,model:config.model});
  }catch{
    if(assessmentId){try{await request('/rest/v1/agent_assessments?id=eq.'+encodeURIComponent(assessmentId)+'&state=eq.pending',{method:'PATCH',headers:adminHeaders,body:JSON.stringify({state:'failed'})});}catch{}}
-   return send(res,502,{error:'Chưa đọc được minh chứng. Hồ sơ sẽ chờ làm rõ; không tự duyệt.'});
+   return send(res,502,{error:(upstreamError||'Chưa đọc được minh chứng.')+' Hồ sơ sẽ chờ làm rõ; không tự duyệt.'});
  }
 };}
 module.exports=createHandler();module.exports.createHandler=createHandler;
