@@ -28,7 +28,7 @@ Bản build mới nhất đã được triển khai thành công trên Vercel Pr
 ### Cần tiếp tục kiểm thử và hoàn thiện
 
 - Deployment báo **Ready** xác nhận build đã triển khai; cần tiếp tục kiểm thử luồng end-to-end trên môi trường production với cấu hình Supabase/OpenAI và tài khoản thử nghiệm.
-- Chưa kết nối dữ liệu ngân sách, chính sách chi tiêu, danh sách nhà cung cấp, PO và lịch sử thanh toán; do đó phân loại `U2` chưa được hỗ trợ.
+- Nhánh cập nhật bổ sung hạn mức demo 200.000.000 đồng/tháng, cảnh báo từ 160.000.000 đồng và chỉ tính hồ sơ đã duyệt; luồng online cần áp dụng migration `supabase/migrations/20260925_001_monthly_approval_budget.sql` trước khi sử dụng. Chính sách chi tiết/U2, nhà cung cấp, PO và lịch sử thanh toán chưa được đối chiếu.
 - Cơ chế hiện tại không xác minh tính xác thực của hóa đơn, nguồn phát hành hay chữ ký số.
 - Phân hệ nhân sự và các quy trình ngoài đề nghị thanh toán sẽ được xem xét ở giai đoạn tiếp theo.
 

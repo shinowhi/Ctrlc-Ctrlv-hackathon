@@ -37,7 +37,7 @@ function statusInfo(item) {
   return map[item.status] || ['review', 'Đang xử lý'];
 }
 function evaluate(data) {
-  const missing = ['requester', 'department', 'budgetCode', 'purpose', 'vendor', 'invoiceNumber', 'invoiceDate'].filter((k) => !data[k]);
+  const missing = ['requester', 'department', 'purpose', 'vendor', 'invoiceNumber', 'invoiceDate'].filter((k) => !data[k]);
   if (!Number.isSafeInteger(data.amount) || data.amount <= 0) missing.push('amount');
   if (missing.length) return { kind: 'escalate', code: 'U1', title: 'Thiếu dữ kiện', receiver: 'Người nộp đơn', reason: `Còn thiếu ${missing.length} trường bắt buộc.`, question: 'Bổ sung thông tin còn thiếu trước khi gửi lại.', status: 'NEEDS_INFO' };
   if (data.amount > 20000000) return { kind: 'escalate', code: 'U3', title: 'Vượt thẩm quyền', receiver: 'Người đứng đầu nhánh tài chính', reason: `Tổng thanh toán ${money(data.amount)} đã gồm VAT, vượt ngưỡng 20.000.000 ₫.`, question: 'Hồ sơ được chuyển để người đứng đầu nhánh tài chính duyệt cuối.', status: 'CFO_REVIEW' };
@@ -52,7 +52,7 @@ function renderAudit() {
   if (auditList) auditList.innerHTML = entries.map((a, i) => `<div class="audit-item"><span class="audit-dot ${i % 3 === 0 ? 'green' : i % 3 === 1 ? 'blue' : 'purple'}"></span><div><strong>${escapeHtml(a.title)}</strong><small>${escapeHtml(a.subtitle)}</small></div><code>${escapeHtml(a.hash)}</code></div>`).join('');
 }
 function actionButtons(item) {
-  if (currentRole === 'treasurer') return item.status === 'READY_FOR_APPROVAL' || item.status === 'TREASURER_REVIEW' ? '<button class="action-secondary" data-action="clarify">Yêu cầu bổ sung</button><button class="action-primary" data-action="approve">Bấm duyệt cuối</button>' : '<button class="action-secondary" data-action="close">Đóng</button>';
+  if (currentRole === 'treasurer') { if(item.status==='NEEDS_INFO') return '<button class="action-primary" data-action="clarify">Yêu cầu gửi lại PDF rõ hơn</button>'; return item.status === 'READY_FOR_APPROVAL' || item.status === 'TREASURER_REVIEW' ? '<button class="action-secondary" data-action="clarify">Yêu cầu bổ sung</button><button class="action-primary" data-action="approve">Bấm duyệt cuối</button>' : '<button class="action-secondary" data-action="close">Đóng</button>'; }
   if (currentRole === 'cfo') return item.status === 'CFO_REVIEW' ? '<button class="action-secondary" data-action="reject">Từ chối</button><button class="action-primary" data-action="approve">Phê duyệt khoản chi</button>' : '<button class="action-secondary" data-action="close">Đóng</button>';
   return '<button class="action-secondary" data-action="close">Đã hiểu trạng thái</button>';
 }
@@ -104,3 +104,16 @@ document.querySelector('#loadSample')?.addEventListener('click', () => { documen
 document.querySelectorAll('input[type="file"]').forEach((input) => input.addEventListener('change', (event) => { const files = [...event.target.files]; if (files.length) fileList.innerHTML = files.map((f) => `<span class="file-chip valid">✓ ${escapeHtml(f.name)} · ${(f.size / 1024 / 1024).toFixed(1)} MB</span>`).join(''); }));
 document.querySelector('#verifyButton')?.addEventListener('click', (event) => { if (currentRole === 'applicant') { alert('Demo chỉ mô phỏng trạng thái; không đọc/lưu minh chứng, không đối chiếu ngân sách/chính sách và không ghi backend.'); return; } const results = FinRefRules.verify().slice(0,5); const passed = results.filter(r=>r.pass).length; event.currentTarget.textContent = `Verify: ${passed}/5 PASS`; addAudit(`Mô phỏng luật hóa đơn · ${passed}/5 ca đạt`, now()); });
 document.querySelectorAll('[data-scroll]').forEach((button) => button.addEventListener('click', () => document.getElementById(button.dataset.scroll)?.scrollIntoView({ behavior: 'smooth', block: 'start' })));
+function approvedThisMonth(){const n=new Date(),m=n.getMonth(),y=n.getFullYear();return state.requests.filter(x=>{if(x.status!=='APPROVED'||!x.approvedAt)return false;const d=new Date(x.approvedAt);return d.getMonth()===m&&d.getFullYear()===y;}).reduce((s,x)=>s+Number(x.amount||0),0);}
+const previousRenderDecision=renderDecision;
+renderDecision=function(item){previousRenderDecision(item);const box=decisionResult.querySelector('.reason-copy');if(box)box.textContent=(item.reason||'')+' Ngân sách đã duyệt tháng này: '+money(approvedThisMonth())+' / '+money(200000000)+'. Chỉ hồ sơ đã duyệt mới được tính.';};
+handleAction=function(id,action){const item=state.requests.find(x=>x.requestId===id);if(!item||action==='close')return;
+if(!((currentRole==='treasurer'&&(['TREASURER_REVIEW','READY_FOR_APPROVAL'].includes(item.status)||item.status==='NEEDS_INFO'&&action==='clarify')&&['approve','clarify'].includes(action))||(currentRole==='cfo'&&item.status==='CFO_REVIEW'&&['approve','reject'].includes(action))))return;
+let clarificationReason='';if(action==='clarify'){clarificationReason=window.prompt(item.status==='NEEDS_INFO'?'Nêu rõ trang hoặc thông tin cần gửi lại PDF rõ hơn:':'Nêu thông tin còn thiếu cần bổ sung:')||'';if(!clarificationReason.trim())return;}
+if(action==='approve'){const spent=approvedThisMonth(),projected=spent+Number(item.amount||0),cap=200000000,remaining=Math.max(cap-projected,0),exceeded=Math.max(projected-cap,0);
+const warning=projected>=160000000?'\nCẢNH BÁO: đã đạt ít nhất 80% hạn mức.':'';const note='Đã duyệt trong tháng: '+money(spent)+'\nHóa đơn này: '+money(item.amount)+'\nTổng dự kiến: '+money(projected)+'\n'+(exceeded?'Vượt hạn mức: '+money(exceeded):'Còn lại: '+money(remaining))+warning;
+if(!window.confirm(note+'\n\nChỉ bấm OK để tiếp tục.'))return;
+if(currentRole==='treasurer'&&(item.amount>20000000||projected>cap)){item.status='CFO_REVIEW';item.reason=projected>cap?'Vượt ngân sách tháng; chờ CFO xác nhận.':'Vượt thẩm quyền 20 triệu; chờ CFO xác nhận.';}
+else if(currentRole==='cfo'&&projected>cap){const why=window.prompt('Vượt ngân sách. CFO nhập lý do duyệt ngoại lệ:');if(!why||!why.trim()){window.alert('Cần ghi lý do; hồ sơ chưa được duyệt.');return;}item.status='APPROVED';item.approvedAt=new Date().toISOString();item.reason=why.trim();}
+else{item.status='APPROVED';item.approvedAt=new Date().toISOString();item.reason='Được duyệt theo hạn mức tháng.';}}else if(action==='clarify'){item.status='NEEDS_INFO';item.reason=clarificationReason.trim();item.question='Người nộp cần gửi lại thông tin hoặc PDF rõ hơn.';}else if(action==='reject')item.status='REJECTED';
+saveState();addAudit(item.requestId+' · '+(item.status==='APPROVED'?'Đã phê duyệt':item.status==='CFO_REVIEW'?'Chuyển CFO xác nhận':action==='clarify'?'Yêu cầu bổ sung':'Từ chối'),now()+' · '+roleMeta[currentRole].label);renderAll();renderDecision(item);};
