@@ -16,10 +16,10 @@
         <p class="gateway-copy">Demo mô phỏng trên một thiết bị. Không dùng hồ sơ thật; dữ liệu không gửi lên hệ thống online.</p>
         <div class="role-grid">
           <button class="role-card applicant-role" type="button" data-enter-role="applicant"><span class="role-icon">↗</span><span class="role-title">Người nộp đơn</span><span class="role-desc">Tạo đề nghị, upload minh chứng và theo dõi trạng thái.</span><span class="role-link">Vào cổng nộp đơn →</span></button>
-          <button class="role-card treasurer-role" type="button" data-enter-role="treasurer"><span class="role-icon">◈</span><span class="role-title">Thủ quỹ</span><span class="role-desc">Xử lý các ca cần làm rõ và chuyển tiếp ca bất thường.</span><span class="role-link">Vào hàng đợi xét duyệt →</span></button>
-          <button class="role-card cfo-role" type="button" data-enter-role="cfo"><span class="role-icon">⌁</span><span class="role-title">Giám đốc Tài chính</span><span class="role-desc">Xem và quyết định các khoản chi vượt 20 triệu đồng.</span><span class="role-link">Vào hàng đợi cấp trên →</span></button>
+          <button class="role-card treasurer-role" type="button" data-enter-role="treasurer"><span class="role-icon">◈</span><span class="role-title">Quản lý tài chính</span><span class="role-desc">Xem kết quả kiểm tra hiện có và bấm duyệt cuối trong hạn mức.</span><span class="role-link">Vào hàng đợi xét duyệt →</span></button>
+          <button class="role-card cfo-role" type="button" data-enter-role="cfo"><span class="role-icon">⌁</span><span class="role-title">Người đứng đầu nhánh tài chính</span><span class="role-desc">Xem và quyết định các khoản có tổng thanh toán trên 20 triệu đồng.</span><span class="role-link">Vào hàng đợi cấp trên →</span></button>
         </div>
-        <div class="gateway-foot"><span><a href="index.html">← Đăng nhập hệ thống online</a></span><span>FIN-DEMO-1 · Chính sách mẫu</span></div>
+        <div class="gateway-foot"><span><a href="index.html">← Đăng nhập hệ thống online</a></span><span>Demo mô phỏng</span></div>
       </div>
     </section>
 
@@ -44,8 +44,8 @@
 
         <div class="sidebar-note clay-inset">
           <span class="eyebrow">Chính sách đang dùng</span>
-          <strong>FIN-DEMO-1 · Chính sách mẫu</strong>
-          <p>Hóa đơn giấy có dấu đỏ và chữ ký. Hồ sơ trên 20 triệu đồng chuyển Giám đốc Tài chính.</p>
+          <strong>FIN-2026 / v1.0</strong>
+          <p>Ngưỡng tính theo tổng thanh toán đã gồm VAT. Ngân sách/chính sách chưa được đối chiếu.</p>
         </div>
 
         <div class="profile clay-inset">
@@ -63,7 +63,7 @@
           <div>
             <span class="eyebrow">FINANCE OPERATIONS · EDGE REVIEW</span>
             <h1>Đề nghị thanh toán</h1>
-            <p class="muted">Kiểm tra hồ sơ rõ ràng tự động, dừng đúng lúc khi cần người có thẩm quyền.</p>
+            <p class="muted">Mô phỏng đọc PDF và đối chiếu dữ kiện; người có thẩm quyền vẫn bấm duyệt cuối.</p>
           </div>
           <div class="topbar-actions">
             <button class="icon-button clay-button" type="button" title="Thông báo">♧<span class="notification-dot"></span></button>
@@ -75,7 +75,7 @@
         <section class="stats-grid" aria-label="Tổng quan trạng thái">
           <article class="stat-card clay-card mint">
             <div class="stat-icon">✓</div>
-            <div><span class="stat-label">Đủ điều kiện xử lý</span><strong id="readyCount">08</strong><small>Hồ sơ mẫu trên thiết bị</small></div>
+            <div><span class="stat-label">Sẵn sàng duyệt</span><strong id="readyCount">01</strong><small>Chưa phải trạng thái đã duyệt</small></div>
           </article>
           <article class="stat-card clay-card peach">
             <div class="stat-icon">!</div>
@@ -105,7 +105,7 @@
                   <label class="field"><span>Loại người đề nghị</span><select id="requesterType"><option value="employee">Nhân viên</option><option value="department">Phòng ban</option></select></label>
                   <label class="field"><span>Họ tên / phòng ban</span><input id="requester" type="text" value="Nguyễn Minh An" placeholder="VD: Phòng Marketing" required /></label>
                   <label class="field"><span>Bộ phận</span><input id="department" type="text" value="Marketing" placeholder="VD: Kinh doanh" required /></label>
-                  <label class="field"><span>Mã ngân sách</span><input id="budgetCode" type="text" value="MKT-OPS-2026" placeholder="VD: FIN-OPS-01" required /></label>
+                  <label class="field"><span>Mã ngân sách (chưa đối chiếu)</span><input id="budgetCode" type="text" value="MKT-OPS-2026" placeholder="VD: FIN-OPS-01" required /></label>
                 </div>
               </div>
 
@@ -116,24 +116,18 @@
                   <label class="field"><span>Nhà cung cấp</span><input id="vendor" type="text" value="Công ty In Sao Mai" placeholder="Tên đơn vị xuất hóa đơn" required /></label>
                   <label class="field"><span>Số hóa đơn</span><input id="invoiceNumber" type="text" value="INV-2026-0318" placeholder="VD: 0000123" required /></label>
                   <label class="field"><span>Ngày hóa đơn</span><input id="invoiceDate" type="date" value="2026-09-20" required /></label>
-                  <label class="field amount-field"><span>Số tiền (VNĐ)</span><input id="amount" type="number" min="0" step="1000" value="12500000" required /><span class="currency">₫</span></label>
-                  <label class="field"><span>Trạng thái ngân sách</span><select id="budgetStatus"><option value="ok">Đã có ngân sách</option><option value="over">Vượt ngân sách</option></select></label>
+                  <label class="field amount-field"><span>Tổng thanh toán đã gồm VAT (VNĐ)</span><input id="amount" type="number" min="0" step="1" value="12500000" required /><span class="currency">₫</span></label>
                 </div>
               </div>
 
               <div class="form-section">
-                <div class="section-title"><span class="step-number">3</span><div><strong>Minh chứng bắt buộc</strong><span>Hóa đơn giấy và đơn yêu cầu có dấu/chữ ký</span></div></div>
+                <div class="section-title"><span class="step-number">3</span><div><strong>Minh chứng bắt buộc</strong><span>PDF có chữ chọn/copy hoặc PDF scan</span></div></div>
                 <div class="upload-grid">
-                  <label class="upload-zone" for="invoiceFile"><span class="upload-icon">▧</span><strong>Hóa đơn / biên lai</strong><small>PDF, JPG, PNG · tối đa 10 MB</small><input id="invoiceFile" type="file" accept=".pdf,.jpg,.jpeg,.png" /></label>
+                  <label class="upload-zone" for="invoiceFile"><span class="upload-icon">▧</span><strong>Hóa đơn PDF</strong><small>PDF chữ hoặc scan PDF · tối đa 10 MB</small><input id="invoiceFile" type="file" accept="application/pdf,.pdf" /></label>
                   <label class="upload-zone" for="requestFile"><span class="upload-icon">▤</span><strong>Đơn đề nghị thanh toán</strong><small>PDF, JPG, PNG · tối đa 10 MB</small><input id="requestFile" type="file" accept=".pdf,.jpg,.jpeg,.png" /></label>
                 </div>
                 <div class="file-list" id="fileList" aria-live="polite"><span class="file-chip placeholder">Chưa có file mới · demo đang dùng hồ sơ mẫu</span></div>
-                <div class="checks-grid">
-                  <label class="check-row"><input id="hasStamp" type="checkbox" checked /><span class="custom-check"></span><span><strong>Có dấu đỏ</strong><small>Giả lập dấu đỏ — chưa nhận diện AI</small></span></label>
-                  <label class="check-row"><input id="hasSignature" type="checkbox" checked /><span class="custom-check"></span><span><strong>Có chữ ký</strong><small>Chữ ký người có thẩm quyền</small></span></label>
-                  <label class="check-row"><input id="hasAcceptance" type="checkbox" checked /><span class="custom-check"></span><span><strong>Có bàn giao/nghiệm thu</strong><small>Đối soát hàng hóa hoặc dịch vụ</small></span></label>
-                  <label class="check-row"><input id="policyIssue" type="checkbox" /><span class="custom-check"></span><span><strong>Khoản chi ngoài policy</strong><small>Dùng để mô phỏng ca chuyển tiếp</small></span></label>
-                </div>
+                <p class="scope-note compact"><strong>Giới hạn:</strong> demo không đọc file thật. Ngân sách, chính sách, MST doanh nghiệp, NCC, PO và lịch sử thanh toán chưa được kiểm tra; U2 chưa thể phân loại. CLEAR chỉ sẵn sàng để người có quyền bấm duyệt.</p>
               </div>
 
               <div class="form-actions"><button class="secondary-button clay-button" type="button" id="loadSample">Nạp ca mẫu</button><button class="primary-button clay-button" type="submit">Chạy kiểm tra hồ sơ <span>→</span></button></div>
@@ -143,15 +137,15 @@
           <aside class="side-column">
             <article class="clay-card decision-card" id="decisionCard">
               <div class="card-heading"><div><span class="eyebrow">DECISION ORCHESTRATOR</span><h2>Kết quả kiểm tra</h2></div><span class="live-badge"><i></i> Live</span></div>
-              <div id="decisionEmpty" class="empty-state"><div class="empty-orb">◌</div><strong>Chưa có quyết định</strong><p>Điền form và chạy kiểm tra để xem hệ thống sẽ tự xử lý hay chuyển tiếp.</p></div>
+              <div id="decisionEmpty" class="empty-state"><div class="empty-orb">◌</div><strong>Chưa có quyết định</strong><p>Điền form để mô phỏng CLEAR, U1 hoặc chuyển cấp U3. Duyệt cuối luôn cần người có quyền.</p></div>
               <div id="decisionResult" class="decision-result hidden"></div>
             </article>
 
             <article class="clay-card policy-card">
-              <div class="card-heading"><div><span class="eyebrow">POLICY LENS</span><h2>Ba điểm dừng</h2></div><span class="policy-version">v1.0</span></div>
-              <div class="policy-row"><span class="policy-code u1">U1</span><div><strong>Thiếu dữ kiện</strong><small>Thiếu dấu, chữ ký, nghiệm thu hoặc dữ liệu không đọc được.</small></div></div>
-              <div class="policy-row"><span class="policy-code u2">U2</span><div><strong>Cần ngoại lệ chính sách</strong><small>Chính sách chưa bao phủ hoặc ngân sách chưa đủ.</small></div></div>
-              <div class="policy-row"><span class="policy-code u3">U3</span><div><strong>Vượt thẩm quyền</strong><small>Số tiền trên 20 triệu đồng → Giám đốc Tài chính.</small></div></div>
+              <div class="card-heading"><div><span class="eyebrow">PHÂN LOẠI HỒ SƠ</span><h2>Ba điểm dừng</h2></div><span class="policy-version">Chưa có policy</span></div>
+              <div class="policy-row"><span class="policy-code u1">U1</span><div><strong>Thiếu hoặc lệch dữ kiện</strong><small>PDF không đọc rõ, phép tính lệch hoặc trường không khớp form.</small></div></div>
+              <div class="policy-row"><span class="policy-code u2">U2</span><div><strong>Chưa thể phân loại</strong><small>Chưa có policy/ngân sách để đối chiếu; hệ thống không kết luận.</small></div></div>
+              <div class="policy-row"><span class="policy-code u3">U3</span><div><strong>Vượt thẩm quyền</strong><small>Tổng thanh toán gồm VAT trên 20 triệu → người đứng đầu nhánh tài chính.</small></div></div>
             </article>
           </aside>
         </section>
@@ -159,18 +153,18 @@
         <section class="lower-grid">
           <article class="clay-card queue-card" id="queue-card">
             <div class="card-heading"><div><span class="eyebrow">REVIEW QUEUE</span><h2>Hàng đợi hôm nay</h2></div><button class="text-button" type="button" id="verifyButton">▶ Verify 5 ca</button></div>
-            <div class="table-wrap"><table><thead><tr><th>Mã hồ sơ</th><th>Người đề nghị</th><th>Số tiền</th><th>Trạng thái</th><th>Thời gian</th></tr></thead><tbody id="queueBody"><tr><td><strong>PAY-0318</strong><small>20/09/2026 · 09:14</small></td><td>Nguyễn Minh An<small>Marketing</small></td><td>12.500.000 ₫</td><td><span class="status-tag ready">Tự phê duyệt</span></td><td>4.8 ms</td></tr><tr><td><strong>PAY-0317</strong><small>20/09/2026 · 08:52</small></td><td>Phòng Mua sắm<small>Operations</small></td><td>24.800.000 ₫</td><td><span class="status-tag escalate">Chờ GĐTC</span></td><td>5.1 ms</td></tr><tr><td><strong>PAY-0316</strong><small>20/09/2026 · 08:26</small></td><td>Lê Thu Hà<small>HR</small></td><td>3.200.000 ₫</td><td><span class="status-tag review">Thiếu minh chứng</span></td><td>6.2 ms</td></tr></tbody></table></div><div id="verifyResult" class="verify-result" aria-live="polite"></div>
+            <div class="table-wrap"><table><thead><tr><th>Mã hồ sơ</th><th>Người đề nghị</th><th>Số tiền</th><th>Trạng thái</th><th>Thời gian</th></tr></thead><tbody id="queueBody"><tr><td><strong>PAY-0318</strong><small>20/09/2026 · 09:14</small></td><td>Nguyễn Minh An<small>Marketing</small></td><td>12.500.000 ₫</td><td><span class="status-tag ready">Đủ điều kiện</span></td><td>4.8 ms</td></tr><tr><td><strong>PAY-0317</strong><small>20/09/2026 · 08:52</small></td><td>Phòng Mua sắm<small>Operations</small></td><td>24.800.000 ₫</td><td><span class="status-tag escalate">Chờ GĐTC</span></td><td>5.1 ms</td></tr><tr><td><strong>PAY-0316</strong><small>20/09/2026 · 08:26</small></td><td>Lê Thu Hà<small>HR</small></td><td>3.200.000 ₫</td><td><span class="status-tag review">Thiếu minh chứng</span></td><td>6.2 ms</td></tr></tbody></table></div>
           </article>
 
           <article class="clay-card audit-card" id="audit-card">
             <div class="card-heading"><div><span class="eyebrow">LOCAL AUDIT TRAIL</span><h2>Nhật ký xử lý</h2></div><span class="hash-pill">Demo · localStorage</span></div>
-            <div class="audit-list" id="auditList"><div class="audit-item"><span class="audit-dot green"></span><div><strong>PAY-0318 · Hồ sơ đã nạp</strong><small>09:14:02 · Intake Gateway</small></div><code>8d2f…a91c</code></div><div class="audit-item"><span class="audit-dot blue"></span><div><strong>Policy FIN-DEMO-1 · Chính sách mẫu</strong><small>09:14:02 · Rules Engine</small></div><code>43b0…2e11</code></div><div class="audit-item"><span class="audit-dot purple"></span><div><strong>Đang chờ quyết định</strong><small>Chưa có hành động chuyển tiền</small></div><code>c1a7…0b42</code></div></div>
+            <div class="audit-list" id="auditList"><div class="audit-item"><span class="audit-dot green"></span><div><strong>PAY-0318 · Hồ sơ mẫu</strong><small>09:14:02 · Intake Gateway</small></div><code>demo</code></div><div class="audit-item"><span class="audit-dot blue"></span><div><strong>Policy/ngân sách chưa được nạp</strong><small>Không được đối chiếu trong bản demo</small></div><code>scope</code></div><div class="audit-item"><span class="audit-dot purple"></span><div><strong>Đang chờ quyết định của người có quyền</strong><small>Chưa có hành động chuyển tiền</small></div><code>demo</code></div></div>
           </article>
         </section>
 
-        <footer class="footer-note"><span>FinRef prototype · Rules engine tự xử lý ca đủ điều kiện đến 20 triệu</span><span>Chưa thực hiện chuyển tiền · checkbox vẫn là dữ liệu giả lập</span></footer>
+        <footer class="footer-note"><span>FinRef · Demo mô phỏng, không đọc file và không ghi backend</span><span>Ngân sách/chính sách chưa kiểm tra · Chưa thực hiện thanh toán</span></footer>
       </main>
     </div>
-    <script src="rules.js"></script><script src="verify-ui.js"></script><script src="demo.js"></script>
+    <script src="rules.js"></script><script src="demo.js"></script>
   </body>
 </html>

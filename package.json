@@ -1,14 +1,13 @@
 {
   "name": "finref-online",
-  "version": "0.3.0",
-  "packageManager": "pnpm@11.19.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "build": "node scripts/build.cjs",
     "start": "node scripts/serve.cjs",
+    "smoke": "node scripts/smoke-local.cjs",
     "test": "node --test tests/*.test.cjs",
     "setup:accounts": "node scripts/create-accounts.cjs"
   },
-  "engines": { "node": ">=22" },
-  "devDependencies": { "@electric-sql/pglite": "0.5.8" }
+  "engines": { "node": ">=22" }
 }

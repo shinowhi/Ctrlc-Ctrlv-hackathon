@@ -55,19 +55,22 @@
     list() { return this.request('/rest/v1/requests?select=*&order=created_at.desc&limit=200'); }
     audit(id) { return this.request('/rest/v1/audit_events?request_id=eq.' + encodeURIComponent(id) + '&select=actor_role,old_status,new_status,reason,created_at,version&order=id.desc&limit=50'); }
     rpc(name,args) { return this.request('/rest/v1/rpc/' + name,{method:'POST',body:JSON.stringify(args)}); }
+    async analyzeEvidence(requestId) {
+      if (!this.session) throw new Error('Vui lòng đăng nhập.');
+      if (this.session.expires_at < Date.now()/1000 + 60) await this.refresh();
+      const response = await fetch('/api/analyze-evidence', {
+        method:'POST', headers:{'Content-Type':'application/json', Authorization:'Bearer '+this.session.access_token},
+        body:JSON.stringify({requestId})
+      });
+      const text = await response.text(); let data; try { data=JSON.parse(text); } catch { data={}; }
+      if (!response.ok) { const e=new Error(data.error||'Không đọc được minh chứng.'); e.status=response.status; throw e; }
+      return data;
+    }
     upload(path,file) { return this.request('/storage/v1/object/evidence/' + path,{method:'POST',headers:{'Content-Type':file.type,'x-upsert':'false'},body:file}); }
     async signedUrl(path) {
       const result=await this.request('/storage/v1/object/sign/evidence/' + path,{method:'POST',body:JSON.stringify({expiresIn:60})});
       if (typeof result.signedURL !== 'string' || !result.signedURL.startsWith('/object/sign/')) throw new Error('Không tạo được liên kết minh chứng.');
       return this.url + '/storage/v1' + result.signedURL;
-    }
-    async analyzeEvidence(request, paths) {
-      if(!this.session?.access_token) throw new Error('Vui lòng đăng nhập để phân tích minh chứng.');
-      if(this.session.expires_at<Date.now()/1000+60) await this.refresh();
-      const response=await fetch('/api/analyze-evidence',{method:'POST',signal:AbortSignal.timeout(90000),headers:{Authorization:'Bearer '+this.session.access_token,'Content-Type':'application/json'},body:JSON.stringify({request,paths})});
-      const data=await response.json().catch(()=>({}));
-      if(!response.ok) throw new Error(data.error||'Không phân tích được minh chứng.');
-      return data;
     }
   }
   root.FinRefApi=FinRefApi;

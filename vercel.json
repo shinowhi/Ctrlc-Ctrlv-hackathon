@@ -2,7 +2,6 @@
   "buildCommand": "node scripts/build.cjs",
   "outputDirectory": "dist",
   "framework": null,
-  "functions": { "api/analyze-evidence.js": { "maxDuration": 120 } },
   "headers": [{ "source": "/(.*)", "headers": [
     { "key": "X-Content-Type-Options", "value": "nosniff" },
     { "key": "Referrer-Policy", "value": "no-referrer" },

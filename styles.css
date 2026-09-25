@@ -217,6 +217,15 @@ td small { display: block; margin-top: 3px; color: #a1aabb; font-size: 9px; }
 .notice {margin:14px 0;line-height:1.6;overflow-wrap:anywhere;color:#44536c}
 .notice:empty {display:none}
 .notice.error {color:#a32138;background:#fff0f1;border-radius:12px;padding:12px}
+.scope-note {margin:0 0 18px;padding:13px 16px;border:1px solid #eadba9;border-radius:14px;color:#665827;background:#fff8df;font-size:12px;line-height:1.55}
+.scope-note.compact {margin:14px 0;font-size:11px}
+.invoice-analysis {margin:16px 0;padding:16px;border-radius:16px;background:rgba(238,242,249,.72)}
+.invoice-analysis h3 {margin:0 0 9px;font-size:14px}
+.invoice-field {padding:8px 0;border-top:1px solid var(--line)}
+.invoice-field-main {display:flex;justify-content:space-between;gap:16px;font-size:12px}
+.invoice-field-main strong {color:var(--ink)}
+.invoice-field-main span {text-align:right;overflow-wrap:anywhere}
+.invoice-field small {display:block;margin-top:4px;color:#778397;font-size:10px;line-height:1.45}
 .online-workspace {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:22px;margin:24px 0;align-items:start}
 .online:not(.role-applicant) .online-workspace {grid-template-columns:1fr}
 .online .decision-card {min-width:0}
@@ -245,16 +254,12 @@ td small { display: block; margin-top: 3px; color: #a1aabb; font-size: 9px; }
 .plain-check input {flex:none;width:18px;height:18px;accent-color:#7054de}
 .review-checks {margin:16px 0}
 .detail-amount {font-size:28px;margin:20px 0}
+.detail-amount small {color:#778397;font-size:11px;font-weight:500}
 .evidence-actions {display:flex;flex-wrap:wrap;gap:12px;margin:16px 0}
 #evidenceLink {margin:12px 0;font-size:14px;overflow-wrap:anywhere}
 .verification {padding:20px;margin-top:24px;line-height:1.7;font-size:14px}
 .verification summary {cursor:pointer;font-weight:600}
 .verification button {margin:12px 0}
-#verifyResult {font-size:14px;line-height:1.65;overflow-wrap:anywhere}
-#verifyResult ol {padding-left:24px}
-#verifyResult li {padding:12px 0;border-bottom:1px solid #d8dfeb}
-#verifyResult li:last-child {border-bottom:0}
-#verifyResult p {margin:8px 0}
 button:disabled {opacity:.55;cursor:wait;transform:none!important}
 button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible {outline:3px solid #7754d7;outline-offset:3px}
 @media(max-width:1100px){.online-workspace{grid-template-columns:1fr}}

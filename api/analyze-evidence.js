@@ -1,56 +1,147 @@
 'use strict';
-const {evidenceSchema,buildPrompt,normalizeAnalysis}=require('../ai.js');
-const send=(res,status,body)=>{res.statusCode=status;res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');res.end(JSON.stringify(body));};
-const fields=['requesterType','requester','department','budgetCode','purpose','vendor','invoiceNumber','invoiceDate','amount','invoiceType','category'];
-function validPayload(p){return p&&Object.keys(p).length===fields.length&&fields.every(k=>k==='amount'?Number.isSafeInteger(p[k])&&p[k]>0&&p[k]<=999999999999:typeof p[k]==='string'&&p[k].trim().length>0&&p[k].length<=1000);}
-function extractText(data){
- if(data.status!=='completed') throw new Error('incomplete');
- return (data.output||[]).flatMap(x=>x.content||[]).filter(x=>x.type==='output_text').map(x=>x.text).join('');
+
+const json = (res, status, body) => {
+  res.status(status).setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify(body));
+};
+
+const readBody = req => new Promise((resolve, reject) => {
+  let raw = '';
+  req.on('data', chunk => { raw += chunk; if (raw.length > 20000) reject(new Error('Payload quá lớn.')); });
+  req.on('end', () => { try { resolve(JSON.parse(raw || '{}')); } catch { reject(new Error('JSON không hợp lệ.')); } });
+  req.on('error', reject);
+});
+
+const supabase = (path, options = {}, token, key) => fetch(process.env.SUPABASE_URL + path, {
+  ...options,
+  headers: { apikey: key, ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(options.headers || {}) }
+}).then(async response => {
+  const text = await response.text();
+  let data; try { data = JSON.parse(text); } catch { data = text; }
+  if (!response.ok) throw new Error(data?.message || data?.msg || data?.error || 'Supabase request failed.');
+  return data;
+});
+
+const asDataUrl = async path => {
+  const response = await fetch(`${process.env.SUPABASE_URL}/storage/v1/object/evidence/${path}`, {
+    headers: { Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`, apikey: process.env.SUPABASE_SERVICE_ROLE_KEY }
+  });
+  if (!response.ok) throw new Error('Không đọc được file minh chứng.');
+  const mime = path.endsWith('.pdf') ? 'application/pdf' : path.endsWith('.png') ? 'image/png' : 'image/jpeg';
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (mime === 'application/pdf' && !bytes.subarray(0, 1024).includes(Buffer.from('%PDF-'))) throw new Error('File hóa đơn không có cấu trúc PDF hợp lệ.');
+  return `data:${mime};base64,${bytes.toString('base64')}`;
+};
+
+const outputText = result => result.output?.flatMap(item => item.content || []).map(part => part.text || '').join('') || '';
+const evidencePart = (name, path, dataUrl) => path.endsWith('.pdf')
+  ? { type: 'input_file', filename: name + '.pdf', file_data: dataUrl, detail: 'high' }
+  : { type: 'input_image', image_url: dataUrl, detail: 'high' };
+const fields = ['vendor', 'taxCode', 'invoiceNumber', 'invoiceDate', 'amountBeforeTax', 'vatAmount', 'totalAmount'];
+const labels = { vendor: 'nhà cung cấp', invoiceNumber: 'số hóa đơn', invoiceDate: 'ngày hóa đơn', amountBeforeTax: 'tiền trước thuế', vatAmount: 'tiền VAT', totalAmount: 'tổng thanh toán' };
+const normalized = value => String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('vi');
+
+function assess(request, analysis) {
+  const data = analysis.fields || {};
+  const issues = [];
+  const required = ['vendor', 'invoiceNumber', 'invoiceDate', 'amountBeforeTax', 'vatAmount', 'totalAmount'];
+  for (const key of required) {
+    const field = data[key] || {};
+    const valueMissing = typeof field.value === 'string' ? !field.value.trim() : !Number.isSafeInteger(field.value) || field.value < 0;
+    if (valueMissing || (key !== 'vatAmount' && field.value === 0)) issues.push(`Không đọc rõ ${labels[key]}.`);
+    if (!Number.isFinite(field.confidence) || field.confidence < 0.95) issues.push(`Độ tin cậy khi đọc ${labels[key]} dưới 95%.`);
+    if (!String(field.evidence || '').trim()) issues.push(`Thiếu bằng chứng đọc ${labels[key]}.`);
+  }
+  const date = data.invoiceDate?.value || '';
+  const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(`${date}T00:00:00Z`) : null;
+  if (!parsedDate || Number.isNaN(parsedDate.valueOf()) || parsedDate.toISOString().slice(0, 10) !== date) issues.push('Ngày hóa đơn không có định dạng YYYY-MM-DD hợp lệ.');
+  if (Number.isSafeInteger(data.amountBeforeTax?.value) && Number.isSafeInteger(data.vatAmount?.value) && Number.isSafeInteger(data.totalAmount?.value)
+    && data.amountBeforeTax.value + data.vatAmount.value !== data.totalAmount.value) issues.push('Tiền trước thuế cộng VAT không khớp tổng thanh toán.');
+  if (normalized(data.vendor?.value) !== normalized(request.payload.vendor)) issues.push('Nhà cung cấp trên hóa đơn không khớp form.');
+  if (normalized(data.invoiceNumber?.value) !== normalized(request.payload.invoiceNumber)) issues.push('Số hóa đơn trên PDF không khớp form.');
+  if ((data.invoiceDate?.value || '') !== (request.payload.invoiceDate || '')) issues.push('Ngày hóa đơn trên PDF không khớp form.');
+  if (data.totalAmount?.value !== Number(request.amount)) issues.push('Tổng thanh toán đã gồm VAT không khớp số tiền trên form.');
+
+  const uniqueIssues = [...new Set(issues)];
+  const code = uniqueIssues.length ? 'U1' : Number(request.amount) > 20000000 ? 'U3' : 'CLEAR';
+  const reason = code === 'U1'
+    ? uniqueIssues.join(' ')
+    : code === 'U3'
+      ? `Tổng thanh toán ${new Intl.NumberFormat('vi-VN').format(request.amount)} ₫ đã gồm VAT, vượt ngưỡng 20.000.000 ₫.`
+      : 'Các trường hóa đơn đang kiểm tra và phép tính tổng đã khớp form; chờ người có thẩm quyền bấm duyệt.';
+  return {
+    code,
+    reason,
+    question: code === 'U1' ? `Vui lòng kiểm tra và bổ sung/cập nhật: ${uniqueIssues.join(' ')}` : '',
+    checks: { formFieldsMatch: uniqueIssues.every(item => !item.includes('không khớp form')), totalsConsistent: uniqueIssues.every(item => !item.includes('không khớp tổng thanh toán')) }
+  };
 }
-// Dependency injection is only for tests; no client input selects a transport or key.
-function createHandler(env=process.env,fetcher=fetch){return async(req,res)=>{
- if(req.method!=='POST'){res.setHeader('Allow','POST');return send(res,405,{error:'Chỉ hỗ trợ POST.'});}
- const auth=req.headers.authorization||'';
- if(!/^Bearer [^\s]+$/.test(auth)) return send(res,401,{error:'Cần đăng nhập.'});
- const url=(env.SUPABASE_URL||'').replace(/\/$/,'');
- if(!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(url)||!env.SUPABASE_ANON_KEY||!env.SUPABASE_SERVICE_ROLE_KEY||!env.OPENAI_API_KEY) return send(res,503,{error:'Chưa cấu hình đủ AI trên máy chủ. Bạn có thể gửi hồ sơ để thủ quỹ kiểm tra.'});
- const userHeaders={apikey:env.SUPABASE_ANON_KEY,Authorization:auth,'Content-Type':'application/json'};
- const adminHeaders={apikey:env.SUPABASE_SERVICE_ROLE_KEY,Authorization:'Bearer '+env.SUPABASE_SERVICE_ROLE_KEY,'Content-Type':'application/json'};
- const request=(path,options={})=>fetcher(url+path,{redirect:'error',signal:AbortSignal.timeout(15000),headers:userHeaders,...options});
- let assessmentId;
- try{
-   const identity=await request('/auth/v1/user');if(!identity.ok)return send(res,401,{error:'Phiên đăng nhập không hợp lệ.'});
-   const user=await identity.json();const body=req.body;
-   if(!body||!validPayload(body.request)||typeof body.paths?.invoicePath!=='string'||typeof body.paths?.requestPath!=='string')return send(res,400,{error:'Hồ sơ không hợp lệ.'});
-   const paths=[body.paths.invoicePath,body.paths.requestPath];
-   if(!paths.every((p,i)=>new RegExp('^[0-9a-f-]{36}/[0-9a-f-]{36}/'+(i?'request':'invoice')+'\\.(pdf|jpg|png)$').test(p)&&p.split('/')[0]===user.id)||paths[0].split('/')[1]!==paths[1].split('/')[1])return send(res,400,{error:'Minh chứng phải thuộc cùng hồ sơ và tài khoản.'});
-   const reserved=await request('/rest/v1/rpc/reserve_assessment',{method:'POST',body:JSON.stringify({p_payload:body.request,p_invoice_path:paths[0],p_request_path:paths[1]})});
-   if(!reserved.ok)return send(res,429,{error:'Chưa thể phân tích. Kiểm tra file đã tải lên và giới hạn 6 lượt/phút, 100 lượt/ngày.'});
-   assessmentId=await reserved.json();
-   const content=[{type:'input_text',text:'File thứ nhất là hóa đơn, file thứ hai là đơn đề nghị. Chỉ đọc dữ kiện trong file.'}];
-   for(const path of paths){
-     const response=await request('/storage/v1/object/authenticated/evidence/'+path);
-     if(!response.ok||Number(response.headers.get('content-length'))>10485760)throw new Error('storage');
-     // Stream with a hard cap instead of trusting Content-Length.
-     const reader=response.body.getReader();let size=0;const chunks=[];
-     for(;;){const chunk=await reader.read();if(chunk.done)break;size+=chunk.value.length;if(size>10485760){await reader.cancel();throw new Error('size');}chunks.push(Buffer.from(chunk.value));}
-     const bytes=Buffer.concat(chunks);let mime;
-     if(path.endsWith('.pdf')&&bytes.subarray(0,5).toString()==='%PDF-')mime='application/pdf';
-     if(path.endsWith('.jpg')&&bytes[0]===255&&bytes[1]===216&&bytes[2]===255)mime='image/jpeg';
-     if(path.endsWith('.png')&&bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])))mime='image/png';
-     if(!mime)throw new Error('invalid-file');
-     const data='data:'+mime+';base64,'+bytes.toString('base64');
-     content.push(mime==='application/pdf'?{type:'input_file',filename:path.split('/').pop(),file_data:data}:{type:'input_image',image_url:data});
-   }
-   const upstream=await fetcher('https://api.openai.com/v1/responses',{method:'POST',redirect:'error',signal:AbortSignal.timeout(45000),headers:{Authorization:'Bearer '+env.OPENAI_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({model:env.OPENAI_MODEL||'gpt-4.1-mini',store:false,instructions:buildPrompt(),input:[{role:'user',content}],text:{format:{type:'json_schema',name:'evidence_analysis',strict:true,schema:evidenceSchema}},max_output_tokens:2200})});
-   if(!upstream.ok)throw new Error('upstream');
-   const analysis=normalizeAnalysis(JSON.parse(extractText(await upstream.json())),body.request);
-   const saved=await request('/rest/v1/agent_assessments?id=eq.'+encodeURIComponent(assessmentId)+'&state=eq.pending',{method:'PATCH',headers:{...adminHeaders,Prefer:'return=representation'},body:JSON.stringify({state:'complete',analysis})});
-   if(!saved.ok||(await saved.json()).length!==1)throw new Error('save');
-   return send(res,200,{analysis,assessmentId});
- }catch{
-   if(assessmentId){try{await request('/rest/v1/agent_assessments?id=eq.'+encodeURIComponent(assessmentId)+'&state=eq.pending',{method:'PATCH',headers:adminHeaders,body:JSON.stringify({state:'failed'})});}catch{}}
-   return send(res,502,{error:'Chưa đọc được minh chứng. Hồ sơ sẽ chờ làm rõ; không tự duyệt.'});
- }
-};}
-module.exports=createHandler();module.exports.createHandler=createHandler;
+
+const fieldSchema = (type, description) => ({
+  type: 'object', additionalProperties: false,
+  properties: {
+    value: { type, description },
+    confidence: { type: 'number', minimum: 0, maximum: 1 },
+    evidence: { type: 'string', description: 'Trích ngắn nội dung đã thấy hoặc số trang; để trống nếu không thấy.' }
+  },
+  required: ['value', 'confidence', 'evidence']
+});
+const invoiceSchema = {
+  type: 'object', additionalProperties: false,
+  properties: Object.fromEntries(fields.map(key => [key,
+    fieldSchema(key === 'amountBeforeTax' || key === 'vatAmount' || key === 'totalAmount' ? 'integer' : 'string',
+      key === 'amountBeforeTax' || key === 'vatAmount' || key === 'totalAmount' ? 'VND, số nguyên; trả 0 nếu không đọc được.' : 'Trả chuỗi rỗng nếu không đọc được.')
+  ])),
+  required: fields
+};
+const responseSchema = {
+  type: 'object', additionalProperties: false,
+  properties: { fields: invoiceSchema },
+  required: ['fields']
+};
+
+module.exports = async (req, res) => {
+  if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed.' });
+  if (!process.env.OPENAI_API_KEY || !process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) return json(res, 503, { error: 'AI backend chưa được cấu hình.' });
+  const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  if (!token) return json(res, 401, { error: 'Vui lòng đăng nhập.' });
+  try {
+    const { requestId } = await readBody(req);
+    if (!/^[0-9a-f-]{36}$/i.test(String(requestId || ''))) return json(res, 400, { error: 'Mã hồ sơ không hợp lệ.' });
+    const publicKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const user = await supabase('/auth/v1/user', {}, token, publicKey);
+    const rows = await supabase(`/rest/v1/requests?id=eq.${encodeURIComponent(requestId)}&select=*`, {}, token, publicKey);
+    const request = rows[0];
+    if (!request || request.owner_id !== user.id) return json(res, 403, { error: 'Không có quyền đọc hồ sơ này.' });
+    if (request.status !== 'TREASURER_REVIEW') return json(res, 409, { error: 'Hồ sơ không còn chờ phân tích. Hãy làm mới để xem trạng thái mới nhất.' });
+    const profile = (await supabase(`/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=role`, {}, token, publicKey))[0];
+    if (profile?.role !== 'applicant') return json(res, 403, { error: 'Chỉ người nộp đơn được yêu cầu đọc minh chứng.' });
+    if (!request.invoice_path?.endsWith('/invoice.pdf')) return json(res, 422, { error: 'Đợt này chỉ phân tích hóa đơn PDF.' });
+    const invoice = await asDataUrl(request.invoice_path);
+    const application = request.request_path ? await asDataUrl(request.request_path) : null;
+    const content = [
+      { type: 'input_text', text: `Đọc hóa đơn PDF đính kèm. PDF có thể chứa chữ máy hoặc trang scan. Trích xuất đúng các trường schema; mỗi trường phải có giá trị, độ tin cậy từ 0 đến 1 và bằng chứng ngắn (trích chữ hoặc trang). Không đoán và không kết luận hóa đơn/chữ ký số là xác thực. Với trường chữ không thấy, trả chuỗi rỗng; với số không đọc được, trả 0; confidence=0 và evidence rỗng. Ngày dùng YYYY-MM-DD; các số tiền là số nguyên VND. So sánh sau đó do hệ thống thực hiện với form sau: ${JSON.stringify({ vendor: request.payload.vendor, invoiceNumber: request.payload.invoiceNumber, invoiceDate: request.payload.invoiceDate, totalAmountIncludingVat: request.amount })}. Tài liệu đơn đề nghị kèm theo (nếu có) chỉ làm tham khảo, không được dùng thay thế nội dung hóa đơn.` },
+      evidencePart('invoice', request.invoice_path, invoice)
+    ];
+    if (application) content.push(evidencePart('payment-request', request.request_path, application));
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: process.env.OPENAI_VISION_MODEL || 'gpt-4.1-mini',
+        store: false,
+        input: [{ role: 'user', content }],
+        text: { format: { type: 'json_schema', name: 'invoice_extraction', strict: true, schema: responseSchema } }
+      })
+    });
+    if (!response.ok) throw new Error('OpenAI không đọc được minh chứng.');
+    const extraction = JSON.parse(outputText(await response.json()));
+    const assessment = assess(request, extraction);
+    const analysis = { ...extraction, assessment, policyChecked: false, budgetChecked: false };
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const result = await supabase('/rest/v1/rpc/record_invoice_analysis', {
+      method: 'POST', body: JSON.stringify({ p_id: request.id, p_expected_version: request.version, p_analysis: analysis })
+    }, serviceKey, serviceKey);
+    return json(res, 200, { status: result.status, analysis });
+  } catch (error) { return json(res, 422, { error: error.message || 'Không đọc được minh chứng.' }); }
+};

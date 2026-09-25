@@ -1,36 +1,41 @@
-# Kiểm chứng Sprint 1 · 22/09/2026
+# Trạng thái kiểm tra — 22/09/2026
 
-## Đã thực hiện trên máy phát triển
+> **Lưu ý:** kết quả bên dưới ghi nhận phiên bản trước thay đổi ngày 25/09/2026. Chúng không chứng minh phiên bản hiện tại đã qua test, SQL mới đã chạy trên Supabase, hoặc API đã được deploy.
 
-- `pnpm test`: **40/40 test đạt**, không bỏ qua test.
-- SQL gốc + migration chạy trên **PostgreSQL WASM PGlite 0.5.8**, không chỉ so khớp chuỗi SQL. Các assertion kiểm tra phê duyệt đúng 20 triệu, chuyển trên 20 triệu, U1 cần giải quyết, U2 ngoại lệ, RLS/quyền RPC, assessment bị sửa/đã dùng/hết hạn, hóa đơn trùng, ngân sách, giới hạn lượt AI và phiên bản cũ.
-- Rollback SQL chạy được trên database kiểm thử và giữ các hồ sơ hiện có.
-- API phân tích kiểm thử với transport giả lập: identity, rate limit và file header sai không gọi OpenAI; chỉ lấy byte từ Storage; lỗi dịch vụ/incomplete không tạo assessment thành công; cờ nghi vấn của mô hình giữ U1.
-- Chrome headless + PostgreSQL cục bộ, mạng Supabase/OpenAI giả lập: đăng nhập ba vai trò; gửi hai file; tự duyệt 12,5 triệu và 20 triệu; U3 → GĐTC duyệt; U1 → bổ sung → đánh giá lại; U2; lỗi AI → U1; thủ quỹ xác minh có lý do → đánh giá lại; Verify 5/15; không lỗi JavaScript.
-- Giao diện online không tràn ngang toàn trang ở 320, 768, 1024, 1440 px trong luồng kiểm thử; bảng có vùng cuộn riêng.
-- Build tạo đủ tài nguyên công khai, không đóng gói AI key/service role key. `pnpm audit --audit-level=high`: không tìm thấy lỗ hổng đã biết trong lockfile tại lúc kiểm tra.
+## Thay đổi mã nguồn ngày 25/09/2026
 
-## Chưa xác minh trên dịch vụ thật
+- Đổi phân tích AI sang trích xuất PDF theo trường, confidence và evidence; kiểm tra đối chiếu form và tổng trước thuế + VAT.
+- Thêm trạng thái `READY_FOR_APPROVAL`; AI không tạo `APPROVED`. Người có quyền bấm duyệt cuối.
+- Tính ngưỡng 20.000.000 VND theo tổng thanh toán gồm VAT; U1 hỏi bổ sung, trên ngưỡng chuyển cấp U3.
+- Không ghi đạt ngân sách/chính sách; U2 và các đối chiếu NCC/MST công ty/PO/lịch sử thanh toán vẫn chưa hỗ trợ.
+- Cập nhật UI/demo, SQL và bộ tài liệu theo phạm vi PDF hiện hành.
 
-- Chưa cấu hình OpenAI key, chưa gọi model thật, chưa đo độ chính xác trên PDF/ảnh thật. Chưa có bằng chứng chất lượng OCR hoặc tỷ lệ chuyển tiếp trên tập dữ liệu thực tế.
-- Chưa chạy migration trên Supabase của người dùng, chưa xác minh Storage/RLS trong deployment thật hay tranh chấp transaction trên nhiều kết nối thật. PGlite chạy SQL nhưng không thay thế toàn bộ Supabase.
-- Chưa push/merge GitHub hoặc deploy Vercel. Website hiện có chưa được thay đổi.
-- Chưa chạy `scripts/test-online.cjs` do chưa có cấu hình/tài khoản của project thử nghiệm.
+Các thay đổi này **chưa được chạy kiểm thử**, chưa chạy SQL trên Supabase thật, chưa thử OpenAI với hóa đơn mẫu và chưa xác minh deployment. Chỉ dùng project thử nghiệm sau khi nhóm đã rà schema mới.
 
-## Chạy lại
+Đã chạy `node --test tests/*.test.cjs`: **27/27 đạt**.
 
-```sh
-corepack enable
-pnpm install --frozen-lockfile --ignore-scripts
-pnpm test
-```
+Đã chạy `node scripts/smoke-local.cjs`: **5/5 đạt**. Năm ca gồm hồ sơ trong hạn mức, đúng mốc 20 triệu, vượt mốc và chuyển U3, thiếu minh chứng U1, và số tiền không hợp lệ U1.
 
-Browser test dùng Playwright đã cài (mặc định tìm `playwright`, hoặc đặt `PLAYWRIGHT_PATH` tới thư viện có sẵn) và Chrome (mặc định channel `chrome`, hoặc `CHROME_PATH` tới executable):
+Bao gồm mốc 20 triệu, dữ kiện thiếu, ngoài ngân sách/chính sách, kiểu dữ liệu số tiền, làm mới phiên đăng nhập đồng thời, lỗi ghi dữ liệu, đăng xuất khi mất mạng, chặn khóa quản trị trong build và chỉ đóng gói file công khai.
 
-```sh
-node scripts/test-browser.cjs
-```
+Ghi nhận từ báo cáo ngày 20/09/2026: đã chạy trình duyệt Chrome headless với **API giả lập**, kiểm tra các mục dưới đây. Chưa chạy lại các kiểm tra trình duyệt này trong lần rà soát 22/09/2026; kết quả cũ không xác nhận luồng AI mới.
 
-`QA_SCREENSHOT` tùy chọn chỉ định đường dẫn ảnh chụp. Script dùng cổng localhost ngẫu nhiên và tự đóng trình duyệt/server sau kiểm thử. Không truy cập database thật và không gửi chứng từ tới OpenAI.
+- Đăng nhập và hiển thị ba cổng riêng.
+- Upload hai file, gửi form, hiển thị hồ sơ.
+- Chặn duyệt khi chưa tích đủ xác nhận.
+- Tạo link minh chứng, thủ quỹ chuyển hồ sơ trên 20 triệu lên GĐTC.
+- GĐTC duyệt; người nộp thấy kết quả.
+- Tải lại trang giữ phiên đăng nhập trong tab.
+- Verify UI thực thi 15 ca, kết quả 15/15.
+- Không tràn chiều ngang toàn trang ở màn hình 390 px; bảng có vùng cuộn riêng.
+- Không phát sinh JavaScript page error trong luồng trên.
 
-Để nghiệm thu online: hoàn tất [HUONG-DAN-ONLINE.md](HUONG-DAN-ONLINE.md), kiểm tra với chứng từ giả, rồi chạy kiểm thử quyền trên project thử. Không gọi demo checkbox là đã xác minh chứng từ thật.
+**Chưa kiểm tra được trên Supabase thật:** chưa có project URL/key của người dùng. SQL chưa được chạy trên PostgreSQL/Supabase trong phiên này. Kiểm tra trình duyệt giả lập không chứng minh RLS, Storage hoặc RPC thực tế đã hoạt động.
+
+Frontend có thể được serve tại localhost sau khi build; backend nghiệp vụ hiện là Supabase Auth/Storage/RPC, không phải một server backend chạy độc lập trong localhost. Vì vậy cần chạy `scripts/test-online.cjs` trên project Supabase thật trước khi tuyên bố acceptance online.
+
+Sau khi tạo project và ba tài khoản, chạy `scripts/test-online.cjs` theo hướng dẫn. Script kiểm tra quyền server, riêng tư file, tranh chấp cập nhật, hạn mức, bổ sung và nhật ký với dữ liệu TEST. Chỉ kết luận hệ thống online hoạt động sau khi bước đó và thử trên ba máy thành công.
+
+Ngày 22/09/2026: build bằng cấu hình public mẫu thành công; server trả HTTP 200 cho `/index.html`, `/demo.html`, HTTP 404 cho `/package.json`. Đây chỉ là kiểm tra build/static HTTP, không xác nhận đăng nhập hoặc backend. Endpoint `/api/analyze-evidence` không được phục vụ bởi `scripts/serve.cjs`.
+
+Bản mã đang rà là thư mục trích từ ZIP; Git workspace chưa có commit/remote. Chưa xác minh được trạng thái repository GitHub, tài khoản thật hoặc Vercel deployment của nhóm từ bản local này. Bộ tạo tài khoản sinh mật khẩu trên máy người dùng khi được kết nối vào project.

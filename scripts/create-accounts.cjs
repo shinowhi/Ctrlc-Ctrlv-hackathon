@@ -4,8 +4,8 @@ const path=require('node:path');
 const {randomBytes}=require('node:crypto');
 const accounts=[
   {email:'nopdon@finref.test',role:'applicant',display_name:'Người nộp đơn mẫu'},
-  {email:'thuquy@finref.test',role:'treasurer',display_name:'Thủ quỹ mẫu'},
-  {email:'gdtc@finref.test',role:'cfo',display_name:'Giám đốc Tài chính mẫu'}
+  {email:'thuquy@finref.test',role:'treasurer',display_name:'Quản lý tài chính mẫu'},
+  {email:'gdtc@finref.test',role:'cfo',display_name:'Người đứng đầu nhánh tài chính mẫu'}
 ];
 function cleanInput(value) {
   const text=String(value||'').trim();

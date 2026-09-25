@@ -12,7 +12,7 @@ create table public.requests (
   amount bigint not null check (amount between 1 and 999999999999),
   invoice_path text not null,
   request_path text not null,
-  status text not null default 'TREASURER_REVIEW' check (status in ('TREASURER_REVIEW','NEEDS_INFO','CFO_REVIEW','APPROVED','REJECTED')),
+  status text not null default 'TREASURER_REVIEW' check (status in ('TREASURER_REVIEW','READY_FOR_APPROVAL','NEEDS_INFO','CFO_REVIEW','APPROVED','REJECTED')),
   checks jsonb,
   reason text not null default '',
   version integer not null default 1,
@@ -64,7 +64,7 @@ values ('evidence','evidence',false,10485760,array['application/pdf','image/jpeg
 create policy evidence_upload on storage.objects for insert to authenticated with check (
   bucket_id = 'evidence' and public.my_role() = 'applicant'
   and split_part(name,'/',1) = auth.uid()::text
-  and name ~ '^[0-9a-f-]{36}/[0-9a-f-]{36}/(invoice|request)\.(pdf|jpg|png)$'
+  and name ~ '^[0-9a-f-]{36}/[0-9a-f-]{36}/(invoice\.pdf|request\.(pdf|jpg|png))$'
 );
 create policy evidence_read on storage.objects for select to authenticated using (
   bucket_id = 'evidence' and (
@@ -78,12 +78,72 @@ create function public.record_request_event() returns trigger language plpgsql s
 set search_path = '' as $$
 begin
   insert into public.audit_events(request_id,actor_id,actor_role,old_status,new_status,reason,version,snapshot)
-  values(new.id,auth.uid(),public.my_role(),case when TG_OP='UPDATE' then old.status else null end,
+  values(new.id,coalesce(auth.uid(),new.owner_id),coalesce(public.my_role(),'ai'),case when TG_OP='UPDATE' then old.status else null end,
     new.status,new.reason,new.version,to_jsonb(new));
   return new;
 end $$;
 create trigger request_audit after insert or update on public.requests
 for each row execute function public.record_request_event();
+
+-- Server-only extraction result. AI may classify a request, but never approves it.
+-- Budget and policy are deliberately not marked as checked in this release.
+create function public.record_invoice_analysis(p_id uuid,p_expected_version integer,p_analysis jsonb)
+returns public.requests language plpgsql security definer set search_path = '' as $$
+declare
+  r public.requests;
+  facts_clear boolean;
+  fields_match boolean;
+  totals_consistent boolean;
+  target text;
+  why text;
+  code text;
+  extracted jsonb := p_analysis->'fields';
+begin
+  if auth.role() <> 'service_role' then raise exception 'Chỉ AI backend được gọi thao tác này.'; end if;
+  select * into r from public.requests where id=p_id for update;
+  if not found or r.version <> p_expected_version or r.status <> 'TREASURER_REVIEW' then
+    raise exception 'Hồ sơ đã thay đổi hoặc không còn chờ thủ quỹ.';
+  end if;
+  fields_match := lower(regexp_replace(trim(coalesce(extracted->'vendor'->>'value','')), '[[:space:]]+', ' ', 'g'))
+      = lower(regexp_replace(trim(coalesce(r.payload->>'vendor','')), '[[:space:]]+', ' ', 'g'))
+    and lower(regexp_replace(trim(coalesce(extracted->'invoiceNumber'->>'value','')), '[[:space:]]+', ' ', 'g'))
+      = lower(regexp_replace(trim(coalesce(r.payload->>'invoiceNumber','')), '[[:space:]]+', ' ', 'g'))
+    and coalesce(extracted->'invoiceDate'->>'value','') = coalesce(r.payload->>'invoiceDate','')
+    and coalesce(nullif(extracted->'totalAmount'->>'value','')::bigint,0) = r.amount;
+  totals_consistent := coalesce(nullif(extracted->'amountBeforeTax'->>'value','')::bigint,0)
+    + coalesce(nullif(extracted->'vatAmount'->>'value','')::bigint,0)
+    = coalesce(nullif(extracted->'totalAmount'->>'value','')::bigint,0);
+  facts_clear := fields_match and totals_consistent
+    and coalesce(length(trim(extracted->'vendor'->>'value')),0) > 0
+    and coalesce(length(trim(extracted->'invoiceNumber'->>'value')),0) > 0
+    and coalesce(length(trim(extracted->'invoiceDate'->>'value')),0) > 0
+    and coalesce(nullif(extracted->'amountBeforeTax'->>'value','')::bigint,0) > 0
+    and coalesce(nullif(extracted->'totalAmount'->>'value','')::bigint,0) > 0
+    and coalesce(nullif(extracted->'vatAmount'->>'value','')::bigint,0) >= 0
+    and coalesce(nullif(extracted->'vendor'->>'confidence','')::numeric,0) >= 0.95
+    and coalesce(nullif(extracted->'invoiceNumber'->>'confidence','')::numeric,0) >= 0.95
+    and coalesce(nullif(extracted->'invoiceDate'->>'confidence','')::numeric,0) >= 0.95
+    and coalesce(nullif(extracted->'amountBeforeTax'->>'confidence','')::numeric,0) >= 0.95
+    and coalesce(nullif(extracted->'vatAmount'->>'confidence','')::numeric,0) >= 0.95
+    and coalesce(nullif(extracted->'totalAmount'->>'confidence','')::numeric,0) >= 0.95
+    and coalesce(length(trim(extracted->'vendor'->>'evidence')),0) > 0
+    and coalesce(length(trim(extracted->'invoiceNumber'->>'evidence')),0) > 0
+    and coalesce(length(trim(extracted->'invoiceDate'->>'evidence')),0) > 0
+    and coalesce(length(trim(extracted->'amountBeforeTax'->>'evidence')),0) > 0
+    and coalesce(length(trim(extracted->'vatAmount'->>'evidence')),0) > 0
+    and coalesce(length(trim(extracted->'totalAmount'->>'evidence')),0) > 0;
+  code := case when not facts_clear then 'U1' when r.amount > 20000000 then 'U3' else 'CLEAR' end;
+  target := case when code='U1' then 'NEEDS_INFO' when code='U3' then 'CFO_REVIEW' else 'READY_FOR_APPROVAL' end;
+  why := case when code='U1' then left(coalesce(nullif(p_analysis->'assessment'->>'reason',''), 'Chưa đọc chắc hoặc dữ liệu hóa đơn chưa khớp; vui lòng kiểm tra và bổ sung.'),2000)
+    when code='U3' then 'Tổng thanh toán đã gồm VAT vượt 20.000.000 ₫; chuyển người đứng đầu nhánh tài chính duyệt cuối.'
+    else 'Các trường hóa đơn đang kiểm tra và phép tính tổng đã khớp form; sẵn sàng để quản lý tài chính bấm duyệt cuối.' end;
+  update public.requests set status=target,reason=why,
+    checks=jsonb_build_object('invoice_fields_match',fields_match,'invoice_totals_consistent',totals_consistent,
+      'budget_checked',false,'policy_checked',false,'ai',p_analysis),
+    escalated_at=case when target='CFO_REVIEW' then now() else escalated_at end,
+    version=version+1,updated_at=now() where id=p_id returning * into r;
+  return r;
+end $$;
 
 -- All writes go through these RPCs. A client cannot assign status, role, or owner.
 create function public.submit_request(p_id uuid, p_payload jsonb, p_invoice_path text,
@@ -99,13 +159,12 @@ begin
   if auth.uid() is null or public.my_role() is distinct from 'applicant' then
     raise exception 'Chỉ người nộp đơn được gửi hồ sơ.';
   end if;
-  foreach field in array array['requester','department','budgetCode','purpose','vendor','invoiceNumber','invoiceDate','requesterType','invoiceType'] loop
+  foreach field in array array['requester','department','budgetCode','purpose','vendor','invoiceNumber','invoiceDate','requesterType'] loop
     if coalesce(length(trim(p_payload->>field)),0) not between 1 and 1000 then
       raise exception 'Trường % bắt buộc, tối đa 1000 ký tự.',field;
     end if;
     clean := clean || jsonb_build_object(field,trim(p_payload->>field));
   end loop;
-  if clean->>'invoiceType' <> 'paper' then raise exception 'Chỉ nhận bản chụp/scan hóa đơn giấy, không nhận hóa đơn điện tử.'; end if;
   if clean->>'requesterType' not in ('employee','department') then raise exception 'Loại người nộp không hợp lệ.'; end if;
   perform (clean->>'invoiceDate')::date;
   if coalesce(p_payload->>'amount','') !~ '^[0-9]{1,12}$' then raise exception 'Số tiền phải là số nguyên dương.'; end if;
@@ -116,7 +175,7 @@ begin
     or split_part(p_invoice_path,'/',1) <> auth.uid()::text
     or split_part(p_request_path,'/',1) <> auth.uid()::text
     or split_part(p_invoice_path,'/',2) <> split_part(p_request_path,'/',2)
-    or p_invoice_path !~ '/invoice\.(pdf|jpg|png)$'
+    or p_invoice_path !~ '/invoice\.pdf$'
     or p_request_path !~ '/request\.(pdf|jpg|png)$'
     or not exists(select 1 from storage.objects where bucket_id='evidence' and name=p_invoice_path)
     or not exists(select 1 from storage.objects where bucket_id='evidence' and name=p_request_path)
@@ -128,7 +187,7 @@ begin
       raise exception 'Hồ sơ đã thay đổi hoặc không được phép bổ sung. Hãy tải lại.';
     end if;
     update public.requests set payload=clean,amount=amt,invoice_path=p_invoice_path,request_path=p_request_path,
-      status='TREASURER_REVIEW',checks=null,reason='Người nộp đã bổ sung hồ sơ.',version=version+1,updated_at=now()
+      status='TREASURER_REVIEW',checks=null,reason='Người nộp đã bổ sung hồ sơ.',escalated_at=null,version=version+1,updated_at=now()
       where id=p_id returning * into r;
   else
     if p_expected_version is null or p_expected_version <> 0 then raise exception 'Không tìm thấy phiên bản hồ sơ.'; end if;
@@ -147,7 +206,7 @@ begin
   if not found or p_expected_version is null or r.version <> p_expected_version then
     raise exception 'Hồ sơ đã thay đổi. Hãy tải lại trước khi xử lý.';
   end if;
-  if auth.uid() is null or not ((who='treasurer' and r.status='TREASURER_REVIEW')
+  if auth.uid() is null or not ((who='treasurer' and r.status in ('TREASURER_REVIEW','READY_FOR_APPROVAL'))
     or (who='cfo' and r.status='CFO_REVIEW')) then raise exception 'Không có quyền xử lý hồ sơ ở trạng thái này.'; end if;
   if p_action is null or p_action not in ('approve','clarify','reject') then raise exception 'Hành động không hợp lệ.'; end if;
   if coalesce(length(p_reason),0) > 2000 then raise exception 'Lý do tối đa 2000 ký tự.'; end if;
@@ -157,25 +216,25 @@ begin
     why := trim(p_reason);
   else
     if who='treasurer' then
-      if not (coalesce(p_checks @> '{"paper":true,"stamp":true,"signature":true,"match":true,"budget":true,"policy":true}'::jsonb,false)) then
-        raise exception 'U1/U2: chưa xác nhận đủ minh chứng, ngân sách và chính sách. Yêu cầu bổ sung hoặc từ chối.';
+      if r.status='TREASURER_REVIEW' and not coalesce(p_checks @> '{"invoice":true,"fields_match":true,"total_includes_vat":true}'::jsonb,false) then
+        raise exception 'U1: hãy xác nhận đã kiểm tra hóa đơn, trường form và tổng thanh toán gồm VAT; hoặc yêu cầu bổ sung.';
       end if;
       target := case when r.amount>20000000 then 'CFO_REVIEW' else 'APPROVED' end;
-      why := case when r.amount>20000000 then 'U3: đã kiểm tra, chuyển Giám đốc Tài chính vì vượt 20 triệu.' else 'Thủ quỹ đã kiểm tra và duyệt trong hạn mức.' end;
+      why := case when r.amount>20000000 then 'U3: chuyển người đứng đầu nhánh tài chính vì tổng thanh toán gồm VAT vượt 20 triệu.' else 'Quản lý tài chính đã bấm duyệt trong hạn mức.' end;
     else
-      if not coalesce(r.checks @> '{"paper":true,"stamp":true,"signature":true,"match":true,"budget":true,"policy":true}'::jsonb,false)
-        then raise exception 'Chưa có xác nhận đầy đủ của thủ quỹ.'; end if;
-      target := 'APPROVED'; why := 'Giám đốc Tài chính đã phê duyệt khoản chi.';
+      target := 'APPROVED'; why := 'Người đứng đầu nhánh tài chính đã bấm duyệt cuối.';
     end if;
   end if;
   update public.requests set status=target,reason=why,
-    checks=case when who='treasurer' and p_action='approve' then p_checks else checks end,
+    checks=case when who='treasurer' and p_action='approve' and r.status='TREASURER_REVIEW' then p_checks else checks end,
     escalated_at=case when target='CFO_REVIEW' then now() else escalated_at end,
     version=version+1,updated_at=now() where id=p_id returning * into r;
   return r;
 end $$;
 revoke execute on function public.my_role(),public.can_read_request(uuid),public.record_request_event(),
-  public.submit_request(uuid,jsonb,text,text,integer),public.review_request(uuid,integer,text,text,jsonb) from public,anon;
+  public.submit_request(uuid,jsonb,text,text,integer),public.review_request(uuid,integer,text,text,jsonb),
+  public.record_invoice_analysis(uuid,integer,jsonb) from public,anon,authenticated;
 grant execute on function public.my_role(),public.can_read_request(uuid),
   public.submit_request(uuid,jsonb,text,text,integer),public.review_request(uuid,integer,text,text,jsonb) to authenticated;
+grant execute on function public.record_invoice_analysis(uuid,integer,jsonb) to service_role;
 commit;
