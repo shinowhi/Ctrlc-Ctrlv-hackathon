@@ -264,3 +264,20 @@ button:disabled {opacity:.55;cursor:wait;transform:none!important}
 button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible {outline:3px solid #7754d7;outline-offset:3px}
 @media(max-width:1100px){.online-workspace{grid-template-columns:1fr}}
 @media(max-width:650px){.online .sidebar{display:none}.online .main-content{width:100%}.online .topbar-actions{justify-content:flex-start}.online .stats-grid{grid-template-columns:1fr 1fr}.online .stat-card{padding:12px;gap:8px}.online .stat-icon{display:none}.online .card-heading{flex-wrap:wrap}.online .two-col{grid-template-columns:1fr}.online .topbar h1{font-size:30px}}
+
+.duplicate-warning { margin:14px 0; padding:14px 16px; border:1px solid #e4aa54; border-radius:14px; color:#714b12; background:#fff8e8; line-height:1.5; }
+.duplicate-warning p { margin:6px 0; }
+.duplicate-warning ul { margin:8px 0 0; padding-left:20px; }
+.duplicate-warning li { margin:4px 0; overflow-wrap:anywhere; }
+
+.approval-dialog { width:min(560px,calc(100% - 28px)); max-height:90vh; overflow:auto; border:1px solid #dce3ec; border-radius:20px; padding:24px; color:var(--ink); background:#fff; box-shadow:0 24px 70px rgba(25,35,55,.28); }
+.approval-dialog::backdrop { background:rgba(22,28,40,.52); backdrop-filter:blur(3px); }
+.approval-dialog h2 { margin:8px 0; font-size:24px; }
+.budget-summary { display:grid; gap:0; margin:18px 0; border:1px solid var(--line); border-radius:14px; padding:4px 14px; background:#f8f9fc; }
+.budget-summary-row { display:flex; justify-content:space-between; gap:16px; padding:12px 0; border-bottom:1px solid var(--line); font-size:14px; }
+.budget-summary-row:last-child { border-bottom:0; }
+.budget-summary-row strong { text-align:right; color:var(--ink); }
+.approval-warning { margin:12px 0; padding:12px; border-radius:12px; color:#665827; background:#fff8df; line-height:1.5; }
+.approval-dialog .decision-actions { margin-top:18px; }
+.approval-dialog .action-secondary,.approval-dialog .action-primary { min-height:44px; }
+@media(max-width:570px){.approval-dialog {padding:18px}}

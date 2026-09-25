@@ -5,7 +5,7 @@
 - Hóa đơn đầu vào: PDF có chữ chọn/copy hoặc PDF scan dạng ảnh. Đơn đề nghị: PDF/JPG/PNG. Mỗi file tối đa 10 MB.
 - Tổng thanh toán trên form phải là tổng đã gồm VAT. Ngưỡng chuyển cấp là **lớn hơn 20.000.000 VND**; đúng 20 triệu vẫn ở quản lý tài chính.
 - AI trích xuất dữ kiện, tính toán và gợi ý tuyến. Chỉ người có quyền mới tạo trạng thái `APPROVED`.
-- Ngân sách/chính sách chưa được đối chiếu; chưa thể phân loại U2. CLEAR chỉ xác nhận các kiểm tra hiện có.
+- Hạn mức demo 200.000.000 đồng/tháng, cảnh báo từ 160.000.000 đồng; chỉ hồ sơ đã duyệt mới được tính. Luồng online cần migration ngân sách; chính sách chi tiết/U2 vẫn chưa được đối chiếu. CLEAR chỉ xác nhận các kiểm tra hiện có.
 - AI không xác nhận tính xác thực của hóa đơn, nguồn phát hành hoặc chữ ký số.
 
 ## Chạy kiểm tra cục bộ
@@ -21,7 +21,7 @@ node --test tests/*.test.cjs
 
 | ID | Tiền điều kiện và thao tác | Kết quả mong đợi |
 |---|---|---|
-| SC-01 | Mở `demo.html`, chọn ba role và chạy Verify | Demo ghi rõ đang mô phỏng; không báo AI đã đọc file hoặc đã kiểm tra policy/budget. |
+| SC-01 | Mở `demo.html`, chọn ba role và chạy Verify | Demo ghi rõ đang mô phỏng; không báo AI đã đọc file hoặc chính sách đã được kiểm tra. Phần ngân sách chỉ mô phỏng số liệu lưu trong trình duyệt. |
 | SC-02 | Đăng nhập ba tài khoản mẫu, xem danh sách và quyền đọc file | Applicant chỉ thấy hồ sơ của mình; treasurer xử lý hàng đợi tài chính; CFO chỉ thấy hồ sơ đã chuyển cấp. |
 | SC-03 | Gửi hồ sơ với PDF đọc rõ, các trường và tổng gồm VAT khớp; chạy OpenAI analysis | Hồ sơ vào `READY_FOR_APPROVAL`; chưa phải `APPROVED`. Quản lý tài chính bấm duyệt để chuyển thành `APPROVED`; nhật ký lưu người duyệt. |
 | SC-04 | Gửi hồ sơ có tổng thanh toán gồm VAT là 20.000.001 | Hồ sơ vào `CFO_REVIEW`; chỉ người đứng đầu nhánh tài chính có thể bấm duyệt cuối. |

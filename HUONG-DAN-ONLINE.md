@@ -151,10 +151,15 @@ Hóa đơn trong phiên bản này phải là PDF (PDF có chữ chọn/copy ho�
 
 Kết quả AI chỉ chuyển hồ sơ sang `READY_FOR_APPROVAL`, `CFO_REVIEW` hoặc `NEEDS_INFO`. Trạng thái `APPROVED` chỉ được tạo bởi thao tác của người có role phù hợp. Mốc 20.000.000 đồng tính theo tổng thanh toán đã gồm VAT; đúng mốc vẫn thuộc quản lý tài chính, cao hơn chuyển người đứng đầu nhánh tài chính.
 
-Ngân sách/chính sách, MST công ty, NCC được duyệt, PO và lịch sử thanh toán chưa có dữ liệu để đối chiếu. Hệ thống không đánh dấu các mục này là đạt, chưa thể phân loại U2, và không xác nhận tính xác thực/nguồn phát hành hay chữ ký số của hóa đơn.
+Ngân sách demo là 200.000.000 đồng/tháng, cảnh báo từ 160.000.000 đồng; chỉ hồ sơ `APPROVED` được tính vào tháng duyệt. Luồng online chỉ hoạt động sau khi áp dụng migration ngân sách. Chính sách chi tiết/U2, MST công ty, NCC được duyệt, PO và lịch sử thanh toán chưa có dữ liệu để đối chiếu. Hệ thống không xác nhận tính xác thực/nguồn phát hành hay chữ ký số của hóa đơn.
 
 Để bật luồng này trên Vercel, đặt `OPENAI_API_KEY` và `SUPABASE_SERVICE_ROLE_KEY` ở Environment Variables của Production/Preview. Chạy `supabase/schema.sql` trên Supabase project mới theo hướng dẫn đầu tài liệu. Không đưa hai khóa này vào `config.js`, mã nguồn hoặc trình duyệt.
 
 ## Giới hạn đã biết
 
 AI có thể đọc sai PDF scan hoặc tài liệu không chuẩn; ngưỡng 95% chỉ là bộ lọc hỗ trợ, không phải chứng nhận pháp lý. Không tự duyệt và không tự chuyển tiền. UI hiển thị 200 hồ sơ mới nhất và 50 sự kiện mới nhất của hồ sơ được chọn; database vẫn giữ các bản ghi cũ. Nếu upload xong mà gửi form thất bại, file chưa gắn hồ sơ có thể còn trong bucket riêng tư, cần quản trị dọn sau. Nhật ký chặn sửa bằng tài khoản người dùng, không phải chứng nhận chống sửa bởi quản trị viên database.
+
+
+## Nâng cấp cơ sở dữ liệu đang dùng
+
+Nếu đây là project Supabase đã chạy schema cũ, chạy một lần file supabase/migrations/20260925_001_monthly_approval_budget.sql trong SQL Editor trước khi deploy. Các hồ sơ đã duyệt cũ được gán thời điểm từ audit log gần nhất; kiểm tra lại số liệu tháng đầu sau nâng cấp. Với project mới, chỉ chạy supabase/schema.sql.

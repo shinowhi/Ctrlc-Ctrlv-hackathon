@@ -17,6 +17,7 @@ create table public.requests (
   reason text not null default '',
   version integer not null default 1,
   escalated_at timestamptz,
+  approved_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -35,6 +36,7 @@ create table public.audit_events (
 create index requests_owner on public.requests(owner_id);
 create index requests_status on public.requests(status);
 create index audit_request on public.audit_events(request_id);
+create index requests_approved_at on public.requests(approved_at) where status='APPROVED';
 
 create function public.my_role() returns text language sql stable security definer
 set search_path = '' as $$ select role from public.profiles where id = auth.uid() $$;
@@ -86,7 +88,7 @@ create trigger request_audit after insert or update on public.requests
 for each row execute function public.record_request_event();
 
 -- Server-only extraction result. AI may classify a request, but never approves it.
--- Budget and policy are deliberately not marked as checked in this release.
+-- The budget is checked at approval; this extraction step never marks detailed policy as checked.
 create function public.record_invoice_analysis(p_id uuid,p_expected_version integer,p_analysis jsonb)
 returns public.requests language plpgsql security definer set search_path = '' as $$
 declare
@@ -138,7 +140,7 @@ begin
     when code='U3' then 'Tổng thanh toán đã gồm VAT vượt 20.000.000 ₫; chuyển người đứng đầu nhánh tài chính duyệt cuối.'
     else 'Các trường hóa đơn đang kiểm tra và phép tính tổng đã khớp form; sẵn sàng để quản lý tài chính bấm duyệt cuối.' end;
   update public.requests set status=target,reason=why,
-    checks=jsonb_build_object('invoice_fields_match',fields_match,'invoice_totals_consistent',totals_consistent,
+    checks=coalesce(r.checks,'{}'::jsonb) || jsonb_build_object('invoice_fields_match',fields_match,'invoice_totals_consistent',totals_consistent,
       'budget_checked',false,'policy_checked',false,'ai',p_analysis),
     escalated_at=case when target='CFO_REVIEW' then now() else escalated_at end,
     version=version+1,updated_at=now() where id=p_id returning * into r;
@@ -159,7 +161,7 @@ begin
   if auth.uid() is null or public.my_role() is distinct from 'applicant' then
     raise exception 'Chỉ người nộp đơn được gửi hồ sơ.';
   end if;
-  foreach field in array array['requester','department','budgetCode','purpose','vendor','invoiceNumber','invoiceDate','requesterType'] loop
+  foreach field in array array['requester','department','purpose','vendor','invoiceNumber','invoiceDate','requesterType'] loop
     if coalesce(length(trim(p_payload->>field)),0) not between 1 and 1000 then
       raise exception 'Trường % bắt buộc, tối đa 1000 ký tự.',field;
     end if;
@@ -197,44 +199,64 @@ begin
   return r;
 end $$;
 
-create function public.review_request(p_id uuid,p_expected_version integer,p_action text,
-  p_reason text default '',p_checks jsonb default '{}'::jsonb)
+create function public.approval_budget_summary(p_amount bigint default 0)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  month_start date := date_trunc('month', timezone('Asia/Ho_Chi_Minh', now()))::date;
+  month_start_at timestamptz; month_end_at timestamptz; spent bigint; amount bigint := coalesce(p_amount,0); projected bigint; cap bigint := 200000000;
+begin
+  if auth.uid() is null or public.my_role() not in ('treasurer','cfo') then raise exception 'Chỉ người duyệt tài chính được xem hạn mức.'; end if;
+  if amount < 0 then raise exception 'Số tiền cần xem không hợp lệ.'; end if;
+  month_start_at := month_start::timestamp at time zone 'Asia/Ho_Chi_Minh';
+  month_end_at := (month_start + interval '1 month')::timestamp at time zone 'Asia/Ho_Chi_Minh';
+  select coalesce(sum(amount),0)::bigint into spent from public.requests where status='APPROVED' and approved_at >= month_start_at and approved_at < month_end_at;
+  projected := spent + amount;
+  return jsonb_build_object('month_start',month_start,'approved_total',spent,'invoice_amount',amount,'projected_total',projected,'cap',cap,
+    'remaining_after',greatest(cap-projected,0),'exceeded_by',greatest(projected-cap,0),'warning_threshold',160000000,'warning',projected >= 160000000);
+end $$;
+
+create function public.review_request(p_id uuid,p_expected_version integer,p_action text,p_reason text default '',p_checks jsonb default '{}'::jsonb)
 returns public.requests language plpgsql security definer set search_path = '' as $$
-declare r public.requests; who text := public.my_role(); target text; why text;
+declare
+  r public.requests; who text := public.my_role(); target text; why text; budget_snapshot jsonb;
+  month_start date; month_start_at timestamptz; month_end_at timestamptz; spent bigint; projected bigint; cap bigint := 200000000;
 begin
   select * into r from public.requests where id=p_id for update;
-  if not found or p_expected_version is null or r.version <> p_expected_version then
-    raise exception 'Hồ sơ đã thay đổi. Hãy tải lại trước khi xử lý.';
-  end if;
-  if auth.uid() is null or not ((who='treasurer' and r.status in ('TREASURER_REVIEW','READY_FOR_APPROVAL'))
-    or (who='cfo' and r.status='CFO_REVIEW')) then raise exception 'Không có quyền xử lý hồ sơ ở trạng thái này.'; end if;
+  if not found or p_expected_version is null or r.version <> p_expected_version then raise exception 'Hồ sơ đã thay đổi. Hãy tải lại trước khi xử lý.'; end if;
+  if auth.uid() is null or not ((who='treasurer' and (r.status in ('TREASURER_REVIEW','READY_FOR_APPROVAL') or (r.status='NEEDS_INFO' and p_action='clarify'))) or (who='cfo' and r.status='CFO_REVIEW')) then raise exception 'Không có quyền xử lý hồ sơ ở trạng thái này.'; end if;
   if p_action is null or p_action not in ('approve','clarify','reject') then raise exception 'Hành động không hợp lệ.'; end if;
   if coalesce(length(p_reason),0) > 2000 then raise exception 'Lý do tối đa 2000 ký tự.'; end if;
-  if p_action in ('clarify','reject') then
-    if coalesce(length(trim(p_reason)),0)=0 then raise exception 'Hãy ghi rõ lý do hoặc nội dung cần bổ sung.'; end if;
-    target := case when p_action='clarify' then 'NEEDS_INFO' else 'REJECTED' end;
-    why := trim(p_reason);
-  else
+  if p_action='approve' then
+    perform pg_advisory_xact_lock(896532014);
+    month_start := date_trunc('month', timezone('Asia/Ho_Chi_Minh', now()))::date;
+    month_start_at := month_start::timestamp at time zone 'Asia/Ho_Chi_Minh';
+    month_end_at := (month_start + interval '1 month')::timestamp at time zone 'Asia/Ho_Chi_Minh';
+    select coalesce(sum(amount),0)::bigint into spent from public.requests where status='APPROVED' and approved_at >= month_start_at and approved_at < month_end_at;
+    projected := spent + r.amount; budget_snapshot := public.approval_budget_summary(r.amount);
     if who='treasurer' then
-      if r.status='TREASURER_REVIEW' and not coalesce(p_checks @> '{"invoice":true,"fields_match":true,"total_includes_vat":true}'::jsonb,false) then
-        raise exception 'U1: hãy xác nhận đã kiểm tra hóa đơn, trường form và tổng thanh toán gồm VAT; hoặc yêu cầu bổ sung.';
-      end if;
-      target := case when r.amount>20000000 then 'CFO_REVIEW' else 'APPROVED' end;
-      why := case when r.amount>20000000 then 'U3: chuyển người đứng đầu nhánh tài chính vì tổng thanh toán gồm VAT vượt 20 triệu.' else 'Quản lý tài chính đã bấm duyệt trong hạn mức.' end;
+      if r.status='TREASURER_REVIEW' and not coalesce(p_checks @> '{"invoice":true,"fields_match":true,"total_includes_vat":true}'::jsonb,false) then raise exception 'U1: hãy xác nhận đã kiểm tra hóa đơn, trường form và tổng thanh toán gồm VAT; hoặc yêu cầu bổ sung.'; end if;
+      if r.amount > 20000000 then target:='CFO_REVIEW'; why:='U3: tổng thanh toán vượt 20.000.000 ₫; chuyển CFO xác nhận.';
+      elsif projected > cap then target:='CFO_REVIEW'; why:='Dự kiến vượt hạn mức ngân sách tháng; chuyển CFO xác nhận ngoại lệ.';
+      else target:='APPROVED'; why:='Quản lý tài chính đã duyệt trong hạn mức ngân sách tháng.'; end if;
     else
-      target := 'APPROVED'; why := 'Người đứng đầu nhánh tài chính đã bấm duyệt cuối.';
+      if projected > cap and coalesce(length(trim(p_reason)),0)=0 then raise exception 'Cần ghi lý do khi CFO duyệt ngoại lệ vượt ngân sách tháng.'; end if;
+      target:='APPROVED'; why:=case when projected > cap then trim(p_reason) else 'Người đứng đầu nhánh tài chính đã bấm duyệt cuối.' end;
     end if;
+  elsif p_action in ('clarify','reject') then
+    if coalesce(length(trim(p_reason)),0)=0 then raise exception 'Hãy ghi rõ lý do hoặc nội dung cần bổ sung.'; end if;
+    target:=case when p_action='clarify' then 'NEEDS_INFO' else 'REJECTED' end; why:=trim(p_reason);
   end if;
   update public.requests set status=target,reason=why,
-    checks=case when who='treasurer' and p_action='approve' and r.status='TREASURER_REVIEW' then p_checks else checks end,
-    escalated_at=case when target='CFO_REVIEW' then now() else escalated_at end,
+    checks=case when p_action='approve' then coalesce(checks,'{}'::jsonb) || case when who='treasurer' and r.status='TREASURER_REVIEW' then p_checks else '{}'::jsonb end || jsonb_build_object('budget_checked',true,'budget_snapshot',budget_snapshot) else checks end,
+    escalated_at=case when target='CFO_REVIEW' then now() else escalated_at end,approved_at=case when target='APPROVED' then now() else approved_at end,
     version=version+1,updated_at=now() where id=p_id returning * into r;
   return r;
 end $$;
 revoke execute on function public.my_role(),public.can_read_request(uuid),public.record_request_event(),
   public.submit_request(uuid,jsonb,text,text,integer),public.review_request(uuid,integer,text,text,jsonb),
-  public.record_invoice_analysis(uuid,integer,jsonb) from public,anon,authenticated;
+  public.record_invoice_analysis(uuid,integer,jsonb),public.approval_budget_summary(bigint) from public,anon,authenticated;
 grant execute on function public.my_role(),public.can_read_request(uuid),
   public.submit_request(uuid,jsonb,text,text,integer),public.review_request(uuid,integer,text,text,jsonb) to authenticated;
+grant execute on function public.approval_budget_summary(bigint) to authenticated;
 grant execute on function public.record_invoice_analysis(uuid,integer,jsonb) to service_role;
 commit;

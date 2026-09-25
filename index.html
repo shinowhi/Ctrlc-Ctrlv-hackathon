@@ -28,13 +28,13 @@
         <button class="nav-item" id="newRequest" data-scroll="request-card"><span>＋</span> Tạo đề nghị</button>
         <button class="nav-item" data-scroll="audit-card"><span>◌</span> Nhật ký hồ sơ</button>
       </nav>
-      <div class="sidebar-note clay-inset"><span class="eyebrow">HẠN MỨC PHÊ DUYỆT</span><strong>20.000.000 ₫</strong><p>Tính theo tổng thanh toán đã gồm VAT. Khoản trên ngưỡng chuyển người đứng đầu nhánh tài chính.</p></div>
+      <div class="sidebar-note clay-inset"><span class="eyebrow">HẠN MỨC PHÊ DUYỆT</span><strong>20.000.000 ₫ / hồ sơ</strong><p>Trên ngưỡng chuyển CFO. Ngân sách chung: 200.000.000 ₫ mỗi tháng; chỉ tính hồ sơ đã duyệt.</p></div>
       <div class="profile clay-inset"><div class="avatar">F</div><div><strong id="profileName"></strong><span id="profileRole"></span></div></div>
     </aside>
     <main class="main-content">
       <header class="topbar"><div><span class="eyebrow" id="roleLabel"></span><h1 id="pageTitle"></h1><p class="muted">Hóa đơn PDF · Tổng thanh toán gồm VAT · Người có thẩm quyền duyệt cuối</p></div><div class="topbar-actions"><button class="secondary-button clay-button" id="refreshButton">Làm mới</button><button class="logout-button" id="logoutButton">Đăng xuất</button></div></header>
       <p class="notice" id="message" role="status" aria-live="polite"></p>
-      <aside class="scope-note" role="note"><strong>Phạm vi kết quả:</strong> CLEAR chỉ nghĩa là các trường hóa đơn, phép tính tổng và đối chiếu với form đã đạt kiểm tra hiện có. Hệ thống chưa kiểm tra ngân sách/chính sách, MST doanh nghiệp, NCC được duyệt, PO hay lịch sử thanh toán; kết quả không xác nhận tính xác thực của hóa đơn. Hồ sơ chỉ thành <strong>Đã duyệt</strong> sau thao tác của người có thẩm quyền.</aside>
+      <aside class="scope-note" role="note"><strong>Phạm vi kết quả:</strong> CLEAR chỉ nghĩa là các trường hóa đơn và phép tính tổng đã đạt kiểm tra hiện có. Ngân sách chung được kiểm tra ở bước duyệt; U2/chính sách chi tiết, MST doanh nghiệp, NCC được duyệt, PO và lịch sử thanh toán chưa được đối chiếu. AI không xác nhận tính xác thực của hóa đơn.</aside>
       <section class="stats-grid" aria-label="Thống kê hồ sơ được phép xem">
         <article class="stat-card clay-card peach"><div class="stat-icon">◷</div><div><span class="stat-label">Chờ kiểm tra thủ công</span><strong id="waitingCount">0</strong></div></article>
         <article class="stat-card clay-card lavender"><div class="stat-icon">↗</div><div><span class="stat-label">Chờ người đứng đầu nhánh tài chính</span><strong id="cfoCount">0</strong></div></article>
@@ -54,7 +54,6 @@
               <label class="field">Loại người đề nghị<select id="requesterType"><option value="employee">Nhân viên</option><option value="department">Phòng ban</option></select></label>
               <label class="field">Họ tên / phòng ban<input id="requester" required maxlength="1000"></label>
               <label class="field">Bộ phận<input id="department" required maxlength="1000"></label>
-              <label class="field">Mã ngân sách (chưa đối chiếu)<input id="budgetCode" required maxlength="1000"></label>
               <label class="field">Mục đích chi<input id="purpose" required maxlength="1000"></label>
               <label class="field">Nhà cung cấp<input id="vendor" required maxlength="1000"></label>
               <label class="field">Số hóa đơn<input id="invoiceNumber" required maxlength="1000"></label>
@@ -75,6 +74,12 @@
       <footer class="footer-note">FinRef · Chưa thực hiện chuyển tiền. Ngân sách/chính sách chưa được đối chiếu; quyết định phê duyệt cuối luôn do người có thẩm quyền thực hiện.</footer>
     </main>
   </div>
+  <dialog class="approval-dialog" id="approvalDialog" aria-labelledby="approvalTitle">
+    <span class="eyebrow">NGÂN SÁCH ĐÃ DUYỆT</span><h2 id="approvalTitle">Xác nhận phê duyệt</h2><p class="muted" id="approvalMonth"></p>
+    <div id="budgetSummaryRows" class="budget-summary"></div><p id="approvalWarning" class="approval-warning"></p>
+    <label id="approvalReasonWrap" class="field hidden">Lý do duyệt ngoại lệ<textarea id="approvalReason" rows="3" maxlength="2000"></textarea></label>
+    <div class="decision-actions"><button class="action-secondary" type="button" id="cancelApproval">Quay lại</button><button class="action-primary" type="button" id="confirmApproval">Xác nhận duyệt</button></div>
+  </dialog>
   <noscript>Bạn cần bật JavaScript để đăng nhập.</noscript>
   <script src="config.js"></script><script src="api.js"></script><script src="rules.js"></script><script src="app.js"></script>
 </body>
