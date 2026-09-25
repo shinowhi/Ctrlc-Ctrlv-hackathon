@@ -37,14 +37,14 @@ const outputText = result => result.output?.flatMap(item => item.content || []).
 const evidencePart = (name, path, dataUrl) => path.endsWith('.pdf')
   ? { type: 'input_file', filename: name + '.pdf', file_data: dataUrl, detail: 'high' }
   : { type: 'input_image', image_url: dataUrl, detail: 'high' };
-const fields = ['vendor', 'taxCode', 'invoiceNumber', 'invoiceDate', 'amountBeforeTax', 'vatAmount', 'totalAmount'];
-const labels = { vendor: 'nhà cung cấp', invoiceNumber: 'số hóa đơn', invoiceDate: 'ngày hóa đơn', amountBeforeTax: 'tiền trước thuế', vatAmount: 'tiền VAT', totalAmount: 'tổng thanh toán' };
+const fields = ['buyerName', 'vendor', 'taxCode', 'invoiceNumber', 'invoiceDate', 'amountBeforeTax', 'vatAmount', 'totalAmount', 'amountDue'];
+const labels = { buyerName: 'tên người mua/đơn vị nhận hóa đơn', vendor: 'nhà cung cấp', invoiceNumber: 'số hóa đơn', invoiceDate: 'ngày hóa đơn', amountBeforeTax: 'tiền trước thuế', vatAmount: 'tiền VAT', totalAmount: 'tổng thanh toán' };
 const normalized = value => String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('vi');
 
 function assess(request, analysis) {
   const data = analysis.fields || {};
   const issues = [];
-  const required = ['vendor', 'invoiceNumber', 'invoiceDate', 'amountBeforeTax', 'vatAmount', 'totalAmount'];
+  const required = ['buyerName', 'vendor', 'invoiceNumber', 'invoiceDate', 'amountBeforeTax', 'vatAmount', 'totalAmount'];
   for (const key of required) {
     const field = data[key] || {};
     const valueMissing = typeof field.value === 'string' ? !field.value.trim() : !Number.isSafeInteger(field.value) || field.value < 0;
@@ -58,6 +58,7 @@ function assess(request, analysis) {
   if (Number.isSafeInteger(data.amountBeforeTax?.value) && Number.isSafeInteger(data.vatAmount?.value) && Number.isSafeInteger(data.totalAmount?.value)
     && data.amountBeforeTax.value + data.vatAmount.value !== data.totalAmount.value) issues.push('Tiền trước thuế cộng VAT không khớp tổng thanh toán.');
   if (normalized(data.vendor?.value) !== normalized(request.payload.vendor)) issues.push('Nhà cung cấp trên hóa đơn không khớp form.');
+  if (normalized(data.buyerName?.value) !== normalized(request.payload.requester)) issues.push('Tên người mua trên hóa đơn không khớp họ tên/phòng ban trên form.');
   if (normalized(data.invoiceNumber?.value) !== normalized(request.payload.invoiceNumber)) issues.push('Số hóa đơn trên PDF không khớp form.');
   if ((data.invoiceDate?.value || '') !== (request.payload.invoiceDate || '')) issues.push('Ngày hóa đơn trên PDF không khớp form.');
   if (data.totalAmount?.value !== Number(request.amount)) issues.push('Tổng thanh toán đã gồm VAT không khớp số tiền trên form.');
@@ -89,8 +90,8 @@ const fieldSchema = (type, description) => ({
 const invoiceSchema = {
   type: 'object', additionalProperties: false,
   properties: Object.fromEntries(fields.map(key => [key,
-    fieldSchema(key === 'amountBeforeTax' || key === 'vatAmount' || key === 'totalAmount' ? 'integer' : 'string',
-      key === 'amountBeforeTax' || key === 'vatAmount' || key === 'totalAmount' ? 'VND, số nguyên; trả 0 nếu không đọc được.' : 'Trả chuỗi rỗng nếu không đọc được.')
+    fieldSchema(['amountBeforeTax', 'vatAmount', 'totalAmount', 'amountDue'].includes(key) ? 'integer' : 'string',
+      ['amountBeforeTax', 'vatAmount', 'totalAmount', 'amountDue'].includes(key) ? 'VND, số nguyên; trả 0 nếu hóa đơn không có hoặc không đọc được.' : 'Trả chuỗi rỗng nếu không đọc được.')
   ])),
   required: fields
 };
@@ -118,12 +119,10 @@ module.exports = async (req, res) => {
     if (profile?.role !== 'applicant') return json(res, 403, { error: 'Chỉ người nộp đơn được yêu cầu đọc minh chứng.' });
     if (!request.invoice_path?.endsWith('/invoice.pdf')) return json(res, 422, { error: 'Đợt này chỉ phân tích hóa đơn PDF.' });
     const invoice = await asDataUrl(request.invoice_path);
-    const application = request.request_path ? await asDataUrl(request.request_path) : null;
     const content = [
-      { type: 'input_text', text: `Đọc hóa đơn PDF đính kèm. PDF có thể chứa chữ máy hoặc trang scan. Trích xuất đúng các trường schema; mỗi trường phải có giá trị, độ tin cậy từ 0 đến 1 và bằng chứng ngắn (trích chữ hoặc trang). Không đoán và không kết luận hóa đơn/chữ ký số là xác thực. Với trường chữ không thấy, trả chuỗi rỗng; với số không đọc được, trả 0; confidence=0 và evidence rỗng. Ngày dùng YYYY-MM-DD; các số tiền là số nguyên VND. So sánh sau đó do hệ thống thực hiện với form sau: ${JSON.stringify({ vendor: request.payload.vendor, invoiceNumber: request.payload.invoiceNumber, invoiceDate: request.payload.invoiceDate, totalAmountIncludingVat: request.amount })}. Tài liệu đơn đề nghị kèm theo (nếu có) chỉ làm tham khảo, không được dùng thay thế nội dung hóa đơn.` },
+      { type: 'input_text', text: `Đọc hóa đơn PDF đính kèm. PDF có thể chứa chữ máy hoặc trang scan. Trích xuất đúng các trường schema; mỗi trường phải có giá trị, độ tin cậy từ 0 đến 1 và bằng chứng ngắn (trích chữ hoặc số trang). Không đoán và không kết luận hóa đơn/chữ ký số là xác thực. buyerName là người mua hoặc đơn vị được xuất hóa đơn (ví dụ trường Người mua hàng, Khách hàng, Bill To); không nhầm với nhà cung cấp. amountDue chỉ là số tiền còn phải thanh toán được ghi rõ trên hóa đơn sau các khoản đã trả; nếu không có thông tin này thì trả 0, không tự suy ra từ tổng tiền. Trường chữ không thấy trả chuỗi rỗng; số tiền không đọc được trả 0; confidence=0 và evidence rỗng. Ngày dùng YYYY-MM-DD; tiền là số nguyên VND. Hệ thống sẽ đối chiếu với dữ liệu nhập sau: ${JSON.stringify({ buyerName: request.payload.requester, vendor: request.payload.vendor, invoiceNumber: request.payload.invoiceNumber, invoiceDate: request.payload.invoiceDate, totalAmountIncludingVat: request.amount })}. Phép tính tiền trước thuế + VAT phải được thực hiện riêng bởi hệ thống.` },
       evidencePart('invoice', request.invoice_path, invoice)
     ];
-    if (application) content.push(evidencePart('payment-request', request.request_path, application));
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },

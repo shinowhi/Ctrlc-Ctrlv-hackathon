@@ -18,9 +18,9 @@ Bản build mới nhất đã được triển khai thành công trên Vercel Pr
 ### Đã xây dựng
 
 - Giao diện web cho người nộp đơn và các vai trò tài chính: Quản lý tài chính (`treasurer`) và Người đứng đầu nhánh tài chính (`cfo`).
-- Luồng tạo hồ sơ thanh toán, nhập tổng tiền đã gồm VAT và gửi hóa đơn PDF cùng đơn đề nghị.
+- Luồng tạo hồ sơ thanh toán, nhập tổng tiền đã gồm VAT và gửi hóa đơn PDF.
 - Tích hợp luồng đọc minh chứng bằng OpenAI Responses API và lưu trữ/xử lý hồ sơ qua Supabase Auth, Storage và RPC.
-- Kiểm tra các trường hóa đơn, phép cộng trước thuế + VAT và đối chiếu tổng thanh toán với dữ liệu người dùng nhập.
+- Đối chiếu tên người mua, nhà cung cấp, số/ngày hóa đơn và tổng thanh toán với form; kiểm tra tiền trước thuế + VAT. Số tiền còn phải thanh toán chỉ hiển thị thông tin.
 - Phân luồng hồ sơ: cần bổ sung thông tin (`U1`), chuyển cấp khi tổng tiền vượt 20.000.000 đồng (`U3`), hoặc đưa vào hàng đợi chờ người có thẩm quyền quyết định.
 - Quyết định duyệt cuối do người có thẩm quyền thực hiện; AI không tự phê duyệt và hệ thống không chuyển tiền.
 - Demo offline và các bộ testcase/kiểm tra luật để hỗ trợ trình bày MVP.
@@ -35,5 +35,7 @@ Bản build mới nhất đã được triển khai thành công trên Vercel Pr
 ## Quy trình MVP
 
 Người dùng gửi đề nghị và minh chứng → hệ thống trích xuất, đối chiếu các trường hóa đơn và tổng tiền → hồ sơ thiếu hoặc mâu thuẫn được yêu cầu bổ sung; hồ sơ vượt ngưỡng được chuyển cấp → người có thẩm quyền xem xét và quyết định cuối.
+
+Quản lý mở hồ sơ để xem hóa đơn PDF ngay trong trang; đơn đề nghị PDF không còn là file bắt buộc.
 
 > Demo offline chỉ mô phỏng giao diện và rules trên trình duyệt; không đọc file thật, không gọi AI/backend và không đại diện cho dữ liệu production.

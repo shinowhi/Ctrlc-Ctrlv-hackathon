@@ -17,6 +17,7 @@
 4. Đợi project sẵn sàng. Đây nên là **project mới**, vì schema bên dưới tạo các bảng mới và không phải script nâng cấp database cũ.
 5. Vào **SQL Editor → New query**. Mở `supabase/schema.sql` trong thư mục dự án, copy toàn bộ nội dung, bấm **Run** một lần.
 6. Khi thành công, kiểm tra có bảng `profiles`, `requests`, `audit_events` và bucket `evidence` **Private**.
+   - Nếu project đã tạo từ schema cũ, chạy một lần `supabase/migrations/20260925-remove-request-evidence.sql` thay vì chạy lại `schema.sql`.
 7. Trong phần Authentication / sign-up settings, tắt cho người dùng tự đăng ký tài khoản mới nếu đang bật. Tài khoản của nhóm được tạo bằng script quản trị ở bước 2. Không tắt chức năng đăng nhập bằng email/password.
 
 Tìm thông tin kết nối trong nút **Connect** hoặc **Project Settings → API / API Keys** (tên mục có thể thay đổi):
@@ -97,12 +98,12 @@ Sau này sửa code, commit rồi push GitHub là Vercel build lại. Nếu đ�
 
 ## 5. Thử trên ba máy
 
-1. Máy A đăng nhập `nopdon@finref.test`. Điền form, đính kèm hai file mẫu và gửi.
-2. Máy B đăng nhập `thuquy@finref.test`. Đơn sẽ xuất hiện sau tối đa khoảng 10 giây hoặc bấm **Làm mới**. Mở cả hai minh chứng; kiểm tra rồi tích các xác nhận phù hợp.
+1. Máy A đăng nhập `nopdon@finref.test`. Điền form, đính kèm hóa đơn PDF và gửi.
+2. Máy B đăng nhập `thuquy@finref.test`. Đơn sẽ xuất hiện sau tối đa khoảng 10 giây hoặc bấm **Làm mới**. Mở hồ sơ; hóa đơn PDF hiện sẵn trong trang để đối chiếu.
 3. Thử đơn **20.000.000 đồng đã gồm VAT**: hồ sơ sẵn sàng cho quản lý tài chính bấm duyệt cuối.
 4. Thử đơn **20.000.001 đồng đã gồm VAT**: hồ sơ chuyển sang người đứng đầu nhánh tài chính; người này bấm duyệt cuối.
 5. Máy C đăng nhập `gdtc@finref.test`, mở đơn đã chuyển và duyệt hoặc từ chối.
-6. Máy A kiểm tra trạng thái và nhật ký. Thử thêm **yêu cầu bổ sung → người nộp tải lại hai file → gửi lại → quản lý tài chính kiểm tra**.
+6. Máy A kiểm tra trạng thái và nhật ký. Thử thêm **yêu cầu bổ sung → người nộp tải lại hóa đơn PDF → gửi lại → quản lý tài chính kiểm tra**.
 7. Giám khảo mở live URL không có tài khoản vẫn truy cập được trang đầu; chọn **Trải nghiệm demo không cần tài khoản** để xem luồng mẫu độc lập. Demo này không ghi vào hồ sơ online.
 
 Có thể thử cùng một máy bằng các trình duyệt hoặc cửa sổ riêng. Mỗi tab lưu phiên đăng nhập riêng; khi dùng chung máy, nên đăng xuất sau khi thử.
@@ -143,11 +144,11 @@ Mở <http://127.0.0.1:8124>. Dùng cùng hai biến môi trường ở trên.
 - **Key không hợp lệ:** tạo tài khoản cần secret/service_role; build frontend cần publishable/anon. Hai loại khác nhau.
 - **Hồ sơ đã thay đổi:** người khác đã xử lý cùng phiên bản; làm mới và xem trạng thái mới.
 - **Tải file thất bại:** kiểm tra bucket Private `evidence`, MIME PDF/JPG/PNG và kích thước tối đa 10 MB; kiểm tra policies đã được tạo.
-- **Link minh chứng hết hạn:** bấm “Xem hóa đơn”/“Xem đơn đề nghị” lần nữa để tạo link 60 giây mới.
+- **Không hiện hóa đơn trong hồ sơ:** kiểm tra bucket `evidence` đang Private và các policy Storage đã được tạo từ `supabase/schema.sql`.
 
 ## AI đọc hóa đơn PDF
 
-Hóa đơn trong phiên bản này phải là PDF (PDF có chữ chọn/copy hoặc PDF scan); đơn đề nghị có thể là PDF/JPG/PNG. Endpoint `/api/analyze-evidence` dùng OpenAI Responses API để trích xuất nhà cung cấp, MST nhà cung cấp, số/ngày hóa đơn, tiền trước thuế, VAT và tổng thanh toán, kèm confidence và bằng chứng. Rules đối chiếu các trường với form và tính tổng gồm VAT.
+Hóa đơn trong phiên bản này phải là PDF (PDF có chữ chọn/copy hoặc PDF scan); không cần tải file đơn đề nghị. Endpoint `/api/analyze-evidence` dùng OpenAI Responses API để trích xuất người mua, nhà cung cấp, MST nhà cung cấp, số/ngày hóa đơn, tiền trước thuế, VAT, tổng thanh toán và số tiền còn phải thanh toán, kèm confidence và bằng chứng. Rules đối chiếu các trường với form và tính tổng gồm VAT. Số tiền còn phải thanh toán chỉ hiển thị tham khảo, không quyết định số tiền đề nghị hoặc luồng duyệt.
 
 Kết quả AI chỉ chuyển hồ sơ sang `READY_FOR_APPROVAL`, `CFO_REVIEW` hoặc `NEEDS_INFO`. Trạng thái `APPROVED` chỉ được tạo bởi thao tác của người có role phù hợp. Mốc 20.000.000 đồng tính theo tổng thanh toán đã gồm VAT; đúng mốc vẫn thuộc quản lý tài chính, cao hơn chuyển người đứng đầu nhánh tài chính.
 

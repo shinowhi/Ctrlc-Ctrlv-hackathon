@@ -2,7 +2,7 @@
 
 ## Phạm vi
 
-- Hóa đơn đầu vào: PDF có chữ chọn/copy hoặc PDF scan dạng ảnh. Đơn đề nghị: PDF/JPG/PNG. Mỗi file tối đa 10 MB.
+- Hóa đơn đầu vào: PDF có chữ chọn/copy hoặc PDF scan dạng ảnh. Chỉ hóa đơn là file đính kèm bắt buộc; tối đa 10 MB.
 - Tổng thanh toán trên form phải là tổng đã gồm VAT. Ngưỡng chuyển cấp là **lớn hơn 20.000.000 VND**; đúng 20 triệu vẫn ở quản lý tài chính.
 - AI trích xuất dữ kiện, tính toán và gợi ý tuyến. Chỉ người có quyền mới tạo trạng thái `APPROVED`.
 - Ngân sách/chính sách chưa được đối chiếu; chưa thể phân loại U2. CLEAR chỉ xác nhận các kiểm tra hiện có.
@@ -38,7 +38,7 @@ Các ca tương ứng với `FinRefRules.verify()`. Hàm nhận tổng thanh to�
 |---|---|
 | CLEAR | Số tiền dương; đúng 20 triệu; PDF scan có thể đọc được khi đủ confidence và trường khớp. |
 | U3 | Tổng thanh toán lớn hơn 20 triệu, gồm VAT. |
-| U1 | Thiếu/không khớp nhà cung cấp, số hóa đơn, ngày hóa đơn hoặc tổng form; phép tính tiền trước thuế + VAT sai; confidence dưới 95%; không phải PDF; số tiền không hợp lệ. |
+| U1 | Thiếu/không khớp tên người mua, nhà cung cấp, số hóa đơn, ngày hóa đơn hoặc tổng form; phép tính tiền trước thuế + VAT sai; confidence dưới 95%; không phải PDF; số tiền không hợp lệ. |
 | Chưa hỗ trợ | U2 không thể chạy thành kết luận cho đến khi có dữ liệu policy/ngân sách. |
 
 Verify trong UI là preview luật; nó không gửi PDF đến AI và không ghi quyết định vào database.

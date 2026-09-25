@@ -7,8 +7,8 @@ const roles={applicant:'Người nộp đơn',treasurer:'Quản lý tài chính'
 const statuses={TREASURER_REVIEW:'Chờ quản lý tài chính kiểm tra',READY_FOR_APPROVAL:'Sẵn sàng duyệt',CFO_REVIEW:'Chờ người đứng đầu nhánh tài chính',NEEDS_INFO:'Cần bổ sung',APPROVED:'Đã duyệt',REJECTED:'Từ chối'};
 const checkLabels={invoice:'Đã xem hóa đơn PDF',fields_match:'Nhà cung cấp, số và ngày hóa đơn khớp form',total_includes_vat:'Tổng thanh toán trên form đã gồm VAT và khớp hóa đơn'};
 const fields=['requesterType','requester','department','budgetCode','purpose','vendor','invoiceNumber','invoiceDate','amount'];
-const aiFieldLabels={vendor:'Nhà cung cấp',taxCode:'Mã số thuế NCC',invoiceNumber:'Số hóa đơn',invoiceDate:'Ngày hóa đơn',amountBeforeTax:'Tiền trước thuế',vatAmount:'VAT',totalAmount:'Tổng thanh toán gồm VAT'};
-const aiMoneyFields=new Set(['amountBeforeTax','vatAmount','totalAmount']);
+const aiFieldLabels={buyerName:'Người mua / đơn vị nhận hóa đơn',vendor:'Nhà cung cấp',taxCode:'Mã số thuế NCC',invoiceNumber:'Số hóa đơn',invoiceDate:'Ngày hóa đơn',amountBeforeTax:'Tiền trước thuế',vatAmount:'VAT',totalAmount:'Tổng thanh toán gồm VAT',amountDue:'Còn phải thanh toán (thông tin)'};
+const aiMoneyFields=new Set(['amountBeforeTax','vatAmount','totalAmount','amountDue']);
 let profile=null, rows=[], selected=null, editing=null, timer=null, loading=false, busy=false, epoch=0;
 function notify(text,error=false,login=false) { const el=$(login?'loginMessage':'message'); el.textContent=text; el.classList.toggle('error',error); }
 function time(value) { return new Date(value).toLocaleString('vi-VN'); }
@@ -57,9 +57,10 @@ function renderAiAnalysis(ai) {
   if(!ai?.fields) return '';
   const lines=Object.entries(aiFieldLabels).map(([key,label])=>{
     const field=ai.fields[key]||{}, raw=field.value;
+    if(key==='amountDue'&&(!Number.isSafeInteger(raw)||raw<=0)) return '';
     const readableMoney=Number.isSafeInteger(raw)&&(raw>0||(key==='vatAmount'&&raw===0&&Number(field.confidence)>0));
     const value=aiMoneyFields.has(key)?(readableMoney?money(raw):'Chưa đọc được'):String(raw||'Chưa đọc được');
-    return `<div class="invoice-field"><div class="invoice-field-main"><strong>${label}</strong><span>${esc(value)}</span></div><small>Độ tin cậy ${Math.round((Number(field.confidence)||0)*100)}%${field.evidence?` · Bằng chứng: ${esc(field.evidence)}`:''}</small></div>`;
+    return `<div class="invoice-field${key==='amountDue'?' informational':''}"><div class="invoice-field-main"><strong>${label}</strong><span>${esc(value)}</span></div><small>Độ tin cậy ${Math.round((Number(field.confidence)||0)*100)}%${field.evidence?` · Bằng chứng: ${esc(field.evidence)}`:''}</small></div>`;
   }).join('');
   return `<section class="invoice-analysis"><h3>Kết quả đọc PDF</h3>${lines}<p class="muted">Ngân sách và chính sách chưa được kiểm tra. Độ tin cậy AI không xác thực nguồn phát hành hay chữ ký số.</p></section>`;
 }
@@ -68,20 +69,23 @@ async function openRequest(id) {
   const mayReview=(profile.role==='treasurer'&&['TREASURER_REVIEW','READY_FOR_APPROVAL'].includes(r.status))||(profile.role==='cfo'&&r.status==='CFO_REVIEW');
   const manualChecks=profile.role==='treasurer'&&r.status==='TREASURER_REVIEW';
   const metadata={ 'Người đề nghị':r.payload.requester,'Bộ phận':r.payload.department,'Mục đích':r.payload.purpose,'Nhà cung cấp':r.payload.vendor,'Số hóa đơn':r.payload.invoiceNumber,'Ngày hóa đơn':r.payload.invoiceDate,'Mã ngân sách':r.payload.budgetCode };
-  $('decisionResult').innerHTML=`<div class="decision-banner ${r.status==='APPROVED'?'ready':r.status==='REJECTED'?'reject':r.status==='READY_FOR_APPROVAL'?'ready':'escalate'}"><div><strong>${statuses[r.status]||esc(r.status)}</strong><small>PAY-${esc(r.id.slice(0,8))} · phiên bản ${r.version}</small></div></div><h2 class="detail-amount">${money(r.amount)} <small>đã gồm VAT</small></h2><div class="decision-meta">${Object.entries(metadata).map(([k,v])=>`<div class="meta-row"><span>${k}</span><strong>${esc(v)}</strong></div>`).join('')}</div><p class="notice">${esc(r.reason)}</p>${r.checks?.ai?.assessment?.question?`<p class="notice">${esc(r.checks.ai.assessment.question)}</p>`:''}${renderAiAnalysis(r.checks?.ai)}<div class="scope-note compact"><strong>Chưa kiểm tra:</strong> ngân sách, chính sách, MST công ty, NCC được duyệt, PO và lịch sử hóa đơn/thanh toán. AI không xác thực nguồn hóa đơn hoặc chữ ký số.</div><div class="evidence-actions"><button class="secondary-button clay-button" data-file="invoice_path">Xem hóa đơn PDF</button><button class="secondary-button clay-button" data-file="request_path">Xem đơn đề nghị</button></div><div id="evidenceLink" aria-live="polite"></div>
+  $('decisionResult').innerHTML=`<div class="decision-banner ${r.status==='APPROVED'?'ready':r.status==='REJECTED'?'reject':r.status==='READY_FOR_APPROVAL'?'ready':'escalate'}"><div><strong>${statuses[r.status]||esc(r.status)}</strong><small>PAY-${esc(r.id.slice(0,8))} · phiên bản ${r.version}</small></div></div><h2 class="detail-amount">${money(r.amount)} <small>đã gồm VAT</small></h2><div class="decision-meta">${Object.entries(metadata).map(([k,v])=>`<div class="meta-row"><span>${k}</span><strong>${esc(v)}</strong></div>`).join('')}</div><p class="notice">${esc(r.reason)}</p>${r.checks?.ai?.assessment?.question?`<p class="notice">${esc(r.checks.ai.assessment.question)}</p>`:''}${renderAiAnalysis(r.checks?.ai)}<div class="scope-note compact"><strong>Chưa kiểm tra:</strong> ngân sách, chính sách, MST công ty, NCC được duyệt, PO và lịch sử hóa đơn/thanh toán. AI không xác thực nguồn phát hành hoặc chữ ký số.</div><section class="invoice-preview"><h3>Hóa đơn PDF</h3><p id="invoicePreviewStatus" class="muted">Đang mở hóa đơn…</p><iframe id="invoicePreview" title="Hóa đơn PDF" class="hidden"></iframe></section>
   ${mayReview?`<form id="reviewForm">${manualChecks?`<p class="muted">AI chưa hoàn tất phân tích. Hãy mở minh chứng và xác nhận các dữ kiện hóa đơn trước khi duyệt.</p><div class="review-checks">${Object.entries(checkLabels).map(([k,v])=>`<label class="plain-check"><input type="checkbox" name="${k}">${v}</label>`).join('')}</div>`:profile.role==='treasurer'?'<p class="muted">AI đã hoàn tất các kiểm tra hiện có. Bạn vẫn là người quyết định bấm duyệt cuối.</p>':'<p class="muted">Đây là bước phê duyệt cuối của người đứng đầu nhánh tài chính.</p>'}<label class="field">Lý do / nội dung cần bổ sung<textarea id="reviewReason" maxlength="2000" rows="3" placeholder="Bắt buộc khi yêu cầu bổ sung hoặc từ chối"></textarea></label><div class="decision-actions"><button class="action-secondary" type="button" data-action="clarify">Yêu cầu bổ sung</button><button class="action-secondary" type="button" data-action="reject">Từ chối</button><button class="action-primary" type="button" data-action="approve">${profile.role==='treasurer'&&r.amount>20000000?'Xác nhận & chuyển người đứng đầu nhánh tài chính':'Phê duyệt cuối'}</button></div></form>`:''}
   ${profile.role==='applicant'&&r.status==='NEEDS_INFO'?'<button class="primary-button clay-button" id="supplementButton">Bổ sung và gửi lại</button>':''}`;
-  $('decisionResult').querySelectorAll('[data-file]').forEach(b=>b.onclick=async()=>{
-    b.disabled=true;
-    try {const url=await api.signedUrl(r[b.dataset.file]); if(epoch===run&&selected?.id===id) $('evidenceLink').innerHTML=`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">Mở minh chứng trong tab mới ↗</a><p class="muted">Liên kết có hiệu lực 60 giây.</p>`;}
-    catch(e) {notify(e.message,true);} finally {b.disabled=false;}
+  api.signedUrl(r.invoice_path).then(url=>{
+    if(epoch!==run||selected?.id!==id) return;
+    $('invoicePreview').src=url;
+    $('invoicePreview').classList.remove('hidden');
+    $('invoicePreviewStatus').classList.add('hidden');
+  }).catch(e=>{
+    if(epoch===run&&selected?.id===id) $('invoicePreviewStatus').textContent='Không mở được hóa đơn: '+e.message;
   });
   $('decisionResult').querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>review(r,b.dataset.action));
   if($('supplementButton')) $('supplementButton').onclick=()=>{
     editing={id:r.id,version:r.version}; fields.forEach(k=>$(k).value=r.payload[k]??'');
-    $('invoiceFile').value=''; $('requestFile').value='';
+    $('invoiceFile').value='';
     $('formTitle').textContent='Bổ sung PAY-'+r.id.slice(0,8); $('submitButton').textContent='Gửi lại để phân tích →';
-    $('request-card').scrollIntoView({behavior:'smooth'}); notify('Tải lại đủ hai minh chứng cho phiên bản bổ sung.');
+    $('request-card').scrollIntoView({behavior:'smooth'}); notify('Tải lại hóa đơn PDF cho phiên bản bổ sung.');
   };
   $('auditList').textContent='Đang tải nhật ký…';
   try { const audit=await api.audit(id); if(epoch!==run||selected?.id!==id) return;
@@ -111,15 +115,15 @@ $('paymentForm').onsubmit=async event=>{
   event.preventDefault(); if(busy||profile?.role!=='applicant') return;
   setBusy(true);
   try {
-    const invoice=$('invoiceFile').files[0], request=$('requestFile').files[0];
-    const invExt=validateFile(invoice,true), reqExt=validateFile(request);
+    const invoice=$('invoiceFile').files[0];
+    const invExt=validateFile(invoice,true);
     const payload=Object.fromEntries(fields.map(k=>[k,$(k).value.trim()])); payload.amount=Number(payload.amount);
     const folder=profile.id+'/'+crypto.randomUUID();
-    const invoicePath=folder+'/invoice.'+invExt, requestPath=folder+'/request.'+reqExt;
-    notify('Đang tải hai minh chứng và gửi hồ sơ…');
-    await api.upload(invoicePath,invoice); await api.upload(requestPath,request);
-    const result=await api.rpc('submit_request',{p_id:editing?.id||crypto.randomUUID(),p_payload:payload,p_invoice_path:invoicePath,p_request_path:requestPath,p_expected_version:editing?.version||0});
-    resetForm(); notify('Đã tải minh chứng. AI đang đọc các trường PDF và đối chiếu tổng gồm VAT…');
+    const invoicePath=folder+'/invoice.'+invExt;
+    notify('Đang tải hóa đơn và gửi hồ sơ…');
+    await api.upload(invoicePath,invoice);
+    const result=await api.rpc('submit_request',{p_id:editing?.id||crypto.randomUUID(),p_payload:payload,p_invoice_path:invoicePath,p_request_path:null,p_expected_version:editing?.version||0});
+    resetForm(); notify('Đã tải hóa đơn. AI đang đọc và đối chiếu thông tin…');
     try {
       const verification=await api.analyzeEvidence(result.id);
       notify(verification.status==='READY_FOR_APPROVAL'?'AI hoàn tất các kiểm tra hiện có. Hồ sơ sẵn sàng để quản lý tài chính bấm duyệt cuối.':verification.status==='CFO_REVIEW'?'Tổng gồm VAT vượt 20 triệu; hồ sơ đã chuyển người đứng đầu nhánh tài chính duyệt cuối.':verification.status==='NEEDS_INFO'?'AI chưa đọc chắc hoặc phát hiện dữ liệu chưa khớp. Hãy xem câu hỏi trong hồ sơ và bổ sung.':'AI đã ghi kết quả phân tích.');

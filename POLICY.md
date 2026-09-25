@@ -2,8 +2,8 @@
 
 Được xây dựng từ phạm vi người dùng chốt ngày 22/09/2026. Hạn mức 20 triệu là quyền tự động của tác tử trong bản mẫu. Các ngân sách dưới đây là số giả định để demo, không phải số liệu thật.
 
-1. Chỉ nhận bản chụp/scan hóa đơn giấy và đơn đề nghị; mỗi file tối đa 10 MB, PDF/JPG/PNG.
-2. Hai chứng từ phải đọc được, có hình dấu và chữ ký, ghi số tiền, nhà cung cấp, số/ngày hóa đơn nhất quán với form. Không suy diễn dữ kiện không đọc được. Không xác nhận thật/giả từ hình dấu/chữ ký.
+1. Chỉ yêu cầu hóa đơn PDF, tối đa 10 MB; có thể là PDF có chữ hoặc PDF scan.
+2. Hóa đơn phải đọc được; đối chiếu người mua, nhà cung cấp, số/ngày hóa đơn và tổng thanh toán với form. Không suy diễn dữ kiện không đọc được. Không xác nhận thật/giả từ hình dấu/chữ ký.
 3. Danh mục: `printing` trong `MKT-OPS-2026`; `office_supplies` trong `OPS-2026`; `training` trong `HR-2026`. Mỗi ngân sách 100 triệu. Danh mục khác/mã khác được chuyển U2.
 4. `committed` là tổng tiền đã phê duyệt. Mỗi phê duyệt trừ phần khả dụng trong cùng transaction. Migration tính các phê duyệt cũ thuộc ngân sách này để tránh coi ngân sách cũ là chưa sử dụng.
 5. Không còn nghi vấn, danh mục hợp lệ, đủ ngân sách, số tiền 1..20.000.000 VNĐ → tự phê duyệt. Trên 20 triệu → U3 gửi GĐTC. Hóa đơn đã được duyệt có cùng nhà cung cấp/số hóa đơn → U1, không duyệt lại.
