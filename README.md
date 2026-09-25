@@ -1,72 +1,39 @@
-# FinRef — Web quản trị tài chính và nhân sự
+# Báo cáo tiến độ dự án FinRef
 
-FinRef là nền tảng quản trị nội bộ giúp doanh nghiệp số hóa các quy trình tài chính và nhân sự trên một hệ thống tập trung. Dự án hướng đến việc giảm thao tác thủ công, tăng tính minh bạch và giúp doanh nghiệp dễ theo dõi tiến độ xử lý.
+**Phiên bản:** MVP quản lý đề nghị thanh toán
+**Cập nhật:** 25/09/2026
 
-**Demo:** [Ứng dụng trực tuyến](https://ctrlc-ctrlv-hackathon-two.vercel.app/) · [Video giới thiệu](https://drive.google.com/drive/folders/1lYAtANlfRtEfsqp-cihvlo8kT-dxD3tJ?usp=sharing)
+FinRef hỗ trợ số hóa bước tiếp nhận và rà soát đề nghị thanh toán, tập trung vào hóa đơn và quy trình phân quyền phê duyệt.
 
-## Tiến độ dự án
+## Liên kết dành cho Ban Tổ chức
 
-Hiện nhóm đang tập trung phát triển phân hệ tài chính. Phân hệ nhân sự sẽ được triển khai trong giai đoạn tiếp theo.
+- **Ứng dụng production:** [https://ctrlc-ctrl-hackathon-two.vercel.app](https://ctrlc-ctrl-hackathon-two.vercel.app)
+- **Mã nguồn:** [shinowhi/Ctrlc-Ctrlv-hackathon](https://github.com/shinowhi/Ctrlc-Ctrlv-hackathon)
+- **Video giới thiệu:** [Mở video demo](https://drive.google.com/drive/folders/1lYAtANlfRtEfsqp-cihvlo8kT-dxD3tJ?usp=sharing)
 
-## Phạm vi hiện tại của luồng hóa đơn
+## Tiến độ hiện tại
 
-- Đăng nhập chung theo ba role đang có trong database: Người nộp đơn, Quản lý tài chính (`treasurer`) và Người đứng đầu nhánh tài chính (`cfo`). Chưa thêm role HR vì quyền và phân hệ nghỉ phép chưa được chốt.
-- Người nộp đơn tạo hồ sơ, nhập tổng thanh toán đã gồm VAT và tải hóa đơn PDF (PDF có chữ chọn/copy hoặc scan) cùng đơn đề nghị.
-- OpenAI Responses API trích xuất trường hóa đơn cùng độ tin cậy/bằng chứng. Rules đối chiếu nhà cung cấp, số/ngày hóa đơn, phép cộng trước thuế + VAT và tổng thanh toán với form.
-- Nếu dữ kiện thiếu, độ tin cậy thấp hoặc có mâu thuẫn, hồ sơ chuyển `NEEDS_INFO` với câu hỏi cụ thể (`U1`). Nếu tổng thanh toán đã gồm VAT lớn hơn 20.000.000 đồng, hồ sơ chuyển người đứng đầu nhánh tài chính (`U3`). Hồ sơ còn lại vào `READY_FOR_APPROVAL`.
-- AI không thể đặt hồ sơ thành `APPROVED`. Quản lý tài chính hoặc người đứng đầu nhánh tài chính phải bấm duyệt cuối theo thẩm quyền.
-- Ngân sách/chính sách, MST công ty, danh sách NCC, PO và lịch sử thanh toán chưa được đối chiếu. Vì vậy hệ thống chưa thể phân loại U2; `CLEAR` chỉ nghĩa là các kiểm tra đang có đã đạt.
-- Hệ thống không xác nhận tính xác thực của hóa đơn, nguồn phát hành hay chữ ký số và không thực hiện chuyển tiền.
+Bản build mới nhất đã được triển khai thành công trên Vercel Production. MVP hiện tập trung vào quy trình đề nghị thanh toán hóa đơn; phân hệ nhân sự chưa nằm trong phạm vi phiên bản này.
 
-## Quy trình chính
+### Đã xây dựng
 
-Người nộp gửi form và minh chứng → AI đọc PDF, kiểm tra trường và tổng gồm VAT → thiếu/lệch dữ kiện thì hỏi bổ sung; tổng trên 20 triệu thì chuyển người đứng đầu nhánh tài chính; trường hợp còn lại vào hàng đợi sẵn sàng duyệt → người có thẩm quyền bấm duyệt cuối.
+- Giao diện web cho người nộp đơn và các vai trò tài chính: Quản lý tài chính (`treasurer`) và Người đứng đầu nhánh tài chính (`cfo`).
+- Luồng tạo hồ sơ thanh toán, nhập tổng tiền đã gồm VAT và gửi hóa đơn PDF cùng đơn đề nghị.
+- Tích hợp luồng đọc minh chứng bằng OpenAI Responses API và lưu trữ/xử lý hồ sơ qua Supabase Auth, Storage và RPC.
+- Kiểm tra các trường hóa đơn, phép cộng trước thuế + VAT và đối chiếu tổng thanh toán với dữ liệu người dùng nhập.
+- Phân luồng hồ sơ: cần bổ sung thông tin (`U1`), chuyển cấp khi tổng tiền vượt 20.000.000 đồng (`U3`), hoặc đưa vào hàng đợi chờ người có thẩm quyền quyết định.
+- Quyết định duyệt cuối do người có thẩm quyền thực hiện; AI không tự phê duyệt và hệ thống không chuyển tiền.
+- Demo offline và các bộ testcase/kiểm tra luật để hỗ trợ trình bày MVP.
 
-## Những gì có trong Sprint 1
+### Cần tiếp tục kiểm thử và hoàn thiện
 
-- Frontend online tại `index.html`, kết nối Supabase Auth, Storage và RPC.
-- Backend dữ liệu và phân quyền tại `supabase/schema.sql` (RLS, Storage private, audit log, các RPC xử lý hồ sơ).
-- Demo offline tại `demo.html` để trình diễn nhanh, không cần tài khoản.
-- Smoke test 5 ca: `npm run smoke`.
-- Bộ 15 testcase và format để BTC mở rộng: [`TESTCASES.md`](TESTCASES.md).
-- Bộ test tự động: `npm test` (hoặc `node --test tests/*.test.cjs`).
+- Deployment báo **Ready** xác nhận build đã triển khai; cần tiếp tục kiểm thử luồng end-to-end trên môi trường production với cấu hình Supabase/OpenAI và tài khoản thử nghiệm.
+- Chưa kết nối dữ liệu ngân sách, chính sách chi tiêu, danh sách nhà cung cấp, PO và lịch sử thanh toán; do đó phân loại `U2` chưa được hỗ trợ.
+- Cơ chế hiện tại không xác minh tính xác thực của hóa đơn, nguồn phát hành hay chữ ký số.
+- Phân hệ nhân sự và các quy trình ngoài đề nghị thanh toán sẽ được xem xét ở giai đoạn tiếp theo.
 
-## Chạy demo ngay
+## Quy trình MVP
 
-Mở file `demo.html` trong trình duyệt. Demo dùng `localStorage`, chỉ mô phỏng giao diện và rules engine, không đọc/lưu file minh chứng vào backend. Cách chạy qua HTTP localhost nằm ở phần bên dưới; bước build yêu cầu cấu hình Supabase.
+Người dùng gửi đề nghị và minh chứng → hệ thống trích xuất, đối chiếu các trường hóa đơn và tổng tiền → hồ sơ thiếu hoặc mâu thuẫn được yêu cầu bổ sung; hồ sơ vượt ngưỡng được chuyển cấp → người có thẩm quyền xem xét và quyết định cuối.
 
-Kiểm tra luật không cần Supabase hoặc cài thư viện (Node.js 22 trở lên):
-
-```powershell
-node scripts/smoke-local.cjs
-node --test tests/*.test.cjs
-```
-
-## Chạy luồng online trên localhost
-
-1. Tạo project Supabase và chạy toàn bộ [`supabase/schema.sql`](supabase/schema.sql).
-2. Tạo ba tài khoản mẫu bằng `npm run setup:accounts` theo [`HUONG-DAN-ONLINE.md`](HUONG-DAN-ONLINE.md).
-3. Đặt hai biến môi trường công khai cho frontend rồi build:
-
-   ```powershell
-   $env:SUPABASE_URL = 'https://your-project.supabase.co'
-   $env:SUPABASE_ANON_KEY = '<publishable hoặc anon key>'
-   node scripts/build.cjs
-   node scripts/serve.cjs
-   ```
-
-4. Mở <http://127.0.0.1:8124> và chạy 5 smoke case trong `TESTCASES.md`.
-
-Không đưa `service_role`, secret key, mật khẩu hoặc thư mục `.local` lên GitHub. `scripts/build.cjs` chỉ đóng gói các file frontend được phép và từ chối admin key.
-
-## Kiểm tra online trước khi gửi BTC
-
-Sau khi có Supabase thật và ba tài khoản, chạy:
-
-```powershell
-$env:SUPABASE_URL = 'https://your-project.supabase.co'
-$env:SUPABASE_ANON_KEY = '<publishable hoặc anon key>'
-node scripts/test-online.cjs
-```
-
-Lệnh này kiểm tra phân quyền, Storage private, mốc 20 triệu, tranh chấp cập nhật, bổ sung hồ sơ và audit log. Xem [`VALIDATION.md`](VALIDATION.md) để biết phần nào đã được kiểm tra và phần nào còn phụ thuộc project thật.
+> Demo offline chỉ mô phỏng giao diện và rules trên trình duyệt; không đọc file thật, không gọi AI/backend và không đại diện cho dữ liệu production.
