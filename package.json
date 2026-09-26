@@ -10,7 +10,8 @@
     "setup:accounts": "node scripts/create-accounts.cjs"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "0.5.8"
+    "@electric-sql/pglite": "0.5.8",
+    "pdfjs-dist": "6.3.289"
   },
-  "engines": { "node": ">=22" }
+  "engines": { "node": ">=22.13.0" }
 }

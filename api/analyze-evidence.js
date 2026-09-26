@@ -142,7 +142,29 @@ const analyzeWithOpenAI = async (request, invoiceBytes) => {
   return JSON.parse(outputText(await response.json()));
 };
 
-const azureField = (fields, names, kind) => {
+const azureRegions = (field, pages) => {
+  if (!Array.isArray(field?.boundingRegions) || !Array.isArray(pages)) return [];
+  return field.boundingRegions.slice(0, 4).flatMap(region => {
+    const pageNumber = Number(region?.pageNumber);
+    const page = pages.find(item => Number(item?.pageNumber) === pageNumber);
+    const pageWidth = Number(page?.width);
+    const pageHeight = Number(page?.height);
+    const polygon = region?.polygon;
+    if (!Number.isInteger(pageNumber) || pageNumber < 1 || !Number.isFinite(pageWidth) || pageWidth <= 0
+      || !Number.isFinite(pageHeight) || pageHeight <= 0 || !Array.isArray(polygon)
+      || polygon.length < 8 || polygon.length > 32 || polygon.length % 2 !== 0) return [];
+    const points = [];
+    for (let index = 0; index < polygon.length; index += 2) {
+      const x = Number(polygon[index]);
+      const y = Number(polygon[index + 1]);
+      if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > pageWidth * 1.02 || y > pageHeight * 1.02) return [];
+      points.push([Number(x.toFixed(4)), Number(y.toFixed(4))]);
+    }
+    return [{ pageNumber, pageWidth, pageHeight, polygon: points }];
+  });
+};
+
+const azureField = (fields, names, kind, pages) => {
   const field = names.map(name => fields?.[name]).find(Boolean);
   let value = kind === 'money' ? 0 : '';
   let confidence = 0;
@@ -170,22 +192,24 @@ const azureField = (fields, names, kind) => {
     }
     evidence = typeof field.content === 'string' ? field.content.slice(0, 240) : '';
   }
-  return { value, confidence, evidence };
+  return { value, confidence, evidence, regions: azureRegions(field, pages) };
 };
 
 const normalizeAzureInvoice = result => {
-  const fields = result?.analyzeResult?.documents?.[0]?.fields;
+  const analyzeResult = result?.analyzeResult;
+  const fields = analyzeResult?.documents?.[0]?.fields;
+  const pages = analyzeResult?.pages;
   if (!fields || typeof fields !== 'object') throw new Error('Azure không trích xuất được dữ liệu hóa đơn.');
   return { fields: {
-    buyerName: azureField(fields, ['CustomerName', 'CustomerAddressRecipient', 'BillingAddressRecipient'], 'string'),
-    vendor: azureField(fields, ['VendorName'], 'string'),
-    taxCode: azureField(fields, ['VendorTaxId'], 'string'),
-    invoiceNumber: azureField(fields, ['InvoiceId'], 'string'),
-    invoiceDate: azureField(fields, ['InvoiceDate'], 'date'),
-    amountBeforeTax: azureField(fields, ['SubTotal'], 'money'),
-    vatAmount: azureField(fields, ['TotalTax'], 'money'),
-    totalAmount: azureField(fields, ['InvoiceTotal'], 'money'),
-    amountDue: azureField(fields, ['AmountDue'], 'money')
+    buyerName: azureField(fields, ['CustomerName', 'CustomerAddressRecipient', 'BillingAddressRecipient'], 'string', pages),
+    vendor: azureField(fields, ['VendorName'], 'string', pages),
+    taxCode: azureField(fields, ['VendorTaxId'], 'string', pages),
+    invoiceNumber: azureField(fields, ['InvoiceId'], 'string', pages),
+    invoiceDate: azureField(fields, ['InvoiceDate'], 'date', pages),
+    amountBeforeTax: azureField(fields, ['SubTotal'], 'money', pages),
+    vatAmount: azureField(fields, ['TotalTax'], 'money', pages),
+    totalAmount: azureField(fields, ['InvoiceTotal'], 'money', pages),
+    amountDue: azureField(fields, ['AmountDue'], 'money', pages)
   } };
 };
 

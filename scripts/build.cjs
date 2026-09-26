@@ -17,5 +17,16 @@ fs.mkdirSync(out, { recursive: true });
 for (const name of ['index.html','app.js','api.js','rules.js','styles.css','demo.html','demo.js']) {
   fs.copyFileSync(path.join(root, name), path.join(out, name));
 }
+const pdfjsRoot = path.join(root, 'node_modules', 'pdfjs-dist');
+const pdfjsBuild = path.join(pdfjsRoot, 'build');
+const pdfjsOut = path.join(out, 'vendor', 'pdfjs');
+fs.mkdirSync(pdfjsOut, { recursive: true });
+for (const name of ['pdf.min.mjs','pdf.worker.min.mjs']) {
+  fs.copyFileSync(path.join(pdfjsBuild, name), path.join(pdfjsOut, name));
+}
+for (const name of ['cmaps','standard_fonts','wasm','iccs']) {
+  fs.cpSync(path.join(pdfjsRoot, name), path.join(pdfjsOut, name), { recursive: true });
+}
+fs.copyFileSync(path.join(pdfjsRoot, 'LICENSE'), path.join(pdfjsOut, 'LICENSE'));
 fs.writeFileSync(path.join(out, 'config.js'), 'window.FINREF_CONFIG = ' + JSON.stringify({supabaseUrl, supabaseAnonKey}) + ';\n');
 console.log('Built public assets in dist/. No account credentials included.');

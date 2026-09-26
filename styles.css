@@ -269,3 +269,56 @@ button:disabled {opacity:.55;cursor:wait;transform:none!important}
 button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible {outline:3px solid #7754d7;outline-offset:3px}
 @media(max-width:1100px){.online-workspace{grid-template-columns:1fr}}
 @media(max-width:650px){.online .sidebar{display:none}.online .main-content{width:100%}.online .topbar-actions{justify-content:flex-start}.online .stats-grid{grid-template-columns:1fr 1fr}.online .stat-card{padding:12px;gap:8px}.online .stat-icon{display:none}.online .card-heading{flex-wrap:wrap}.online .two-col{grid-template-columns:1fr}.online .topbar h1{font-size:30px}}
+
+/* Side-by-side human review with page-positioned Azure evidence. */
+.reviewer-layout {display:grid;grid-template-columns:minmax(260px,.84fr) minmax(0,1.16fr);gap:18px;align-items:start;margin:20px 0}
+.submitted-form-panel,.invoice-review-panel {min-width:0;padding:18px;border:1px solid #dce3ee;border-radius:18px;background:#fbfcfe}
+.review-pane-heading {margin-bottom:14px}
+.review-pane-heading h3 {margin:5px 0;font-size:17px;color:#29364b}
+.review-pane-heading .muted {margin:0;font-size:12px}
+.review-legend {display:grid;gap:7px;padding:11px 12px;margin:0 0 13px;border-radius:12px;background:#f0f3f8;color:#4d5b70;font-size:11px}
+.review-legend span {display:flex;align-items:center;gap:8px;font-weight:650}
+.review-legend i,.review-mark-icon {display:inline-block;flex:none;width:12px;height:12px;border:2px solid currentColor;border-radius:3px}
+.legend-yellow i,.marked--yellow .review-mark-note::before,.invoice-issue--yellow .review-mark-icon {color:#9a6b00;background:#ffdf79}
+.legend-red i,.marked--red .review-mark-note::before,.invoice-issue--red .review-mark-icon {color:#a92f2b;background:#f2a09a}
+.review-legend small {color:#627087;line-height:1.45}
+.submitted-form-fields {display:grid;gap:7px;margin:0}
+.review-form-field {min-width:0;padding:10px 12px;border:1px solid #e1e6ef;border-radius:12px;background:#fff}
+.review-form-field dt {color:#66748b;font-size:11px;font-weight:650;line-height:1.4}
+.review-form-field dd {margin:4px 0 0;color:#26344b;font-size:13px;font-weight:650;line-height:1.45;overflow-wrap:anywhere}
+.review-form-field.marked--yellow {border-color:#e6c767;background:#fff9e8}
+.review-form-field.marked--red {border-color:#e6a09b;background:#fff2f1}
+.review-mark-note {display:flex;gap:7px;margin-top:7px;color:#785b17;font-size:11px;line-height:1.5;overflow-wrap:anywhere}
+.review-unchecked-note {display:block;margin-top:6px;color:#748197;font-size:10px;line-height:1.45}
+.review-mark-note::before {content:"";width:9px;height:9px;flex:none;margin-top:3px;border:1px solid currentColor;border-radius:2px}
+.marked--red .review-mark-note {color:#92332f}
+.pdf-toolbar {display:flex;align-items:center;gap:7px;margin:0 0 9px;padding:7px;border:1px solid #dce3ee;border-radius:12px;background:#f5f7fb;color:#47566d;font-size:12px}
+.pdf-toolbar button {min-width:34px;min-height:32px;padding:3px 9px;border:1px solid #d4dce8;border-radius:8px;background:#fff;color:#35435a;cursor:pointer}
+.pdf-toolbar button:disabled {opacity:.45;cursor:default}
+.pdf-toolbar-spacer {flex:1}
+.pdf-viewer-wrap {max-height:78vh;min-height:300px;overflow:auto;padding:12px;border:1px solid #dce3ee;border-radius:12px;background:#e9edf4;overscroll-behavior:contain}
+.pdf-stage {position:relative;width:max-content;max-width:none;margin:0 auto;background:#fff;box-shadow:0 4px 16px rgba(35,48,70,.16);outline:none}
+.pdf-stage canvas {display:block;max-width:none}
+.pdf-mark-layer {position:absolute;inset:0;display:block;pointer-events:none;overflow:visible}
+.pdf-mark {fill:rgba(255,211,77,.3);stroke:#c18a00;stroke-width:2.5;vector-effect:non-scaling-stroke;pointer-events:all;cursor:help}
+.pdf-mark--red {fill:rgba(230,75,67,.24);stroke:#b52e2a}
+.pdf-mark-badge {fill:#ad7900;stroke:#fff;stroke-width:1.4;vector-effect:non-scaling-stroke}
+.pdf-mark-badge--red {fill:#aa302c}
+.pdf-mark-layer text {fill:#fff;font-family:system-ui,sans-serif;font-weight:700;pointer-events:none}
+.invoice-issues {margin-top:14px}
+.invoice-issues h4 {margin:0 0 8px;color:#344258;font-size:13px}
+.invoice-issue-list {display:grid;gap:8px;padding:0;margin:0;list-style:none}
+.invoice-issue {padding:10px 11px;border:1px solid #e1e6ef;border-radius:11px;background:#fff}
+.invoice-issue--yellow {border-color:#e6c767;background:#fffaf0}
+.invoice-issue--red {border-color:#e6a09b;background:#fff5f4}
+.invoice-issue-jump {display:flex;align-items:center;gap:8px;width:100%;padding:0;border:0;background:transparent;color:#344258;text-align:left;cursor:pointer}
+.invoice-issue-jump strong {flex:1;font-size:11px}
+.invoice-issue-jump span:last-child {max-width:45%;font-size:11px;font-weight:650;text-align:right;overflow-wrap:anywhere}
+.invoice-issue--yellow .invoice-issue-jump {color:#755710}
+.invoice-issue--red .invoice-issue-jump {color:#8d302c}
+.invoice-issue small {display:block;margin:7px 0 0 20px;color:#58677c;font-size:10px;line-height:1.5;overflow-wrap:anywhere}
+.review-clear-note {margin:0;padding:12px;border-radius:11px;background:#eef7f2;color:#35624a;font-size:12px;line-height:1.5}
+.review-form {padding:18px;border:1px solid #dce3ee;border-radius:16px;background:#fbfcfe}
+.review-form .muted {margin-top:0}
+@media(max-width:1050px){.reviewer-layout{grid-template-columns:1fr}.pdf-viewer-wrap{max-height:72vh}}
+@media(max-width:650px){.submitted-form-panel,.invoice-review-panel{padding:13px}.pdf-viewer-wrap{padding:7px;min-height:220px}.pdf-toolbar{flex-wrap:wrap}.review-pane-heading h3{font-size:16px}}
