@@ -313,7 +313,7 @@ $('paymentForm').onsubmit=async event=>{
   try {
     const invoice=$('invoiceFile').files[0];
     const invExt=validateFile(invoice,true);
-    const payload=Object.fromEntries(fields.map(k=>[k,$(k).value.trim()])); payload.amount=Number(payload.amount);
+    const payload=Object.fromEntries(fields.map(k=>[k,$(k).value.trim()])); payload.amount=Number(payload.amount); payload.invoiceType='electronic';
     const folder=profile.id+'/'+crypto.randomUUID();
     const invoicePath=folder+'/invoice.'+invExt;
     notify('Đang tải hóa đơn và gửi hồ sơ…');
