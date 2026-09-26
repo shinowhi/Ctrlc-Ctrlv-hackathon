@@ -80,15 +80,20 @@ Không kéo cả thư mục dự án lên trang Upload files của GitHub sau kh
 3. Framework Preset: **Other**. Root Directory là thư mục có `package.json` (nếu repo chính là thư mục trên, để mặc định).
 4. Build Command: `node scripts/build.cjs`.
 5. Output Directory: `dist`.
-6. Thêm đúng hai Environment Variables cho Production (và Preview nếu dùng):
+6. Thêm các Environment Variables cần thiết cho Production (và Preview nếu dùng):
 
 ```text
 SUPABASE_URL       https://xxx.supabase.co
 SUPABASE_ANON_KEY  <publishable key hoặc legacy anon key>
-OPENAI_API_KEY     <chỉ đặt ở backend/Vercel, không đưa vào frontend>
 SUPABASE_SERVICE_ROLE_KEY <chỉ đặt ở backend/Vercel, không đưa vào GitHub>
+INVOICE_ANALYSIS_PROVIDER azure
+AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT <endpoint trong Keys and Endpoint của resource Shino>
+AZURE_DOCUMENT_INTELLIGENCE_KEY <Key 1 hoặc Key 2; chỉ đặt ở backend/Vercel>
+OPENAI_API_KEY     <tuỳ chọn nếu muốn chọn OpenAI thay cho Azure>
 OPENAI_VISION_MODEL <tuỳ chọn, mặc định gpt-4.1-mini>
 ```
+
+Đặt `INVOICE_ANALYSIS_PROVIDER=azure` để dùng Azure. Nếu bỏ biến này, backend chọn Azure khi thấy có một trong hai biến Azure; cần đủ endpoint và key, thiếu một sẽ báo lỗi cấu hình chứ không tự gửi hóa đơn sang nhà cung cấp khác. Khi không cấu hình Azure, backend dùng OpenAI; cũng có thể chọn rõ `INVOICE_ANALYSIS_PROVIDER=openai` với `OPENAI_API_KEY`. Endpoint và key Azure chỉ nằm trong Environment Variables server, không đưa vào `config.js`, GitHub hay trình duyệt.
 
 7. Bấm **Deploy**. Script build sẽ chỉ đưa các file giao diện được phép lên website; script tạo tài khoản, SQL và mật khẩu không nằm trong `dist`.
 8. Sao chép link HTTPS Vercel cấp. Đây là **live URL** để gửi cho đội và ban giám khảo.
@@ -148,13 +153,13 @@ Mở <http://127.0.0.1:8124>. Dùng cùng hai biến môi trường ở trên.
 
 ## AI đọc hóa đơn PDF
 
-Hóa đơn trong phiên bản này phải là PDF (PDF có chữ chọn/copy hoặc PDF scan); không cần tải file đơn đề nghị. Endpoint `/api/analyze-evidence` dùng OpenAI Responses API để trích xuất người mua, nhà cung cấp, MST nhà cung cấp, số/ngày hóa đơn, tiền trước thuế, VAT, tổng thanh toán và số tiền còn phải thanh toán, kèm confidence và bằng chứng. Rules đối chiếu các trường với form và tính tổng gồm VAT. Số tiền còn phải thanh toán chỉ hiển thị tham khảo, không quyết định số tiền đề nghị hoặc luồng duyệt.
+Hóa đơn trong phiên bản này phải là PDF (PDF có chữ chọn/copy hoặc PDF scan); không cần tải file đơn đề nghị. Endpoint `/api/analyze-evidence` dùng Azure Document Intelligence `prebuilt-invoice` để trích xuất người mua, nhà cung cấp, MST nhà cung cấp, số/ngày hóa đơn, tiền trước thuế, VAT, tổng thanh toán và số tiền còn phải thanh toán, kèm confidence và bằng chứng. Có thể chọn OpenAI Responses API bằng `INVOICE_ANALYSIS_PROVIDER=openai`. Rules đối chiếu các trường với form và tính tổng gồm VAT. Số tiền còn phải thanh toán chỉ hiển thị tham khảo, không quyết định số tiền đề nghị hoặc luồng duyệt.
 
 Kết quả AI chỉ chuyển hồ sơ sang `READY_FOR_APPROVAL`, `CFO_REVIEW` hoặc `NEEDS_INFO`. Trạng thái `APPROVED` chỉ được tạo bởi thao tác của người có role phù hợp. Mốc 20.000.000 đồng tính theo tổng thanh toán đã gồm VAT; đúng mốc vẫn thuộc quản lý tài chính, cao hơn chuyển người đứng đầu nhánh tài chính.
 
 Ngân sách/chính sách, MST công ty, NCC được duyệt, PO và lịch sử thanh toán chưa có dữ liệu để đối chiếu. Hệ thống không đánh dấu các mục này là đạt, chưa thể phân loại U2, và không xác nhận tính xác thực/nguồn phát hành hay chữ ký số của hóa đơn.
 
-Để bật luồng này trên Vercel, đặt `OPENAI_API_KEY` và `SUPABASE_SERVICE_ROLE_KEY` ở Environment Variables của Production/Preview. Chạy `supabase/schema.sql` trên Supabase project mới theo hướng dẫn đầu tài liệu. Không đưa hai khóa này vào `config.js`, mã nguồn hoặc trình duyệt.
+Để bật luồng Azure trên Vercel, đặt `AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT`, `AZURE_DOCUMENT_INTELLIGENCE_KEY`, `INVOICE_ANALYSIS_PROVIDER=azure` và `SUPABASE_SERVICE_ROLE_KEY` ở Environment Variables của Production/Preview. Tài liệu F0 hiện giới hạn file tối đa 4 MB và chỉ phân tích hai trang đầu; nếu PDF có nhiều hơn hai trang, người duyệt cần xem toàn bộ PDF trước khi quyết định. Luồng Azure có thể mất vài giây để xử lý và endpoint Vercel được cấu hình thời gian tối đa 60 giây. Chạy `supabase/schema.sql` trên Supabase project mới theo hướng dẫn đầu tài liệu. Không đưa key vào `config.js`, mã nguồn hoặc trình duyệt.
 
 ## Giới hạn đã biết
 

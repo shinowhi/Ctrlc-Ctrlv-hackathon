@@ -22,21 +22,42 @@ const supabase = (path, options = {}, token, key) => fetch(process.env.SUPABASE_
   return data;
 });
 
-const asDataUrl = async path => {
+const tooLarge = message => Object.assign(new Error(message), { status: 413 });
+const readLimitedBytes = async (response, maxBytes, message) => {
+  const declaredSize = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declaredSize) && declaredSize > maxBytes) {
+    await response.body?.cancel();
+    throw tooLarge(message);
+  }
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('Không đọc được file minh chứng.');
+  const chunks = [];
+  let size = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > maxBytes) {
+      await reader.cancel();
+      throw tooLarge(message);
+    }
+    chunks.push(Buffer.from(value));
+  }
+  return Buffer.concat(chunks, size);
+};
+
+const asInvoiceBytes = async (path, maxBytes, sizeMessage) => {
   const response = await fetch(`${process.env.SUPABASE_URL}/storage/v1/object/evidence/${path}`, {
-    headers: { Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`, apikey: process.env.SUPABASE_SERVICE_ROLE_KEY }
+    headers: { Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`, apikey: process.env.SUPABASE_SERVICE_ROLE_KEY },
+    signal: AbortSignal.timeout(15000), redirect: 'error'
   });
   if (!response.ok) throw new Error('Không đọc được file minh chứng.');
-  const mime = path.endsWith('.pdf') ? 'application/pdf' : path.endsWith('.png') ? 'image/png' : 'image/jpeg';
-  const bytes = Buffer.from(await response.arrayBuffer());
-  if (mime === 'application/pdf' && !bytes.subarray(0, 1024).includes(Buffer.from('%PDF-'))) throw new Error('File hóa đơn không có cấu trúc PDF hợp lệ.');
-  return `data:${mime};base64,${bytes.toString('base64')}`;
+  const bytes = await readLimitedBytes(response, maxBytes, sizeMessage);
+  if (!bytes.subarray(0, 1024).includes(Buffer.from('%PDF-'))) throw new Error('File hóa đơn không có cấu trúc PDF hợp lệ.');
+  return bytes;
 };
 
 const outputText = result => result.output?.flatMap(item => item.content || []).map(part => part.text || '').join('') || '';
-const evidencePart = (name, path, dataUrl) => path.endsWith('.pdf')
-  ? { type: 'input_file', filename: name + '.pdf', file_data: dataUrl, detail: 'high' }
-  : { type: 'input_image', image_url: dataUrl, detail: 'high' };
 const fields = ['buyerName', 'vendor', 'taxCode', 'invoiceNumber', 'invoiceDate', 'amountBeforeTax', 'vatAmount', 'totalAmount', 'amountDue'];
 const labels = { buyerName: 'tên người mua/đơn vị nhận hóa đơn', vendor: 'nhà cung cấp', invoiceNumber: 'số hóa đơn', invoiceDate: 'ngày hóa đơn', amountBeforeTax: 'tiền trước thuế', vatAmount: 'tiền VAT', totalAmount: 'tổng thanh toán' };
 const normalized = value => String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('vi');
@@ -101,9 +122,140 @@ const responseSchema = {
   required: ['fields']
 };
 
+const analyzeWithOpenAI = async (request, invoiceBytes) => {
+  const content = [
+    { type: 'input_text', text: `Đọc hóa đơn PDF đính kèm. PDF có thể chứa chữ máy hoặc trang scan. Trích xuất đúng các trường schema; mỗi trường phải có giá trị, độ tin cậy từ 0 đến 1 và bằng chứng ngắn (trích chữ hoặc số trang). Không đoán và không kết luận hóa đơn/chữ ký số là xác thực. buyerName là người mua hoặc đơn vị được xuất hóa đơn (ví dụ trường Người mua hàng, Khách hàng, Bill To); không nhầm với nhà cung cấp. amountDue chỉ là số tiền còn phải thanh toán được ghi rõ trên hóa đơn sau các khoản đã trả; nếu không có thông tin này thì trả 0, không tự suy ra từ tổng tiền. Trường chữ không thấy trả chuỗi rỗng; số tiền không đọc được trả 0; confidence=0 và evidence rỗng. Ngày dùng YYYY-MM-DD; tiền là số nguyên VND. Hệ thống sẽ đối chiếu với dữ liệu nhập sau: ${JSON.stringify({ buyerName: request.payload.requester, vendor: request.payload.vendor, invoiceNumber: request.payload.invoiceNumber, invoiceDate: request.payload.invoiceDate, totalAmountIncludingVat: request.amount })}. Phép tính tiền trước thuế + VAT phải được thực hiện riêng bởi hệ thống.` },
+    { type: 'input_file', filename: 'invoice.pdf', file_data: `data:application/pdf;base64,${invoiceBytes.toString('base64')}`, detail: 'high' }
+  ];
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: process.env.OPENAI_VISION_MODEL || 'gpt-4.1-mini',
+      store: false,
+      input: [{ role: 'user', content }],
+      text: { format: { type: 'json_schema', name: 'invoice_extraction', strict: true, schema: responseSchema } }
+    }),
+    signal: AbortSignal.timeout(30000), redirect: 'error'
+  });
+  if (!response.ok) throw new Error('OpenAI không đọc được minh chứng.');
+  return JSON.parse(outputText(await response.json()));
+};
+
+const azureField = (fields, names, kind) => {
+  const field = names.map(name => fields?.[name]).find(Boolean);
+  let value = kind === 'money' ? 0 : '';
+  let confidence = 0;
+  let evidence = '';
+  if (field) {
+    const currency = field.valueCurrency;
+    // FinRef amounts are VND; unknown and foreign currencies must not be compared as VND.
+    const currencyCode = String(currency?.currencyCode || '').toUpperCase();
+    const knownForeignCurrency = Boolean(currencyCode && currencyCode !== 'VND');
+    const isVnd = currencyCode === 'VND'
+      || /(?:VND|VNĐ|₫|đ)/i.test(`${currency?.currencySymbol || ''} ${field.content || ''}`);
+    if (kind === 'money' && typeof currency?.amount === 'number' && Number.isFinite(currency.amount)) {
+      if (knownForeignCurrency || !isVnd) {
+        confidence = 0;
+      } else {
+        value = currency.amount;
+        confidence = Number.isFinite(field.confidence) ? field.confidence : 0;
+      }
+    } else if (kind === 'date' && typeof field.valueDate === 'string') {
+      value = field.valueDate;
+      confidence = Number.isFinite(field.confidence) ? field.confidence : 0;
+    } else if (kind === 'string' && typeof field.valueString === 'string') {
+      value = field.valueString;
+      confidence = Number.isFinite(field.confidence) ? field.confidence : 0;
+    }
+    evidence = typeof field.content === 'string' ? field.content.slice(0, 240) : '';
+  }
+  return { value, confidence, evidence };
+};
+
+const normalizeAzureInvoice = result => {
+  const fields = result?.analyzeResult?.documents?.[0]?.fields;
+  if (!fields || typeof fields !== 'object') throw new Error('Azure không trích xuất được dữ liệu hóa đơn.');
+  return { fields: {
+    buyerName: azureField(fields, ['CustomerName', 'CustomerAddressRecipient', 'BillingAddressRecipient'], 'string'),
+    vendor: azureField(fields, ['VendorName'], 'string'),
+    taxCode: azureField(fields, ['VendorTaxId'], 'string'),
+    invoiceNumber: azureField(fields, ['InvoiceId'], 'string'),
+    invoiceDate: azureField(fields, ['InvoiceDate'], 'date'),
+    amountBeforeTax: azureField(fields, ['SubTotal'], 'money'),
+    vatAmount: azureField(fields, ['TotalTax'], 'money'),
+    totalAmount: azureField(fields, ['InvoiceTotal'], 'money'),
+    amountDue: azureField(fields, ['AmountDue'], 'money')
+  } };
+};
+
+const retryDelay = headers => {
+  const seconds = Number(headers.get('retry-after'));
+  return Number.isFinite(seconds) && seconds >= 1 ? Math.ceil(seconds * 1000) : 1000;
+};
+const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+
+const analyzeWithAzure = async invoiceBytes => {
+  let endpoint;
+  try { endpoint = new URL(process.env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT); }
+  catch { throw new Error('Azure Document Intelligence endpoint chưa hợp lệ.'); }
+  if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash || !['', '/'].includes(endpoint.pathname)) {
+    throw new Error('Azure Document Intelligence endpoint chưa hợp lệ.');
+  }
+  const base = endpoint.origin;
+  const apiVersion = '2024-11-30';
+  // Microsoft REST v4.0 uses base64Source, then Operation-Location polling at >=1 second intervals.
+  // Source: https://learn.microsoft.com/rest/api/aiservices/document-models/analyze-document?view=rest-aiservices-v4.0+(2024-11-30)
+  const analyzeUrl = `${base}/documentintelligence/documentModels/prebuilt-invoice:analyze?api-version=${apiVersion}`;
+  const headers = { 'Content-Type': 'application/json', 'Ocp-Apim-Subscription-Key': process.env.AZURE_DOCUMENT_INTELLIGENCE_KEY };
+  let accepted;
+  try {
+    accepted = await fetch(analyzeUrl, {
+      method: 'POST', headers, body: JSON.stringify({ base64Source: invoiceBytes.toString('base64') }),
+      signal: AbortSignal.timeout(10000), redirect: 'error'
+    });
+  } catch { throw new Error('Không kết nối được Azure Document Intelligence.'); }
+  if (accepted.status !== 202) throw new Error('Azure Document Intelligence từ chối phân tích hóa đơn.');
+
+  const location = accepted.headers.get('operation-location');
+  let operation;
+  try { operation = new URL(location); }
+  catch { throw new Error('Azure trả về thông tin xử lý không hợp lệ.'); }
+  const operationPrefix = '/documentintelligence/documentModels/prebuilt-invoice/analyzeResults/';
+  if (operation.origin !== base || operation.username || operation.password || !operation.pathname.startsWith(operationPrefix) || operation.searchParams.get('api-version') !== apiVersion) {
+    throw new Error('Azure trả về thông tin xử lý không hợp lệ.');
+  }
+
+  const deadline = Date.now() + 45000;
+  let delay = retryDelay(accepted.headers);
+  while (Date.now() + delay < deadline) {
+    await wait(delay);
+    let response;
+    try {
+      response = await fetch(operation, { headers: { 'Ocp-Apim-Subscription-Key': process.env.AZURE_DOCUMENT_INTELLIGENCE_KEY }, signal: AbortSignal.timeout(10000), redirect: 'error' });
+    } catch { throw new Error('Không lấy được kết quả từ Azure Document Intelligence.'); }
+    if (!response.ok) throw new Error('Không lấy được kết quả từ Azure Document Intelligence.');
+    let result;
+    try { result = await response.json(); }
+    catch { throw new Error('Azure trả về dữ liệu hóa đơn không hợp lệ.'); }
+    if (result.status === 'succeeded') return normalizeAzureInvoice(result);
+    if (result.status === 'failed') throw new Error('Azure không phân tích được hóa đơn.');
+    if (!['running', 'notStarted'].includes(result.status)) throw new Error('Azure trả về trạng thái phân tích không hợp lệ.');
+    delay = retryDelay(response.headers);
+  }
+  throw Object.assign(new Error('Azure xử lý hóa đơn quá lâu; hãy thử lại sau.'), { status: 504 });
+};
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed.' });
-  if (!process.env.OPENAI_API_KEY || !process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) return json(res, 503, { error: 'AI backend chưa được cấu hình.' });
+  const requestedProvider = String(process.env.INVOICE_ANALYSIS_PROVIDER || '').trim().toLowerCase();
+  const azureConfigured = Boolean(process.env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT || process.env.AZURE_DOCUMENT_INTELLIGENCE_KEY);
+  const provider = requestedProvider || (azureConfigured ? 'azure' : 'openai');
+  if (!['azure', 'openai'].includes(provider)) return json(res, 503, { error: 'INVOICE_ANALYSIS_PROVIDER phải là azure hoặc openai.' });
+  const providerConfigured = provider === 'azure'
+    ? Boolean(process.env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT && process.env.AZURE_DOCUMENT_INTELLIGENCE_KEY)
+    : Boolean(process.env.OPENAI_API_KEY);
+  if (!providerConfigured || !process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) return json(res, 503, { error: 'AI backend chưa được cấu hình.' });
   const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
   if (!token) return json(res, 401, { error: 'Vui lòng đăng nhập.' });
   try {
@@ -118,23 +270,14 @@ module.exports = async (req, res) => {
     const profile = (await supabase(`/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=role`, {}, token, publicKey))[0];
     if (profile?.role !== 'applicant') return json(res, 403, { error: 'Chỉ người nộp đơn được yêu cầu đọc minh chứng.' });
     if (!request.invoice_path?.endsWith('/invoice.pdf')) return json(res, 422, { error: 'Đợt này chỉ phân tích hóa đơn PDF.' });
-    const invoice = await asDataUrl(request.invoice_path);
-    const content = [
-      { type: 'input_text', text: `Đọc hóa đơn PDF đính kèm. PDF có thể chứa chữ máy hoặc trang scan. Trích xuất đúng các trường schema; mỗi trường phải có giá trị, độ tin cậy từ 0 đến 1 và bằng chứng ngắn (trích chữ hoặc số trang). Không đoán và không kết luận hóa đơn/chữ ký số là xác thực. buyerName là người mua hoặc đơn vị được xuất hóa đơn (ví dụ trường Người mua hàng, Khách hàng, Bill To); không nhầm với nhà cung cấp. amountDue chỉ là số tiền còn phải thanh toán được ghi rõ trên hóa đơn sau các khoản đã trả; nếu không có thông tin này thì trả 0, không tự suy ra từ tổng tiền. Trường chữ không thấy trả chuỗi rỗng; số tiền không đọc được trả 0; confidence=0 và evidence rỗng. Ngày dùng YYYY-MM-DD; tiền là số nguyên VND. Hệ thống sẽ đối chiếu với dữ liệu nhập sau: ${JSON.stringify({ buyerName: request.payload.requester, vendor: request.payload.vendor, invoiceNumber: request.payload.invoiceNumber, invoiceDate: request.payload.invoiceDate, totalAmountIncludingVat: request.amount })}. Phép tính tiền trước thuế + VAT phải được thực hiện riêng bởi hệ thống.` },
-      evidencePart('invoice', request.invoice_path, invoice)
-    ];
-    const response = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: process.env.OPENAI_VISION_MODEL || 'gpt-4.1-mini',
-        store: false,
-        input: [{ role: 'user', content }],
-        text: { format: { type: 'json_schema', name: 'invoice_extraction', strict: true, schema: responseSchema } }
-      })
-    });
-    if (!response.ok) throw new Error('OpenAI không đọc được minh chứng.');
-    const extraction = JSON.parse(outputText(await response.json()));
+    const invoiceMaxBytes = provider === 'azure' ? 4 * 1024 * 1024 : 10 * 1024 * 1024;
+    const sizeMessage = provider === 'azure'
+      ? 'Azure Document Intelligence F0 chỉ nhận file tối đa 4 MB.'
+      : 'File hóa đơn vượt giới hạn 10 MB.';
+    const invoiceBytes = await asInvoiceBytes(request.invoice_path, invoiceMaxBytes, sizeMessage);
+    const extraction = provider === 'azure'
+      ? await analyzeWithAzure(invoiceBytes)
+      : await analyzeWithOpenAI(request, invoiceBytes);
     const assessment = assess(request, extraction);
     const analysis = { ...extraction, assessment, policyChecked: false, budgetChecked: false };
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -142,5 +285,5 @@ module.exports = async (req, res) => {
       method: 'POST', body: JSON.stringify({ p_id: request.id, p_expected_version: request.version, p_analysis: analysis })
     }, serviceKey, serviceKey);
     return json(res, 200, { status: result.status, analysis });
-  } catch (error) { return json(res, 422, { error: error.message || 'Không đọc được minh chứng.' }); }
+  } catch (error) { return json(res, error.status || 422, { error: error.message || 'Không đọc được minh chứng.' }); }
 };

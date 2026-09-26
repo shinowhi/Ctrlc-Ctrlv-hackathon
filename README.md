@@ -13,13 +13,13 @@ FinRef hỗ trợ số hóa bước tiếp nhận và rà soát đề nghị tha
 
 ## Tiến độ hiện tại
 
-Bản build mới nhất đã được triển khai thành công trên Vercel Production. MVP hiện tập trung vào quy trình đề nghị thanh toán hóa đơn; phân hệ nhân sự chưa nằm trong phạm vi phiên bản này.
+Bản production hiện đang chạy trên Vercel. Tích hợp Azure trong working tree cần được cấu hình biến môi trường và deploy riêng trước khi production sử dụng. MVP tập trung vào quy trình đề nghị thanh toán hóa đơn; phân hệ nhân sự chưa nằm trong phạm vi phiên bản này.
 
 ### Đã xây dựng
 
 - Giao diện web cho người nộp đơn và các vai trò tài chính: Quản lý tài chính (`treasurer`) và Người đứng đầu nhánh tài chính (`cfo`).
 - Luồng tạo hồ sơ thanh toán, nhập tổng tiền đã gồm VAT và gửi hóa đơn PDF.
-- Tích hợp luồng đọc minh chứng bằng OpenAI Responses API và lưu trữ/xử lý hồ sơ qua Supabase Auth, Storage và RPC.
+- Tích hợp luồng đọc hóa đơn bằng Azure Document Intelligence `prebuilt-invoice` (có thể chọn OpenAI Responses API) và lưu trữ/xử lý hồ sơ qua Supabase Auth, Storage và RPC.
 - Đối chiếu tên người mua, nhà cung cấp, số/ngày hóa đơn và tổng thanh toán với form; kiểm tra tiền trước thuế + VAT. Số tiền còn phải thanh toán chỉ hiển thị thông tin.
 - Phân luồng hồ sơ: cần bổ sung thông tin (`U1`), chuyển cấp khi tổng tiền vượt 20.000.000 đồng (`U3`), hoặc đưa vào hàng đợi chờ người có thẩm quyền quyết định.
 - Quyết định duyệt cuối do người có thẩm quyền thực hiện; AI không tự phê duyệt và hệ thống không chuyển tiền.
@@ -27,7 +27,7 @@ Bản build mới nhất đã được triển khai thành công trên Vercel Pr
 
 ### Cần tiếp tục kiểm thử và hoàn thiện
 
-- Deployment báo **Ready** xác nhận build đã triển khai; cần tiếp tục kiểm thử luồng end-to-end trên môi trường production với cấu hình Supabase/OpenAI và tài khoản thử nghiệm.
+- Deployment báo **Ready** xác nhận build đã triển khai; cần tiếp tục kiểm thử luồng end-to-end trên môi trường production với cấu hình Supabase/Azure (hoặc OpenAI) và tài khoản thử nghiệm.
 - Chưa kết nối dữ liệu ngân sách, chính sách chi tiêu, danh sách nhà cung cấp, PO và lịch sử thanh toán; do đó phân loại `U2` chưa được hỗ trợ.
 - Cơ chế hiện tại không xác minh tính xác thực của hóa đơn, nguồn phát hành hay chữ ký số.
 - Phân hệ nhân sự và các quy trình ngoài đề nghị thanh toán sẽ được xem xét ở giai đoạn tiếp theo.
