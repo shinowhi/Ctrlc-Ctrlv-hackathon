@@ -164,7 +164,7 @@ begin
   if auth.uid() is null or public.my_role() is distinct from 'applicant' then
     raise exception 'Chỉ người nộp đơn được gửi hồ sơ.';
   end if;
-  foreach field in array array['requester','department','budgetCode','purpose','vendor','invoiceNumber','invoiceDate','requesterType'] loop
+  foreach field in array array['requester','department','budgetCode','purpose','vendor','invoiceNumber','invoiceDate','requesterType','invoiceType'] loop
     if coalesce(length(trim(p_payload->>field)),0) not between 1 and 1000 then
       raise exception 'Trường % bắt buộc, tối đa 1000 ký tự.',field;
     end if;
