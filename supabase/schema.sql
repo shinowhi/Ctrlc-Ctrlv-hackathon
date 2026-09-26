@@ -164,12 +164,18 @@ begin
   if auth.uid() is null or public.my_role() is distinct from 'applicant' then
     raise exception 'Chỉ người nộp đơn được gửi hồ sơ.';
   end if;
-  foreach field in array array['requester','department','budgetCode','purpose','vendor','invoiceNumber','invoiceDate','requesterType','invoiceType'] loop
+  foreach field in array array['requester','department','budgetCode','purpose','vendor','invoiceNumber','invoiceDate','requesterType'] loop
     if coalesce(length(trim(p_payload->>field)),0) not between 1 and 1000 then
       raise exception 'Trường % bắt buộc, tối đa 1000 ký tự.',field;
     end if;
     clean := clean || jsonb_build_object(field,trim(p_payload->>field));
   end loop;
+  if coalesce(length(trim(p_payload->>'invoiceType')),0) > 1000 then
+    raise exception 'Trường invoiceType tối đa 1000 ký tự.';
+  end if;
+  if nullif(trim(p_payload->>'invoiceType'),'') is not null then
+    clean := clean || jsonb_build_object('invoiceType',trim(p_payload->>'invoiceType'));
+  end if;
   if clean->>'requesterType' not in ('employee','department') then raise exception 'Loại người nộp không hợp lệ.'; end if;
   perform (clean->>'invoiceDate')::date;
   if coalesce(p_payload->>'amount','') !~ '^[0-9]{1,12}$' then raise exception 'Số tiền phải là số nguyên dương.'; end if;
@@ -207,7 +213,7 @@ end $$;
 create function public.review_request(p_id uuid,p_expected_version integer,p_action text,
   p_reason text default '',p_checks jsonb default '{}'::jsonb)
 returns public.requests language plpgsql security definer set search_path = '' as $$
-declare r public.requests; who text := public.my_role(); target text; why text;
+declare r public.requests; who text := public.my_role(); target text; why text; duplicate_invoice boolean;
 begin
   select * into r from public.requests where id=p_id for update;
   if not found or p_expected_version is null or r.version <> p_expected_version then
@@ -222,6 +228,19 @@ begin
     target := case when p_action='clarify' then 'NEEDS_INFO' else 'REJECTED' end;
     why := trim(p_reason);
   else
+    -- Serialize final approvals for the same vendor/invoice pair and block already-approved duplicates.
+    perform pg_advisory_xact_lock(hashtextextended(
+      lower(regexp_replace(trim(coalesce(r.payload->>'vendor','')), '[[:space:]]+', ' ', 'g')) || '/' ||
+      lower(regexp_replace(trim(coalesce(r.payload->>'invoiceNumber','')), '[[:space:]]+', ' ', 'g')), 0));
+    select exists(select 1 from public.requests x where x.id<>r.id and x.status='APPROVED'
+      and lower(regexp_replace(trim(coalesce(x.payload->>'vendor','')), '[[:space:]]+', ' ', 'g'))
+        = lower(regexp_replace(trim(coalesce(r.payload->>'vendor','')), '[[:space:]]+', ' ', 'g'))
+      and lower(regexp_replace(trim(coalesce(x.payload->>'invoiceNumber','')), '[[:space:]]+', ' ', 'g'))
+        = lower(regexp_replace(trim(coalesce(r.payload->>'invoiceNumber','')), '[[:space:]]+', ' ', 'g')))
+      into duplicate_invoice;
+    if duplicate_invoice then
+      raise exception 'Hóa đơn này đã có hồ sơ được duyệt cùng nhà cung cấp và số hóa đơn. Hãy yêu cầu làm rõ hoặc từ chối; không thể duyệt trùng.';
+    end if;
     if who='treasurer' then
       if r.status='TREASURER_REVIEW' and not coalesce(p_checks @> '{"invoice":true,"fields_match":true,"total_includes_vat":true}'::jsonb,false) then
         raise exception 'U1: hãy xác nhận đã kiểm tra hóa đơn, trường form và tổng thanh toán gồm VAT; hoặc yêu cầu bổ sung.';

@@ -18,6 +18,7 @@
 5. Vào **SQL Editor → New query**. Mở `supabase/schema.sql` trong thư mục dự án, copy toàn bộ nội dung, bấm **Run** một lần.
 6. Khi thành công, kiểm tra có bảng `profiles`, `requests`, `audit_events` và bucket `evidence` **Private**.
    - Nếu project đã tạo từ schema cũ, chạy một lần `supabase/migrations/20260925-remove-request-evidence.sql` thay vì chạy lại `schema.sql`.
+   - Nếu đã chạy `supabase/sprint1.sql`, sao lưu database rồi chạy một lần `supabase/migrations/20260926-human-approval-duplicate-guard.sql` trong đúng project Supabase. Migration giữ nguyên hồ sơ và các bảng ngân sách mẫu; nó khôi phục RPC khớp với giao diện, gỡ nhánh tự duyệt và chặn bấm duyệt khi cùng nhà cung cấp + số hóa đơn đã có hồ sơ được duyệt. Khi gặp trùng, người duyệt phải yêu cầu làm rõ hoặc từ chối. Migration không thay đổi các quyết định cũ, chấp nhận frontend Production hiện tại không gửi `invoiceType`, và chưa thêm ngân sách theo tháng. Không chạy lại `sprint1.sql` hoặc dùng `rollback-sprint1.sql` cùng giao diện hiện tại.
 7. Trong phần Authentication / sign-up settings, tắt cho người dùng tự đăng ký tài khoản mới nếu đang bật. Tài khoản của nhóm được tạo bằng script quản trị ở bước 2. Không tắt chức năng đăng nhập bằng email/password.
 
 Tìm thông tin kết nối trong nút **Connect** hoặc **Project Settings → API / API Keys** (tên mục có thể thay đổi):
@@ -154,6 +155,8 @@ Mở <http://127.0.0.1:8124>. Dùng cùng hai biến môi trường ở trên.
 ## AI đọc hóa đơn PDF
 
 Hóa đơn trong phiên bản này phải là PDF (PDF có chữ chọn/copy hoặc PDF scan); không cần tải file đơn đề nghị. Endpoint `/api/analyze-evidence` dùng Azure Document Intelligence `prebuilt-invoice` để trích xuất người mua, nhà cung cấp, MST nhà cung cấp, số/ngày hóa đơn, tiền trước thuế, VAT, tổng thanh toán và số tiền còn phải thanh toán, kèm confidence và bằng chứng. Có thể chọn OpenAI Responses API bằng `INVOICE_ANALYSIS_PROVIDER=openai`. Rules đối chiếu các trường với form và tính tổng gồm VAT. Số tiền còn phải thanh toán chỉ hiển thị tham khảo, không quyết định số tiền đề nghị hoặc luồng duyệt.
+
+Khi dùng `supabase/schema.sql` hiện tại hoặc đã chạy migration `20260926-human-approval-duplicate-guard.sql`, thao tác duyệt cuối sẽ bị chặn nếu nhà cung cấp và số hóa đơn trùng với một hồ sơ đã duyệt. Người duyệt cần yêu cầu làm rõ hoặc từ chối; không có ngoại lệ tự động. Quy tắc này chỉ đối chiếu hồ sơ đã duyệt, không phải xác minh hóa đơn với cơ quan thuế.
 
 Kết quả AI chỉ chuyển hồ sơ sang `READY_FOR_APPROVAL`, `CFO_REVIEW` hoặc `NEEDS_INFO`. Trạng thái `APPROVED` chỉ được tạo bởi thao tác của người có role phù hợp. Mốc 20.000.000 đồng tính theo tổng thanh toán đã gồm VAT; đúng mốc vẫn thuộc quản lý tài chính, cao hơn chuyển người đứng đầu nhánh tài chính.
 

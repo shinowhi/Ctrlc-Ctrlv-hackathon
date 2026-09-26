@@ -1,5 +1,6 @@
--- Apply once to an existing database created from supabase/schema.sql.
+-- Apply to an existing database created from supabase/schema.sql.
 -- Existing request PDFs remain stored; new app submissions pass a null request_path.
+-- Replaces the legacy paper-only submission rule and preserves invoiceType from the current app.
 begin;
 alter table public.requests alter column request_path drop not null;
 create or replace function public.record_invoice_analysis(p_id uuid,p_expected_version integer,p_analysis jsonb)
@@ -86,6 +87,12 @@ begin
     end if;
     clean := clean || jsonb_build_object(field,trim(p_payload->>field));
   end loop;
+  if coalesce(length(trim(p_payload->>'invoiceType')),0) > 1000 then
+    raise exception 'Trường invoiceType tối đa 1000 ký tự.';
+  end if;
+  if nullif(trim(p_payload->>'invoiceType'),'') is not null then
+    clean := clean || jsonb_build_object('invoiceType',trim(p_payload->>'invoiceType'));
+  end if;
   if clean->>'requesterType' not in ('employee','department') then raise exception 'Loại người nộp không hợp lệ.'; end if;
   perform (clean->>'invoiceDate')::date;
   if coalesce(p_payload->>'amount','') !~ '^[0-9]{1,12}$' then raise exception 'Số tiền phải là số nguyên dương.'; end if;
