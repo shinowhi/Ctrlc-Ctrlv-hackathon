@@ -1,5 +1,6 @@
--- Run ONCE to restore MVP functions. Deploy MVP frontend at the same time.
--- Keeps additive columns/tables and all business records; no data deletion.
+-- Deprecated for the current app: this restores an older review-check contract and has no duplicate guard.
+-- For a database that ran sprint1.sql, use migrations/20260926-human-approval-duplicate-guard.sql instead.
+-- The replacement migration keeps additive columns/tables and business records.
 begin;
 drop function public.submit_request(uuid,jsonb,text,text,integer,uuid);
 alter function public.submit_request_legacy(uuid,jsonb,text,text,integer) rename to submit_request;

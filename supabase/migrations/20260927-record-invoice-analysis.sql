@@ -1,8 +1,8 @@
--- Apply to an existing database created from supabase/schema.sql.
--- Existing request PDFs remain stored; new app submissions pass a null request_path.
--- Replaces the legacy paper-only submission rule and preserves invoiceType from the current app.
+-- Adds the server-only RPC used to save AI invoice analysis.
+-- Safe for an existing database created from schema.sql and upgraded with sprint1.sql.
+-- This changes the database function surface only; it does not rewrite request rows.
 begin;
-alter table public.requests alter column request_path drop not null;
+
 create or replace function public.record_invoice_analysis(p_id uuid,p_expected_version integer,p_analysis jsonb)
 returns public.requests language plpgsql security definer set search_path = '' as $$
 declare
@@ -15,7 +15,9 @@ declare
   code text;
   extracted jsonb := p_analysis->'fields';
 begin
-  if auth.role() <> 'service_role' then raise exception 'Chỉ AI backend được gọi thao tác này.'; end if;
+  if auth.role() is distinct from 'service_role' then
+    raise exception 'Chỉ AI backend được gọi thao tác này.';
+  end if;
   select * into r from public.requests where id=p_id for update;
   if not found or r.version <> p_expected_version or r.status <> 'TREASURER_REVIEW' then
     raise exception 'Hồ sơ đã thay đổi hoặc không còn chờ thủ quỹ.';
@@ -66,67 +68,8 @@ begin
   return r;
 end $$;
 
--- All writes go through these RPCs. A client cannot assign status, role, or owner.
-
-create or replace function public.submit_request(p_id uuid, p_payload jsonb, p_invoice_path text,
-  p_request_path text, p_expected_version integer default 0)
-returns public.requests language plpgsql security definer set search_path = '' as $$
-declare
-  r public.requests;
-  field text;
-  clean jsonb := '{}'::jsonb;
-  amt bigint;
-  was_existing boolean;
-begin
-  if auth.uid() is null or public.my_role() is distinct from 'applicant' then
-    raise exception 'Chỉ người nộp đơn được gửi hồ sơ.';
-  end if;
-  foreach field in array array['requester','department','budgetCode','purpose','vendor','invoiceNumber','invoiceDate','requesterType'] loop
-    if coalesce(length(trim(p_payload->>field)),0) not between 1 and 1000 then
-      raise exception 'Trường % bắt buộc, tối đa 1000 ký tự.',field;
-    end if;
-    clean := clean || jsonb_build_object(field,trim(p_payload->>field));
-  end loop;
-  if coalesce(length(trim(p_payload->>'invoiceType')),0) > 1000 then
-    raise exception 'Trường invoiceType tối đa 1000 ký tự.';
-  end if;
-  if nullif(trim(p_payload->>'invoiceType'),'') is not null then
-    clean := clean || jsonb_build_object('invoiceType',trim(p_payload->>'invoiceType'));
-  end if;
-  if clean->>'requesterType' not in ('employee','department') then raise exception 'Loại người nộp không hợp lệ.'; end if;
-  perform (clean->>'invoiceDate')::date;
-  if coalesce(p_payload->>'amount','') !~ '^[0-9]{1,12}$' then raise exception 'Số tiền phải là số nguyên dương.'; end if;
-  amt := (p_payload->>'amount')::bigint;
-  if amt < 1 then raise exception 'Số tiền phải lớn hơn 0.'; end if;
-  clean := clean || jsonb_build_object('amount',amt);
-  if p_invoice_path is null
-    or split_part(p_invoice_path,'/',1) <> auth.uid()::text
-    or p_invoice_path !~ '/invoice\.pdf$'
-    or not exists(select 1 from storage.objects where bucket_id='evidence' and name=p_invoice_path)
-    or (p_request_path is not null and (
-      split_part(p_request_path,'/',1) <> auth.uid()::text
-      or split_part(p_invoice_path,'/',2) <> split_part(p_request_path,'/',2)
-      or p_request_path !~ '/request\.(pdf|jpg|png)$'
-      or not exists(select 1 from storage.objects where bucket_id='evidence' and name=p_request_path)
-    ))
-  then raise exception 'Cần tải hóa đơn PDF của chính tài khoản này; đơn đề nghị đính kèm (nếu có) phải thuộc cùng hồ sơ.'; end if;
-  select * into r from public.requests where id=p_id for update;
-  was_existing := found;
-  if was_existing then
-    if r.owner_id <> auth.uid() or r.status <> 'NEEDS_INFO' or p_expected_version is null or r.version <> p_expected_version then
-      raise exception 'Hồ sơ đã thay đổi hoặc không được phép bổ sung. Hãy tải lại.';
-    end if;
-    update public.requests set payload=clean,amount=amt,invoice_path=p_invoice_path,request_path=p_request_path,
-      status='TREASURER_REVIEW',checks=null,reason='Người nộp đã bổ sung hồ sơ.',escalated_at=null,version=version+1,updated_at=now()
-      where id=p_id returning * into r;
-  else
-    if p_expected_version is null or p_expected_version <> 0 then raise exception 'Không tìm thấy phiên bản hồ sơ.'; end if;
-    insert into public.requests(id,owner_id,payload,amount,invoice_path,request_path,reason)
-      values(p_id,auth.uid(),clean,amt,p_invoice_path,p_request_path,'Đã gửi; chờ thủ quỹ kiểm tra hóa đơn.') returning * into r;
-  end if;
-  return r;
-end $$;
-
+revoke execute on function public.record_invoice_analysis(uuid,integer,jsonb) from public,anon,authenticated;
+grant execute on function public.record_invoice_analysis(uuid,integer,jsonb) to service_role;
 
 commit;
-
+notify pgrst, 'reload schema';
