@@ -3,6 +3,7 @@ const $ = id => document.getElementById(id);
 const api = new FinRefApi(window.FINREF_CONFIG || {});
 const money = n => new Intl.NumberFormat('vi-VN').format(n) + ' ₫';
 const esc = s => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const normalized = value => String(value ?? '').trim().replace(/\s+/g,' ').toLocaleLowerCase('vi');
 const roles={applicant:'Người nộp đơn',treasurer:'Quản lý tài chính',cfo:'Người đứng đầu nhánh tài chính'};
 const statuses={TREASURER_REVIEW:'Chờ quản lý tài chính kiểm tra',READY_FOR_APPROVAL:'Sẵn sàng duyệt',CFO_REVIEW:'Chờ người đứng đầu nhánh tài chính',NEEDS_INFO:'Cần bổ sung',APPROVED:'Đã duyệt',REJECTED:'Từ chối'};
 const checkLabels={invoice:'Đã xem hóa đơn PDF',fields_match:'Nhà cung cấp, số và ngày hóa đơn khớp form',total_includes_vat:'Tổng thanh toán trên form đã gồm VAT và khớp hóa đơn'};
