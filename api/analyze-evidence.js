@@ -232,7 +232,7 @@ const analyzeWithAzure = async invoiceBytes => {
   const apiVersion = '2024-11-30';
   // Microsoft REST v4.0 uses base64Source, then Operation-Location polling at >=1 second intervals.
   // Source: https://learn.microsoft.com/rest/api/aiservices/document-models/analyze-document?view=rest-aiservices-v4.0+(2024-11-30)
-  const analyzeUrl = `${base}/documentintelligence/documentModels/prebuilt-invoice:analyze?api-version=${apiVersion}`;
+  const analyzeUrl = `${base}/documentintelligence/documentModels/prebuilt-invoice:analyze?api-version=${apiVersion}&locale=vi`;
   const headers = { 'Content-Type': 'application/json', 'Ocp-Apim-Subscription-Key': process.env.AZURE_DOCUMENT_INTELLIGENCE_KEY };
   let accepted;
   try {
