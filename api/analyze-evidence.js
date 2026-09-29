@@ -170,6 +170,34 @@ const azureRegions = (field, pages) => {
   });
 };
 
+const toIsoDate = (year, month, day) => {
+  const y = Number(year), m = Number(month), d = Number(day);
+  if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d) || y < 1000 || y > 9999) return '';
+  const date = new Date(Date.UTC(y, m - 1, d));
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) return '';
+  return `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+};
+
+const parseInvoiceDate = value => {
+  const text = String(value || '').trim().normalize('NFC').replace(/\s+/g, ' ');
+  if (!text) return '';
+  const dates = [];
+  const addDate = date => { if (date) dates.push(date); };
+  for (const match of text.matchAll(/(?:^|\D)(\d{4})[./-](\d{1,2})[./-](\d{1,2})(?=\D|$)/g)) {
+    addDate(toIsoDate(match[1], match[2], match[3]));
+  }
+  for (const match of text.matchAll(/(?:^|\D)(\d{1,2})[./-](\d{1,2})[./-](\d{4})(?=\D|$)/g)) {
+    const first = Number(match[1]), second = Number(match[2]);
+    if (second > 12 && first <= 12) addDate(toIsoDate(match[3], first, second));
+    else addDate(toIsoDate(match[3], second, first));
+  }
+  for (const match of text.matchAll(/(?:ngày\s*)?(\d{1,2})\s+tháng\s+(\d{1,2})\s+năm\s+(\d{4})/giu)) {
+    addDate(toIsoDate(match[3], match[2], match[1]));
+  }
+  const uniqueDates = [...new Set(dates)];
+  return uniqueDates.length === 1 ? uniqueDates[0] : '';
+};
+
 const azureField = (fields, names, kind, pages) => {
   const field = names.map(name => fields?.[name]).find(Boolean);
   let value = kind === 'money' ? 0 : '';
@@ -189,9 +217,12 @@ const azureField = (fields, names, kind, pages) => {
         value = currency.amount;
         confidence = Number.isFinite(field.confidence) ? field.confidence : 0;
       }
-    } else if (kind === 'date' && typeof field.valueDate === 'string') {
-      value = field.valueDate;
-      confidence = Number.isFinite(field.confidence) ? field.confidence : 0;
+    } else if (kind === 'date') {
+      const parsedDate = [field.valueDate, field.valueString, field.content].map(parseInvoiceDate).find(Boolean);
+      if (parsedDate) {
+        value = parsedDate;
+        confidence = Number.isFinite(field.confidence) ? field.confidence : 0;
+      }
     } else if (kind === 'string' && typeof field.valueString === 'string') {
       value = field.valueString;
       confidence = Number.isFinite(field.confidence) ? field.confidence : 0;
