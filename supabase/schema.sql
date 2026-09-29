@@ -123,13 +123,13 @@ begin
     and coalesce(nullif(extracted->'amountBeforeTax'->>'value','')::bigint,0) > 0
     and coalesce(nullif(extracted->'totalAmount'->>'value','')::bigint,0) > 0
     and coalesce(nullif(extracted->'vatAmount'->>'value','')::bigint,0) >= 0
-    and coalesce(nullif(extracted->'buyerName'->>'confidence','')::numeric,0) >= 0.95
-    and coalesce(nullif(extracted->'vendor'->>'confidence','')::numeric,0) >= 0.95
-    and coalesce(nullif(extracted->'invoiceNumber'->>'confidence','')::numeric,0) >= 0.95
-    and coalesce(nullif(extracted->'invoiceDate'->>'confidence','')::numeric,0) >= 0.95
-    and coalesce(nullif(extracted->'amountBeforeTax'->>'confidence','')::numeric,0) >= 0.95
-    and coalesce(nullif(extracted->'vatAmount'->>'confidence','')::numeric,0) >= 0.95
-    and coalesce(nullif(extracted->'totalAmount'->>'confidence','')::numeric,0) >= 0.95
+    and coalesce(nullif(extracted->'buyerName'->>'confidence','')::numeric,0) >= 0.85
+    and coalesce(nullif(extracted->'vendor'->>'confidence','')::numeric,0) >= 0.85
+    and coalesce(nullif(extracted->'invoiceNumber'->>'confidence','')::numeric,0) >= 0.94
+    and coalesce(nullif(extracted->'invoiceDate'->>'confidence','')::numeric,0) >= 0.85
+    and coalesce(nullif(extracted->'amountBeforeTax'->>'confidence','')::numeric,0) >= 0.94
+    and coalesce(nullif(extracted->'vatAmount'->>'confidence','')::numeric,0) >= 0.94
+    and coalesce(nullif(extracted->'totalAmount'->>'confidence','')::numeric,0) >= 0.94
     and coalesce(length(trim(extracted->'buyerName'->>'evidence')),0) > 0
     and coalesce(length(trim(extracted->'vendor'->>'evidence')),0) > 0
     and coalesce(length(trim(extracted->'invoiceNumber'->>'evidence')),0) > 0

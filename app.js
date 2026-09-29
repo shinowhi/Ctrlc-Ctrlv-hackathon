@@ -10,6 +10,7 @@ const checkLabels={invoice:'Đã xem hóa đơn PDF',fields_match:'Nhà cung c�
 const fields=['requesterType','requester','department','budgetCode','purpose','vendor','invoiceNumber','invoiceDate','amount'];
 const aiFieldLabels={buyerName:'Người mua / đơn vị nhận hóa đơn',vendor:'Nhà cung cấp',taxCode:'Mã số thuế NCC',invoiceNumber:'Số hóa đơn',invoiceDate:'Ngày hóa đơn',amountBeforeTax:'Tiền trước thuế',vatAmount:'VAT',totalAmount:'Tổng thanh toán gồm VAT',amountDue:'Còn phải thanh toán (thông tin)'};
 const aiMoneyFields=new Set(['amountBeforeTax','vatAmount','totalAmount','amountDue']);
+const aiConfidenceThresholds={buyerName:0.85,vendor:0.85,taxCode:0.85,invoiceNumber:0.94,invoiceDate:0.85,amountBeforeTax:0.94,vatAmount:0.94,totalAmount:0.94,amountDue:0.85};
 let profile=null, rows=[], selected=null, editing=null, timer=null, loading=false, busy=false, epoch=0;
 function notify(text,error=false,login=false) { const el=$(login?'loginMessage':'message'); el.textContent=text; el.classList.toggle('error',error); }
 function time(value) { return new Date(value).toLocaleString('vi-VN'); }
@@ -98,7 +99,7 @@ function buildReviewAnnotations(request,ai) {
     const isZeroVat=key==='vatAmount'&&value===0&&Number(field.confidence)>0;
     const present=aiMoneyFields.has(key)?Number.isSafeInteger(value)&&(value>0||isZeroVat):typeof value==='string'&&Boolean(value.trim());
     const confidence=Number(field.confidence);
-    const confident=Number.isFinite(confidence)&&confidence>=0.95&&Boolean(String(field.evidence||'').trim());
+    const confident=Number.isFinite(confidence)&&confidence>=(aiConfidenceThresholds[key]??0.85)&&Boolean(String(field.evidence||'').trim());
     if(!present||!confident) {
       const confidenceText=Number.isFinite(confidence)?` Độ tin cậy ${Math.round(confidence*100)}%.`:'';
       add(key,'yellow',`${!present?'Chưa đọc được trường này.':'Kết quả đọc còn chưa chắc.'}${confidenceText} Hãy đối chiếu trực tiếp với hóa đơn.`);
@@ -119,15 +120,15 @@ function buildReviewAnnotations(request,ai) {
     const field=source[key]||{};
     const value=field.value;
     const present=aiMoneyFields.has(key)?Number.isSafeInteger(value)&&value>0:typeof value==='string'&&Boolean(value.trim());
-    if(present&&(Number(field.confidence)<0.95||!String(field.evidence||'').trim())) {
+    if(present&&(Number(field.confidence)<(aiConfidenceThresholds[key]??0.85)||!String(field.evidence||'').trim())) {
       const confidence=Number(field.confidence);
       add(key,'yellow',`Trường thông tin này đọc chưa chắc${Number.isFinite(confidence)?` (độ tin cậy ${Math.round(confidence*100)}%)`:''}. Hãy kiểm tra trực tiếp trên hóa đơn.`);
     }
   }
-  const amountFields=['amountBeforeTax','vatAmount','totalAmount'].map(key=>source[key]||{});
-  const amounts=amountFields.map(field=>field.value);
+  const amountFields=['amountBeforeTax','vatAmount','totalAmount'].map(key=>({key,field:source[key]||{}}));
+  const amounts=amountFields.map(({field})=>field.value);
   if(amounts.every(Number.isSafeInteger)&&amounts[0]+amounts[1]!==amounts[2]) {
-    const confident=amountFields.every(field=>Number(field.confidence)>=0.95&&String(field.evidence||'').trim());
+    const confident=amountFields.every(({key,field})=>Number(field.confidence)>=(aiConfidenceThresholds[key]??0.85)&&String(field.evidence||'').trim());
     const note=confident?'Tiền trước thuế cộng VAT không khớp tổng thanh toán.':'Phép tính tiền chưa thể xác nhận do một hoặc nhiều trường đọc chưa chắc.';
     for(const key of ['amountBeforeTax','vatAmount','totalAmount']) add(key,confident?'red':'yellow',note);
   }

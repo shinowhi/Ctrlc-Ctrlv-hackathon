@@ -60,6 +60,7 @@ const asInvoiceBytes = async (path, maxBytes, sizeMessage) => {
 const outputText = result => result.output?.flatMap(item => item.content || []).map(part => part.text || '').join('') || '';
 const fields = ['buyerName', 'vendor', 'taxCode', 'invoiceNumber', 'invoiceDate', 'amountBeforeTax', 'vatAmount', 'totalAmount', 'amountDue'];
 const labels = { buyerName: 'tên người mua/đơn vị nhận hóa đơn', vendor: 'nhà cung cấp', invoiceNumber: 'số hóa đơn', invoiceDate: 'ngày hóa đơn', amountBeforeTax: 'tiền trước thuế', vatAmount: 'tiền VAT', totalAmount: 'tổng thanh toán' };
+const confidenceThresholds = { buyerName: 0.85, vendor: 0.85, invoiceNumber: 0.94, invoiceDate: 0.85, amountBeforeTax: 0.94, vatAmount: 0.94, totalAmount: 0.94 };
 const normalized = value => String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('vi');
 
 function assess(request, analysis) {
@@ -70,7 +71,8 @@ function assess(request, analysis) {
     const field = data[key] || {};
     const valueMissing = typeof field.value === 'string' ? !field.value.trim() : !Number.isSafeInteger(field.value) || field.value < 0;
     if (valueMissing || (key !== 'vatAmount' && field.value === 0)) issues.push(`Không đọc rõ ${labels[key]}.`);
-    if (!Number.isFinite(field.confidence) || field.confidence < 0.95) issues.push(`Độ tin cậy khi đọc ${labels[key]} dưới 95%.`);
+    const threshold = confidenceThresholds[key];
+    if (!Number.isFinite(field.confidence) || field.confidence < threshold) issues.push(`Độ tin cậy khi đọc ${labels[key]} dưới ${Math.round(threshold * 100)}%.`);
     if (!String(field.evidence || '').trim()) issues.push(`Thiếu bằng chứng đọc ${labels[key]}.`);
   }
   const date = data.invoiceDate?.value || '';
