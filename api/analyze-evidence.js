@@ -60,8 +60,12 @@ const asInvoiceBytes = async (path, maxBytes, sizeMessage) => {
 const outputText = result => result.output?.flatMap(item => item.content || []).map(part => part.text || '').join('') || '';
 const fields = ['buyerName', 'vendor', 'taxCode', 'invoiceNumber', 'invoiceDate', 'amountBeforeTax', 'vatAmount', 'totalAmount', 'amountDue'];
 const labels = { buyerName: 'tên người mua/đơn vị nhận hóa đơn', vendor: 'nhà cung cấp', invoiceNumber: 'số hóa đơn', invoiceDate: 'ngày hóa đơn', amountBeforeTax: 'tiền trước thuế', vatAmount: 'tiền VAT', totalAmount: 'tổng thanh toán' };
-const confidenceThresholds = { buyerName: 0.85, vendor: 0.85, invoiceNumber: 0.94, invoiceDate: 0.85, amountBeforeTax: 0.94, vatAmount: 0.94, totalAmount: 0.94 };
+const confidenceThresholds = { buyerName: 0.85, vendor: 0.85, invoiceNumber: 0.90, invoiceDate: 0.85, amountBeforeTax: 0.90, vatAmount: 0.90, totalAmount: 0.90 };
 const normalized = value => String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('vi');
+const normalizedInvoiceNumber = value => {
+  const text = normalized(value);
+  return /^\d+$/.test(text) ? text.replace(/^0+(?=\d)/, '') : text;
+};
 
 function assess(request, analysis) {
   const data = analysis.fields || {};
@@ -82,7 +86,7 @@ function assess(request, analysis) {
     && data.amountBeforeTax.value + data.vatAmount.value !== data.totalAmount.value) issues.push('Tiền trước thuế cộng VAT không khớp tổng thanh toán.');
   if (normalized(data.vendor?.value) !== normalized(request.payload.vendor)) issues.push('Nhà cung cấp trên hóa đơn không khớp form.');
   if (normalized(data.buyerName?.value) !== normalized(request.payload.requester)) issues.push('Tên người mua trên hóa đơn không khớp họ tên/phòng ban trên form.');
-  if (normalized(data.invoiceNumber?.value) !== normalized(request.payload.invoiceNumber)) issues.push('Số hóa đơn trên PDF không khớp form.');
+  if (normalizedInvoiceNumber(data.invoiceNumber?.value) !== normalizedInvoiceNumber(request.payload.invoiceNumber)) issues.push('Số hóa đơn trên PDF không khớp form.');
   if ((data.invoiceDate?.value || '') !== (request.payload.invoiceDate || '')) issues.push('Ngày hóa đơn trên PDF không khớp form.');
   if (data.totalAmount?.value !== Number(request.amount)) issues.push('Tổng thanh toán đã gồm VAT không khớp số tiền trên form.');
 
@@ -202,11 +206,16 @@ const normalizeAzureInvoice = result => {
   const fields = analyzeResult?.documents?.[0]?.fields;
   const pages = analyzeResult?.pages;
   if (!fields || typeof fields !== 'object') throw new Error('Azure không trích xuất được dữ liệu hóa đơn.');
+  const invoiceNumber = azureField(fields, ['InvoiceId'], 'string', pages);
+  const invoiceNumberEvidence = invoiceNumber.evidence.trim();
+  if (/^0+\d+$/.test(invoiceNumberEvidence) && /^\d+$/.test(invoiceNumber.value)) {
+    invoiceNumber.value = invoiceNumberEvidence;
+  }
   return { fields: {
     buyerName: azureField(fields, ['CustomerName', 'CustomerAddressRecipient', 'BillingAddressRecipient'], 'string', pages),
     vendor: azureField(fields, ['VendorName'], 'string', pages),
     taxCode: azureField(fields, ['VendorTaxId'], 'string', pages),
-    invoiceNumber: azureField(fields, ['InvoiceId'], 'string', pages),
+    invoiceNumber,
     invoiceDate: azureField(fields, ['InvoiceDate'], 'date', pages),
     amountBeforeTax: azureField(fields, ['SubTotal'], 'money', pages),
     vatAmount: azureField(fields, ['TotalTax'], 'money', pages),
@@ -232,7 +241,7 @@ const analyzeWithAzure = async invoiceBytes => {
   const apiVersion = '2024-11-30';
   // Microsoft REST v4.0 uses base64Source, then Operation-Location polling at >=1 second intervals.
   // Source: https://learn.microsoft.com/rest/api/aiservices/document-models/analyze-document?view=rest-aiservices-v4.0+(2024-11-30)
-  const analyzeUrl = `${base}/documentintelligence/documentModels/prebuilt-invoice:analyze?api-version=${apiVersion}`;
+  const analyzeUrl = `${base}/documentintelligence/documentModels/prebuilt-invoice:analyze?api-version=${apiVersion}&locale=vi`;
   const headers = { 'Content-Type': 'application/json', 'Ocp-Apim-Subscription-Key': process.env.AZURE_DOCUMENT_INTELLIGENCE_KEY };
   let accepted;
   try {
