@@ -178,24 +178,99 @@ const toIsoDate = (year, month, day) => {
   return `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 };
 
-const parseInvoiceDate = value => {
-  const text = String(value || '').trim().normalize('NFC').replace(/\s+/g, ' ');
-  if (!text) return '';
-  const dates = [];
-  const addDate = date => { if (date) dates.push(date); };
+const invoiceDateCandidates = value => {
+  const text = String(value || '');
+  if (!text.trim()) return [];
+  const candidates = [];
+  const addDate = (date, match, start) => {
+    if (date) candidates.push({ value: date, start, end: match.index + match[0].length });
+  };
   for (const match of text.matchAll(/(?:^|\D)(\d{4})[./-](\d{1,2})[./-](\d{1,2})(?=\D|$)/g)) {
-    addDate(toIsoDate(match[1], match[2], match[3]));
+    const start = match.index + match[0].indexOf(match[1]);
+    addDate(toIsoDate(match[1], match[2], match[3]), match, start);
   }
   for (const match of text.matchAll(/(?:^|\D)(\d{1,2})[./-](\d{1,2})[./-](\d{4})(?=\D|$)/g)) {
     const first = Number(match[1]), second = Number(match[2]);
-    if (second > 12 && first <= 12) addDate(toIsoDate(match[3], first, second));
-    else addDate(toIsoDate(match[3], second, first));
+    const date = second > 12 && first <= 12
+      ? toIsoDate(match[3], first, second)
+      : toIsoDate(match[3], second, first);
+    const start = match.index + match[0].indexOf(match[1]);
+    addDate(date, match, start);
   }
-  for (const match of text.matchAll(/(?:ngày\s*)?(\d{1,2})\s+tháng\s+(\d{1,2})\s+năm\s+(\d{4})/giu)) {
-    addDate(toIsoDate(match[3], match[2], match[1]));
+  for (const match of text.matchAll(/(\d{1,2})\s+th(?:á|a)ng\s+(\d{1,2})\s+n(?:ă|a)m\s+(\d{4})/giu)) {
+    addDate(toIsoDate(match[3], match[2], match[1]), match, match.index);
   }
-  const uniqueDates = [...new Set(dates)];
-  return uniqueDates.length === 1 ? uniqueDates[0] : '';
+  return candidates;
+};
+
+const parseInvoiceDate = value => {
+  const dates = [...new Set(invoiceDateCandidates(value).map(candidate => candidate.value))];
+  return dates.length === 1 ? dates[0] : '';
+};
+
+const normalizeDateText = value => String(value || '').normalize('NFD')
+  .replace(/\p{Diacritic}/gu, '').replace(/[đĐ]/g, 'd').toLocaleLowerCase('vi').replace(/\s+/g, ' ').trim();
+const hasInvoiceDateLabel = value => /(?:^|\b)(?:ngay\s*(?:(?:lap|xuat)\s+)?hoa\s+don|invoice\s+date|date\s+of\s+(?:the\s+)?invoice|issue\s+date|date\s+issued?)(?:\b|:)/u.test(normalizeDateText(value));
+const hasLeadingDate = value => /^ngay\s*[:\-]?\s*\d/u.test(normalizeDateText(value));
+
+const layoutWordConfidence = (page, line, candidate) => {
+  const lineStart = Number(line?.spans?.[0]?.offset);
+  if (!Number.isInteger(lineStart) || !Array.isArray(page?.words)) return 0;
+  const start = lineStart + candidate.start;
+  const end = lineStart + candidate.end;
+  const confidences = page.words.flatMap(word => {
+    const spans = [word?.span, ...(Array.isArray(word?.spans) ? word.spans : [])].filter(Boolean);
+    const overlapsDate = spans.some(span => {
+      const wordStart = Number(span.offset), wordEnd = wordStart + Number(span.length);
+      return Number.isInteger(wordStart) && Number.isFinite(wordEnd) && wordStart < end && wordEnd > start;
+    });
+    return overlapsDate && Number.isFinite(word.confidence) ? [word.confidence] : [];
+  });
+  return confidences.length ? Math.min(...confidences) : 0;
+};
+
+const normalizeAzureInvoiceDateFromLayout = result => {
+  const analyzeResult = result?.analyzeResult;
+  const pages = Array.isArray(analyzeResult?.pages) ? analyzeResult.pages : [];
+  const candidates = [];
+  const addLineCandidates = (page, line, evidence = line?.content, allowUnlabeledDate = false) => {
+    const content = String(line?.content || '');
+    const matches = invoiceDateCandidates(content);
+    const anchored = hasInvoiceDateLabel(content) || hasLeadingDate(content);
+    if ((!anchored && !allowUnlabeledDate) || !matches.length) return false;
+    for (const match of matches) {
+      candidates.push({
+        value: match.value,
+        confidence: layoutWordConfidence(page, line, match),
+        evidence: String(evidence || content).slice(0, 240),
+        regions: azureRegions({ boundingRegions: [{ pageNumber: page?.pageNumber, polygon: line?.polygon }] }, pages)
+      });
+    }
+    return true;
+  };
+
+  for (const page of pages) {
+    const lines = Array.isArray(page?.lines) ? page.lines : [];
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
+      if (addLineCandidates(page, line)) continue;
+      if (hasInvoiceDateLabel(line?.content) && lines[index + 1]) {
+        addLineCandidates(page, lines[index + 1], `${line.content} ${lines[index + 1].content || ''}`, true);
+      }
+    }
+  }
+
+  if (!pages.some(page => Array.isArray(page?.lines) && page.lines.length) && typeof analyzeResult?.content === 'string') {
+    for (const content of analyzeResult.content.split(/\r?\n/)) addLineCandidates(null, { content });
+  }
+
+  const byDate = new Map();
+  for (const candidate of candidates) {
+    const existing = byDate.get(candidate.value);
+    if (!existing || candidate.confidence > existing.confidence) byDate.set(candidate.value, candidate);
+  }
+  if (byDate.size !== 1) return { value: '', confidence: 0, evidence: '', regions: [] };
+  return [...byDate.values()][0];
 };
 
 const azureField = (fields, names, kind, pages) => {
@@ -261,24 +336,19 @@ const retryDelay = headers => {
 };
 const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
-const analyzeWithAzure = async invoiceBytes => {
-  let endpoint;
-  try { endpoint = new URL(process.env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT); }
-  catch { throw new Error('Azure Document Intelligence endpoint chưa hợp lệ.'); }
-  if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash || !['', '/'].includes(endpoint.pathname)) {
-    throw new Error('Azure Document Intelligence endpoint chưa hợp lệ.');
-  }
-  const base = endpoint.origin;
-  const apiVersion = '2024-11-30';
-  // Microsoft REST v4.0 uses base64Source, then Operation-Location polling at >=1 second intervals.
-  // Source: https://learn.microsoft.com/rest/api/aiservices/document-models/analyze-document?view=rest-aiservices-v4.0+(2024-11-30)
-  const analyzeUrl = `${base}/documentintelligence/documentModels/prebuilt-invoice:analyze?api-version=${apiVersion}&locale=vi`;
+const analyzeAzureModel = async (base, modelId, invoiceBytes, apiVersion, timeoutMs) => {
+  const deadline = Date.now() + timeoutMs;
+  const requestTimeout = () => Math.max(1, Math.min(10000, deadline - Date.now()));
+  const analyzeUrl = new URL(`${base}/documentintelligence/documentModels/${modelId}:analyze`);
+  analyzeUrl.searchParams.set('api-version', apiVersion);
+  analyzeUrl.searchParams.set('locale', 'vi');
+  if (modelId === 'prebuilt-layout') analyzeUrl.searchParams.set('stringIndexType', 'utf16CodeUnit');
   const headers = { 'Content-Type': 'application/json', 'Ocp-Apim-Subscription-Key': process.env.AZURE_DOCUMENT_INTELLIGENCE_KEY };
   let accepted;
   try {
     accepted = await fetch(analyzeUrl, {
       method: 'POST', headers, body: JSON.stringify({ base64Source: invoiceBytes.toString('base64') }),
-      signal: AbortSignal.timeout(10000), redirect: 'error'
+      signal: AbortSignal.timeout(requestTimeout()), redirect: 'error'
     });
   } catch { throw new Error('Không kết nối được Azure Document Intelligence.'); }
   if (accepted.status !== 202) throw new Error('Azure Document Intelligence từ chối phân tích hóa đơn.');
@@ -287,29 +357,58 @@ const analyzeWithAzure = async invoiceBytes => {
   let operation;
   try { operation = new URL(location); }
   catch { throw new Error('Azure trả về thông tin xử lý không hợp lệ.'); }
-  const operationPrefix = '/documentintelligence/documentModels/prebuilt-invoice/analyzeResults/';
+  const operationPrefix = `/documentintelligence/documentModels/${modelId}/analyzeResults/`;
   if (operation.origin !== base || operation.username || operation.password || !operation.pathname.startsWith(operationPrefix) || operation.searchParams.get('api-version') !== apiVersion) {
     throw new Error('Azure trả về thông tin xử lý không hợp lệ.');
   }
 
-  const deadline = Date.now() + 45000;
   let delay = retryDelay(accepted.headers);
-  while (Date.now() + delay < deadline) {
-    await wait(delay);
+  while (Date.now() < deadline) {
+    await wait(Math.min(delay, Math.max(0, deadline - Date.now())));
+    if (Date.now() >= deadline) break;
     let response;
     try {
-      response = await fetch(operation, { headers: { 'Ocp-Apim-Subscription-Key': process.env.AZURE_DOCUMENT_INTELLIGENCE_KEY }, signal: AbortSignal.timeout(10000), redirect: 'error' });
+      response = await fetch(operation, { headers: { 'Ocp-Apim-Subscription-Key': process.env.AZURE_DOCUMENT_INTELLIGENCE_KEY }, signal: AbortSignal.timeout(requestTimeout()), redirect: 'error' });
     } catch { throw new Error('Không lấy được kết quả từ Azure Document Intelligence.'); }
     if (!response.ok) throw new Error('Không lấy được kết quả từ Azure Document Intelligence.');
     let result;
     try { result = await response.json(); }
     catch { throw new Error('Azure trả về dữ liệu hóa đơn không hợp lệ.'); }
-    if (result.status === 'succeeded') return normalizeAzureInvoice(result);
+    if (result.status === 'succeeded') return result;
     if (result.status === 'failed') throw new Error('Azure không phân tích được hóa đơn.');
     if (!['running', 'notStarted'].includes(result.status)) throw new Error('Azure trả về trạng thái phân tích không hợp lệ.');
     delay = retryDelay(response.headers);
   }
   throw Object.assign(new Error('Azure xử lý hóa đơn quá lâu; hãy thử lại sau.'), { status: 504 });
+};
+
+const analyzeWithAzure = async invoiceBytes => {
+  let endpoint;
+  try { endpoint = new URL(process.env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT); }
+  catch { throw new Error('Azure Document Intelligence endpoint chưa hợp lệ.'); }
+  if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash || !['', '/'].includes(endpoint.pathname)) {
+    throw new Error('Azure Document Intelligence endpoint chưa hợp lệ.');
+  }
+  const apiVersion = '2024-11-30';
+  // Microsoft REST v4.0: submit base64Source and poll Operation-Location; Layout returns page lines, words, spans, and confidence.
+  // Sources: https://learn.microsoft.com/en-us/rest/api/aiservices/document-models/analyze-document?view=rest-aiservices-v4.0+(2024-11-30)
+  // https://learn.microsoft.com/en-us/azure/ai-services/document-intelligence/concept/analyze-document-response?view=doc-intel-4.0.0
+  // Vietnamese OCR support: https://learn.microsoft.com/en-us/azure/ai-services/document-intelligence/language-support/ocr?view=doc-intel-4.0.0
+  const invoiceResult = await analyzeAzureModel(endpoint.origin, 'prebuilt-invoice', invoiceBytes, apiVersion, 35000);
+  const extraction = normalizeAzureInvoice(invoiceResult);
+  const invoiceDate = extraction.fields.invoiceDate;
+  if (!invoiceDate.value || invoiceDate.confidence < confidenceThresholds.invoiceDate || !invoiceDate.evidence.trim()) {
+    try {
+      const layoutResult = await analyzeAzureModel(endpoint.origin, 'prebuilt-layout', invoiceBytes, apiVersion, 12000);
+      const layoutDate = normalizeAzureInvoiceDateFromLayout(layoutResult);
+      if (layoutDate.value && (!invoiceDate.value || layoutDate.confidence > invoiceDate.confidence)) {
+        extraction.fields.invoiceDate = layoutDate;
+      }
+    } catch (error) {
+      console.warn('Azure Layout date fallback failed:', error.message);
+    }
+  }
+  return extraction;
 };
 
 module.exports = async (req, res) => {
