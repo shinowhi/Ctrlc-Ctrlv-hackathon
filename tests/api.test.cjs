@@ -12,6 +12,19 @@ test('Expired session refreshes once for concurrent reads',async()=>{
     await Promise.all([api.list(),api.list()]);assert.equal(refreshCount,1);assert.equal(reads,2);
   }finally{global.fetch=previous;}
 });
+test('Approval lists paginate beyond the first 200 rows for each financial role',async()=>{
+  const previous=global.fetch;const offsets=[];
+  global.fetch=async(url)=>{
+    const parsed=new URL(url,'https://test.supabase.co');offsets.push(parsed.searchParams.get('offset'));
+    const offset=Number(parsed.searchParams.get('offset'));
+    return new Response(JSON.stringify(Array.from({length:offset===0?200:1},(_,i)=>({id:String(offset+i)}))));
+  };
+  try{
+    const api=new Api({supabaseUrl:'https://test.supabase.co',supabaseAnonKey:'public'},memory());api.remember({access_token:'a',expires_at:Date.now()/1000+300});
+    assert.equal((await api.list('treasurer')).length,201);assert.deepEqual(offsets,['0','200']);
+    offsets.length=0;assert.equal((await api.list('cfo')).length,201);assert.deepEqual(offsets,['0','200']);
+  }finally{global.fetch=previous;}
+});
 test('Logout clears local tokens when network is unavailable',async()=>{
   const previous=global.fetch;global.fetch=async()=>{throw new Error('offline');};
   try{const api=new Api({},memory());api.remember({access_token:'a',expires_at:Date.now()/1000+300});await assert.rejects(api.logout());assert.equal(api.session,null);}finally{global.fetch=previous;}

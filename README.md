@@ -15,7 +15,7 @@ FinRef hỗ trợ số hóa bước tiếp nhận và rà soát đề nghị tha
 
 Bản production hiện đang chạy trên Vercel. Tích hợp Azure trong working tree cần được cấu hình biến môi trường và deploy riêng trước khi production sử dụng. MVP tập trung vào quy trình đề nghị thanh toán hóa đơn; phân hệ nhân sự chưa nằm trong phạm vi phiên bản này.
 
-Checkout hiện tại bổ sung luồng hạn mức quyền duyệt theo [chính sách FIN-APPROVAL-1](POLICY.md): hồ sơ gắn cờ được Quản lý Tài chính kiểm tra trước; hồ sơ trên 20 triệu hoặc làm tổng duyệt ngày vượt 100 triệu cần Giám đốc Tài chính cấp quyền. Hạn mức ngày được tính trên tổng hồ sơ đã duyệt theo giờ Bangkok; cảnh báo cho Quản lý Tài chính xuất hiện khi tổng vượt 80 triệu. Thay đổi này mới nằm trong mã nguồn cục bộ: cần chạy migration Supabase và deploy giao diện trước khi production áp dụng.
+Checkout hiện tại thực hiện hàng chờ và thẩm quyền theo [chính sách FIN-APPROVAL-2](POLICY.md): hóa đơn AI đánh giá đạt điều kiện được tự gom vào danh sách chưa duyệt; Quản lý duyệt riêng hoặc cả danh sách hóa đơn tối đa 20 triệu; Giám đốc có danh sách tương tự cho hóa đơn trên 20 triệu và các khoản được chuyển cấp. Hạn mức 100 triệu tính trên tổng hóa đơn toàn công ty đã duyệt trong ngày theo giờ Bangkok. Nếu yêu cầu duyệt cả danh sách làm vượt mức, toàn bộ đợt được đưa lên Giám đốc; Giám đốc ghi lý do khi duyệt. Những thay đổi này mới nằm trong mã nguồn cục bộ: cần chạy migration Supabase và deploy giao diện trước khi production áp dụng.
 
 ### Đã xây dựng
 
@@ -23,8 +23,8 @@ Checkout hiện tại bổ sung luồng hạn mức quyền duyệt theo [chính
 - Luồng tạo hồ sơ thanh toán, nhập tổng tiền đã gồm VAT và gửi hóa đơn PDF.
 - Tích hợp luồng đọc hóa đơn bằng Azure Document Intelligence `prebuilt-invoice` (có thể chọn OpenAI Responses API) và lưu trữ/xử lý hồ sơ qua Supabase Auth, Storage và RPC.
 - Đối chiếu tên người mua, nhà cung cấp, số/ngày hóa đơn và tổng thanh toán với form; kiểm tra tiền trước thuế + VAT. Số tiền còn phải thanh toán chỉ hiển thị thông tin.
-- Phân luồng hồ sơ: cờ nghi vấn chuyển Quản lý Tài chính kiểm tra trước; Giám đốc Tài chính cấp quyền cho hồ sơ trên 20 triệu hoặc tổng duyệt trong ngày vượt 100 triệu.
-- Quyết định duyệt cuối do người có thẩm quyền thực hiện; AI không tự phê duyệt và hệ thống không chuyển tiền.
+- Hàng chờ động theo trạng thái chưa duyệt, không chia đợt theo ngày nộp: Quản lý xử lý hóa đơn đủ điều kiện đến 20 triệu; Giám đốc xử lý hóa đơn trên 20 triệu và hồ sơ vượt ngân sách ngày được chuyển cấp.
+- AI đánh giá tính đủ điều kiện của hóa đơn; người có thẩm quyền quyết định cuối. `APPROVED` là chấp thuận khoản phải trả theo quy ước hackathon; ứng dụng không chuyển tiền.
 - Demo offline và các bộ testcase/kiểm tra luật để hỗ trợ trình bày MVP.
 
 ### Cần tiếp tục kiểm thử và hoàn thiện
@@ -36,7 +36,7 @@ Checkout hiện tại bổ sung luồng hạn mức quyền duyệt theo [chính
 
 ## Quy trình MVP
 
-Người dùng gửi đề nghị và minh chứng → hệ thống trích xuất, đối chiếu các trường hóa đơn và tổng tiền → hồ sơ thiếu hoặc mâu thuẫn được yêu cầu bổ sung; hồ sơ vượt ngưỡng được chuyển cấp → người có thẩm quyền xem xét và quyết định cuối.
+Người dùng gửi đề nghị và minh chứng → hệ thống trích xuất và đánh giá dữ kiện hóa đơn → hóa đơn đủ điều kiện được tự đưa vào hàng chờ theo thẩm quyền và hạn mức → người có thẩm quyền duyệt riêng hoặc duyệt tất cả danh sách; hồ sơ thiếu hoặc mâu thuẫn được Quản lý Tài chính xử lý trước.
 
 Quản lý mở hồ sơ để xem hóa đơn PDF ngay trong trang; đơn đề nghị PDF không còn là file bắt buộc.
 
