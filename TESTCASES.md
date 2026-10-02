@@ -3,9 +3,9 @@
 ## Phạm vi
 
 - Hóa đơn đầu vào: PDF có chữ chọn/copy hoặc PDF scan dạng ảnh. Chỉ hóa đơn là file đính kèm bắt buộc; tối đa 10 MB.
-- Tổng thanh toán trên form phải là tổng đã gồm VAT. Ngưỡng chuyển cấp là **lớn hơn 20.000.000 VND**; đúng 20 triệu vẫn ở quản lý tài chính.
+- Tổng thanh toán trên form phải là tổng đã gồm VAT. Quản lý Tài chính kiểm tra mọi hồ sơ trước. Hồ sơ **lớn hơn 20.000.000 VND** hoặc làm tổng duyệt trong ngày vượt **100.000.000 VND** cần Giám đốc Tài chính cấp quyền; đúng ngưỡng vẫn trong hạn mức.
 - AI trích xuất dữ kiện, tính toán và gợi ý tuyến. Chỉ người có quyền mới tạo trạng thái `APPROVED`.
-- Ngân sách/chính sách chưa được đối chiếu; chưa thể phân loại U2. CLEAR chỉ xác nhận các kiểm tra hiện có.
+- Hạn mức quyền duyệt không đồng nghĩa với ngân sách thật: ngân sách theo mã và chính sách chi tiêu vẫn chưa được đối chiếu. CLEAR chỉ xác nhận các kiểm tra hiện có.
 - AI không xác nhận tính xác thực của hóa đơn, nguồn phát hành hoặc chữ ký số.
 
 ## Chạy kiểm tra cục bộ
@@ -22,11 +22,15 @@ node --test tests/*.test.cjs
 | ID | Tiền điều kiện và thao tác | Kết quả mong đợi |
 |---|---|---|
 | SC-01 | Mở `demo.html`, chọn ba role và chạy Verify | Demo ghi rõ đang mô phỏng; không báo AI đã đọc file hoặc đã kiểm tra policy/budget. |
-| SC-02 | Đăng nhập ba tài khoản mẫu, xem danh sách và quyền đọc file | Applicant chỉ thấy hồ sơ của mình; treasurer xử lý hàng đợi tài chính; CFO chỉ thấy hồ sơ đã chuyển cấp. |
-| SC-03 | Gửi hồ sơ với PDF đọc rõ, các trường và tổng gồm VAT khớp; chạy OpenAI analysis | Hồ sơ vào `READY_FOR_APPROVAL`; chưa phải `APPROVED`. Quản lý tài chính bấm duyệt để chuyển thành `APPROVED`; nhật ký lưu người duyệt. |
-| SC-04 | Gửi hồ sơ có tổng thanh toán gồm VAT là 20.000.001 | Hồ sơ vào `CFO_REVIEW`; chỉ người đứng đầu nhánh tài chính có thể bấm duyệt cuối. |
-| SC-05 | Dùng PDF mờ, thiếu trường, sai số/ngày hoặc tổng VAT không khớp | Hồ sơ vào `NEEDS_INFO` với câu hỏi/lý do cụ thể; người nộp bổ sung và gửi lại. |
+| SC-02 | Đăng nhập ba tài khoản mẫu, xem danh sách và quyền đọc file | Applicant chỉ thấy hồ sơ của mình; treasurer xử lý hàng đợi tài chính; CFO có thể xem mọi hồ sơ trên 20 triệu và các hồ sơ đã chuyển cấp. |
+| SC-03 | Gửi hồ sơ với PDF đọc rõ, các trường và tổng gồm VAT khớp; chạy OpenAI analysis | Hồ sơ vào `READY_FOR_APPROVAL`; chưa phải `APPROVED`. Quản lý tài chính kiểm tra và duyệt cuối nếu còn trong cả hai hạn mức; nếu vượt thì chuyển `CFO_REVIEW`. |
+| SC-04 | Gửi hồ sơ có tổng thanh toán gồm VAT là 20.000.001 | Hồ sơ chờ Quản lý Tài chính trước. Khi người này xác nhận đã kiểm tra, hồ sơ vào `CFO_REVIEW`; Giám đốc ghi lý do để cấp quyền và duyệt cuối. |
+| SC-05 | Dùng PDF mờ, thiếu trường, sai số/ngày hoặc tổng VAT không khớp | Hồ sơ vào `TREASURER_REVIEW`; Quản lý Tài chính kiểm tra trước, có thể yêu cầu bổ sung, từ chối, hoặc duyệt/chuyển Giám đốc theo hạn mức. |
 | SC-06 | Tắt cấu hình AI và gửi hồ sơ | Hồ sơ vẫn được lưu ở `TREASURER_REVIEW`; quản lý tài chính có thể kiểm tra thủ công các dữ kiện hóa đơn trước khi duyệt/chuyển cấp. |
+| SC-07 | Tổng đã duyệt hôm nay là 80.000.000 ₫ rồi duyệt thêm 1 ₫ | Tổng đã vượt 80 triệu; Quản lý Tài chính thấy cảnh báo và số dư còn lại 19.999.999 ₫. |
+| SC-08 | Tổng đã duyệt hôm nay là 90 triệu; Quản lý Tài chính duyệt thêm hồ sơ 10 triệu | Tổng đúng 100 triệu; Quản lý Tài chính có thể duyệt cuối. |
+| SC-09 | Tổng đã duyệt hôm nay là 90.000.001 ₫; Quản lý Tài chính duyệt thêm hồ sơ 10 triệu | Dự kiến vượt 100 triệu; chuyển `CFO_REVIEW`. Giám đốc cấp quyền với lý do; khoản này vẫn cộng vào tổng ngày. |
+| SC-10 | Hai hồ sơ được duyệt gần như đồng thời khi tổng ngày sát 100 triệu | RPC tuần tự hóa quyết định; không thể có hai hồ sơ cùng dùng một số dư còn lại cũ. |
 
 SC-03–SC-05 cần PDF mẫu được phép sử dụng, OpenAI API và Supabase thử nghiệm. Kết quả từng ca cần được ghi lại riêng; bộ luật cục bộ không thay thế các ca này.
 
@@ -41,7 +45,7 @@ Các ca tương ứng với `FinRefRules.verify()`. Hàm nhận tổng thanh to�
 | U1 | Thiếu/không khớp tên người mua, nhà cung cấp, số hóa đơn, ngày hóa đơn hoặc tổng form; phép tính tiền trước thuế + VAT sai; confidence dưới 95%; không phải PDF; số tiền không hợp lệ. |
 | Chưa hỗ trợ | U2 không thể chạy thành kết luận cho đến khi có dữ liệu policy/ngân sách. |
 
-Verify trong UI là preview luật; nó không gửi PDF đến AI và không ghi quyết định vào database.
+Verify trong UI là preview luật; nó không gửi PDF đến AI, không mô phỏng tổng đã duyệt trong ngày và không ghi quyết định vào database.
 
 ## Acceptance với Supabase thật
 

@@ -8,8 +8,8 @@ const normalizedInvoiceNumber = value => {
   const text=normalized(value);
   return /^\d+$/.test(text)?text.replace(/^0+(?=\d)/,''):text;
 };
-const roles={applicant:'Người nộp đơn',treasurer:'Quản lý tài chính',cfo:'Người đứng đầu nhánh tài chính'};
-const statuses={TREASURER_REVIEW:'Chờ quản lý tài chính kiểm tra',READY_FOR_APPROVAL:'Sẵn sàng duyệt',CFO_REVIEW:'Chờ người đứng đầu nhánh tài chính',NEEDS_INFO:'Cần bổ sung',APPROVED:'Đã duyệt',REJECTED:'Từ chối'};
+const roles={applicant:'Người nộp đơn',treasurer:'Quản lý tài chính',cfo:'Giám đốc Tài chính'};
+const statuses={TREASURER_REVIEW:'Chờ quản lý tài chính kiểm tra',READY_FOR_APPROVAL:'Sẵn sàng duyệt',CFO_REVIEW:'Chờ Giám đốc Tài chính cấp quyền',NEEDS_INFO:'Cần bổ sung',APPROVED:'Đã duyệt',REJECTED:'Từ chối'};
 const checkLabels={invoice:'Đã xem hóa đơn PDF',fields_match:'Nhà cung cấp, số và ngày hóa đơn khớp form',total_includes_vat:'Tổng thanh toán trên form đã gồm VAT và khớp hóa đơn'};
 const fields=['requesterType','requester','department','budgetCode','purpose','vendor','invoiceNumber','invoiceDate','amount'];
 const aiFieldLabels={buyerName:'Người mua / đơn vị nhận hóa đơn',vendor:'Nhà cung cấp',taxCode:'Mã số thuế NCC',invoiceNumber:'Số hóa đơn',invoiceDate:'Ngày hóa đơn',amountBeforeTax:'Tiền trước thuế',vatAmount:'VAT',totalAmount:'Tổng thanh toán gồm VAT',amountDue:'Còn phải thanh toán (thông tin)'};
@@ -22,6 +22,7 @@ function showLogin() {
   epoch++; clearInterval(timer); clearPdfViewer(); profile=null; rows=[]; selected=null; editing=null;
   $('appShell').classList.add('hidden'); $('loginScreen').classList.remove('hidden');
   $('queueBody').innerHTML=''; $('decisionResult').innerHTML=''; $('auditList').innerHTML='';
+  $('dailyLimitNotice').classList.add('hidden'); $('dailyLimitNotice').textContent='';
   $('paymentForm').reset(); document.body.className='';
 }
 function resetForm() {
@@ -34,8 +35,8 @@ async function enter(p) {
   profile=p; epoch++; $('loginScreen').classList.add('hidden'); $('appShell').classList.remove('hidden');
   document.body.className='online role-' + p.role;
   $('profileName').textContent=p.display_name; $('profileRole').textContent=roles[p.role]; $('roleLabel').textContent=roles[p.role];
-  $('pageTitle').textContent={applicant:'Đề nghị của bạn',treasurer:'Không gian quản lý tài chính',cfo:'Phê duyệt của người đứng đầu nhánh tài chính'}[p.role];
-  $('queueTitle').textContent=p.role==='applicant'?'Hồ sơ của tôi':'Hồ sơ được phép xử lý';
+  $('pageTitle').textContent={applicant:'Đề nghị của bạn',treasurer:'Không gian quản lý tài chính',cfo:'Duyệt cấp quyền · Giám đốc Tài chính'}[p.role];
+  $('queueTitle').textContent=p.role==='applicant'?'Hồ sơ của tôi':p.role==='cfo'?'Hồ sơ trên 20 triệu và hồ sơ chuyển cấp':'Hồ sơ được phép xử lý';
   $('request-card').classList.toggle('hidden',p.role!=='applicant'); $('newRequest').classList.toggle('hidden',p.role!=='applicant');
   $('statusFilter').value=''; resetForm(); await refresh();
   clearInterval(timer); timer=setInterval(()=>{if(!document.hidden) refresh().catch(()=>{});},10000);
@@ -44,14 +45,38 @@ async function refresh() {
   if(!profile||loading||busy) return;
   loading=true; const run=epoch;
   try {
-    const data=await api.list(); if(run!==epoch) return;
-    rows=data; renderRows(); $('syncStatus').textContent='Cập nhật: '+new Date().toLocaleTimeString('vi-VN')+' · tự làm mới mỗi 10 giây · 200 hồ sơ mới nhất';
+    const data=await api.list(profile.role); if(run!==epoch) return;
+    rows=data; renderRows(); $('syncStatus').textContent=profile.role==='cfo'
+      ? 'Cập nhật: '+new Date().toLocaleTimeString('vi-VN')+' · tự làm mới mỗi 10 giây · tất cả hồ sơ trên 20 triệu và hồ sơ chuyển cấp'
+      : 'Cập nhật: '+new Date().toLocaleTimeString('vi-VN')+' · tự làm mới mỗi 10 giây · 200 hồ sơ mới nhất';
+    await refreshDailyApprovalNotice(run); if(run!==epoch) return;
     if(selected) {
       const latest=rows.find(r=>r.id===selected.id);
       if(!latest) {selected=null; $('decisionResult').textContent='Hồ sơ không còn trong danh sách.'; $('auditList').textContent='';}
       else if(latest.version!==selected.version) { await openRequest(latest.id); notify('Hồ sơ vừa được cập nhật. Hãy xem phiên bản mới trước khi xử lý.'); }
     }
   } catch(e) {if(run===epoch) {notify('Không đồng bộ được: '+e.message,true); $('syncStatus').textContent='Mất kết nối — dữ liệu đang hiển thị có thể đã cũ.'; if(!api.session) showLogin();}} finally {loading=false;}
+}
+async function refreshDailyApprovalNotice(run=epoch) {
+  const notice=$('dailyLimitNotice');
+  if(profile?.role!=='treasurer') {notice.classList.add('hidden');notice.textContent='';return;}
+  try {
+    const result=await api.dailyApprovalSummary();
+    if(run!==epoch||profile?.role!=='treasurer') return;
+    const summary=Array.isArray(result)?result[0]:result;
+    const total=Number(summary?.approved_total), limit=Number(summary?.daily_limit), warning=Number(summary?.warning_threshold), remaining=Number(summary?.remaining);
+    if(!Number.isSafeInteger(total)||!Number.isSafeInteger(limit)||!Number.isSafeInteger(warning)||!Number.isSafeInteger(remaining)) throw new Error('Số liệu hạn mức không hợp lệ.');
+    if(total<=warning) {notice.classList.add('hidden');notice.textContent='';return;}
+    const over=Math.max(0,total-limit);
+    notice.classList.remove('hidden','error');
+    notice.textContent=over>0
+      ? `Hạn mức duyệt hôm nay (giờ Bangkok): đã duyệt ${money(total)} trên ${money(limit)}, vượt ${money(over)} theo quyền Giám đốc; số dư còn lại là 0 ₫.`
+      : `Hạn mức duyệt hôm nay (giờ Bangkok): đã duyệt ${money(total)} trên ${money(limit)}, còn ${money(remaining)}. Hồ sơ khiến tổng ngày vượt 100.000.000 ₫ cần Giám đốc cấp quyền.`;
+  } catch(error) {
+    if(run!==epoch||profile?.role!=='treasurer') return;
+    notice.classList.remove('hidden');notice.classList.add('error');
+    notice.textContent='Không tải được số dư hạn mức ngày. Hãy làm mới trước khi duyệt hồ sơ.';
+  }
 }
 function renderRows() {
   const filtered=rows.filter(r=>!$('statusFilter').value||r.status===$('statusFilter').value);
@@ -276,8 +301,13 @@ async function openRequest(id) {
   const annotations=buildReviewAnnotations(r,ai);
   const metadata={ 'Người đề nghị':r.payload.requester,'Bộ phận':r.payload.department,'Mục đích':r.payload.purpose,'Nhà cung cấp':r.payload.vendor,'Số hóa đơn':r.payload.invoiceNumber,'Ngày hóa đơn':r.payload.invoiceDate,'Mã ngân sách':r.payload.budgetCode };
   const reviewLayout=isReviewer?`<div class="reviewer-layout"><section class="submitted-form-panel"><div class="review-pane-heading"><span class="eyebrow">BÊN TRÁI · FORM NGƯỜI NỘP</span><h3>Thông tin đã gửi</h3><p class="muted">Các giá trị giữ nguyên như lúc nộp hồ sơ.</p></div><div class="review-legend"><span class="legend-yellow"><i></i>Vàng · AI chưa đọc chắc</span><span class="legend-red"><i></i>Đỏ · sai lệch đã rõ</span><small>Trường khớp và đủ rõ không đánh dấu.</small></div>${renderSubmittedForm(r,annotations)}</section><section class="invoice-review-panel"><div class="review-pane-heading"><span class="eyebrow">BÊN PHẢI · MINH CHỨNG</span><h3>Hóa đơn PDF</h3><p class="muted">Các khung màu chỉ vị trí cần kiểm tra trên hóa đơn.</p></div><div id="reviewPdfToolbar" class="pdf-toolbar hidden"><button id="reviewPdfPrevious" type="button" aria-label="Trang trước">‹</button><span id="reviewPdfPageLabel">Trang 1</span><button id="reviewPdfNext" type="button" aria-label="Trang sau">›</button><span class="pdf-toolbar-spacer"></span><button id="reviewPdfZoomOut" type="button" aria-label="Thu nhỏ">−</button><button id="reviewPdfZoomIn" type="button" aria-label="Phóng to">＋</button></div><p id="reviewPdfStatus" class="muted">Đang mở hóa đơn…</p><div id="reviewPdfWrap" class="pdf-viewer-wrap"><div id="reviewPdfStage" class="pdf-stage" tabindex="0" aria-label="Trang hóa đơn và các vùng cần kiểm tra"></div></div><div class="invoice-issues"><h4>Ghi chú cần kiểm tra</h4><div id="invoiceIssueList">${renderInvoiceNotes(annotations,ai)}</div></div></section></div>${renderAiAnalysis(ai,r)}`:`<div class="decision-meta">${Object.entries(metadata).map(([k,v])=>`<div class="meta-row"><span>${k}</span><strong>${esc(v)}</strong></div>`).join('')}</div>${renderAiAnalysis(ai,r)}<section class="invoice-preview"><h3>Hóa đơn PDF</h3><p id="invoicePreviewStatus" class="muted">Đang mở hóa đơn…</p><iframe id="invoicePreview" title="Hóa đơn PDF" class="hidden"></iframe></section>`;
-  const reviewForm=mayReview?`<form id="reviewForm" class="review-form">${manualChecks?`<p class="muted">Hãy đối chiếu các trường với hóa đơn rồi xác nhận các bước kiểm tra thủ công.</p><div class="review-checks">${Object.entries(checkLabels).map(([k,v])=>`<label class="plain-check"><input type="checkbox" name="${k}">${v}</label>`).join('')}</div>`:profile.role==='treasurer'?'<p class="muted">AI đã hoàn tất các kiểm tra hiện có. Bạn vẫn là người quyết định bấm duyệt cuối.</p>':'<p class="muted">Đây là bước phê duyệt cuối của người đứng đầu nhánh tài chính.</p>'}<label class="field">Lý do / nội dung cần bổ sung<textarea id="reviewReason" maxlength="2000" rows="3" placeholder="Bắt buộc khi yêu cầu bổ sung hoặc từ chối"></textarea></label><div class="decision-actions"><button class="action-secondary" type="button" data-action="clarify">Yêu cầu bổ sung</button><button class="action-secondary" type="button" data-action="reject">Từ chối</button><button class="action-primary" type="button" data-action="approve">${profile.role==='treasurer'&&r.amount>20000000?'Xác nhận & chuyển người đứng đầu nhánh tài chính':'Phê duyệt cuối'}</button></div></form>`:'';
-  $('decisionResult').innerHTML=`<div class="decision-banner ${r.status==='APPROVED'?'ready':r.status==='REJECTED'?'reject':r.status==='READY_FOR_APPROVAL'?'ready':'escalate'}"><div><strong>${statuses[r.status]||esc(r.status)}</strong><small>PAY-${esc(r.id.slice(0,8))} · phiên bản ${r.version}</small></div></div><h2 class="detail-amount">${money(r.amount)} <small>đã gồm VAT</small></h2><p class="notice">${esc(r.reason)}</p>${ai?.assessment?.question?`<p class="notice">${esc(ai.assessment.question)}</p>`:''}${reviewLayout}<div class="scope-note compact"><strong>Chưa kiểm tra:</strong> ngân sách, chính sách, MST công ty, NCC được duyệt, PO và lịch sử hóa đơn/thanh toán. AI không xác thực nguồn phát hành hoặc chữ ký số.</div>${reviewForm}${profile.role==='applicant'&&r.status==='NEEDS_INFO'?'<button class="primary-button clay-button" id="supplementButton">Bổ sung và gửi lại</button>':''}`;
+  const reviewerMessage=profile.role==='cfo'
+    ?'<p class="muted">Giám đốc Tài chính xem xét cấp quyền cho hồ sơ vượt hạn mức. Ghi lý do cấp quyền để lưu nhật ký.</p>'
+    :manualChecks
+      ?`<p class="muted">Hồ sơ có điểm cần xác minh. Quản lý tài chính kiểm tra hóa đơn và form trước; nếu được xác nhận nhưng vượt 20 triệu/hồ sơ hoặc tổng 100 triệu/ngày, hệ thống chuyển Giám đốc cấp quyền.</p><div class="review-checks">${Object.entries(checkLabels).map(([k,v])=>`<label class="plain-check"><input type="checkbox" name="${k}">${v}</label>`).join('')}</div>`
+      :'<p class="muted">Quản lý tài chính là bước kiểm tra đầu tiên. Nếu hồ sơ vượt 20 triệu hoặc tổng duyệt trong ngày vượt 100 triệu, cần Giám đốc cấp quyền trước khi hoàn tất.</p>';
+  const reviewForm=mayReview?`<form id="reviewForm" class="review-form">${reviewerMessage}<label class="field">${profile.role==='cfo'?'Lý do cấp quyền':'Ghi chú kiểm tra / nội dung cần bổ sung'}<textarea id="reviewReason" maxlength="2000" rows="3" placeholder="${profile.role==='cfo'?'Bắt buộc khi Giám đốc cấp quyền':'Bắt buộc khi yêu cầu bổ sung hoặc từ chối'}"></textarea></label><div class="decision-actions"><button class="action-secondary" type="button" data-action="clarify">Yêu cầu bổ sung</button><button class="action-secondary" type="button" data-action="reject">Từ chối</button><button class="action-primary" type="button" data-action="approve">${profile.role==='cfo'?'Cấp quyền và duyệt':'Xác nhận kiểm tra & duyệt nếu trong hạn mức'}</button></div></form>`:'';
+  $('decisionResult').innerHTML=`<div class="decision-banner ${r.status==='APPROVED'?'ready':r.status==='REJECTED'?'reject':r.status==='READY_FOR_APPROVAL'?'ready':'escalate'}"><div><strong>${statuses[r.status]||esc(r.status)}</strong><small>PAY-${esc(r.id.slice(0,8))} · phiên bản ${r.version}</small></div></div><h2 class="detail-amount">${money(r.amount)} <small>đã gồm VAT</small></h2><p class="notice">${esc(r.reason)}</p>${ai?.assessment?.question?`<p class="notice">${esc(ai.assessment.question)}</p>`:''}${reviewLayout}<div class="scope-note compact"><strong>Chưa kiểm tra:</strong> ngân sách theo mã, chính sách chi tiêu, MST doanh nghiệp, NCC được duyệt, PO và lịch sử hóa đơn/thanh toán. AI không xác thực nguồn phát hành hoặc chữ ký số.</div>${reviewForm}${profile.role==='applicant'&&r.status==='NEEDS_INFO'?'<button class="primary-button clay-button" id="supplementButton">Bổ sung và gửi lại</button>':''}`;
   const viewerToken=pdfViewToken;
   api.signedUrl(r.invoice_path).then(url=>{
     if(epoch!==run||selected?.id!==id) return;
@@ -303,13 +333,17 @@ async function review(r,action) {
   if(busy) return;
   const reason=$('reviewReason').value.trim();
   if(action!=='approve'&&!reason) {notify('Hãy ghi rõ lý do hoặc nội dung cần bổ sung.',true);return;}
+  if(action==='approve'&&profile.role==='cfo'&&!reason) {notify('Giám đốc cần ghi lý do cấp quyền trước khi duyệt.',true);return;}
   const checks={}; document.querySelectorAll('#reviewForm input[type=checkbox]').forEach(c=>checks[c.name]=c.checked);
   if(action==='approve'&&profile.role==='treasurer'&&r.status==='TREASURER_REVIEW') {
     const result=FinRefRules.assess(r.amount,{pdf:checks.invoice,fieldsMatch:checks.fields_match,totalsConsistent:checks.total_includes_vat,confidenceSufficient:true});
     if(result==='U1') {notify('U1: chưa đủ xác nhận về PDF, trường form hoặc tổng thanh toán gồm VAT. Hãy kiểm tra minh chứng hoặc yêu cầu bổ sung.',true);return;}
   }
   setBusy(true);
-  try {await api.rpc('review_request',{p_id:r.id,p_expected_version:r.version,p_action:action,p_reason:reason,p_checks:checks}); notify('Đã lưu quyết định và nhật ký.');}
+  try {
+    const result=await api.rpc('review_request',{p_id:r.id,p_expected_version:r.version,p_action:action,p_reason:reason,p_checks:checks});
+    notify(result?.status==='CFO_REVIEW'?'Quản lý tài chính đã xác nhận kiểm tra; hồ sơ chuyển Giám đốc cấp quyền.':result?.status==='APPROVED'&&profile.role==='cfo'?'Giám đốc đã cấp quyền và duyệt hồ sơ.':result?.status==='APPROVED'?'Quản lý tài chính đã duyệt hồ sơ trong hạn mức.':'Đã lưu quyết định và nhật ký.');
+  }
   catch(e) {notify(e.message,true);} finally {setBusy(false);await refresh();}
 }
 function validateFile(file,invoice=false) {
@@ -332,7 +366,7 @@ $('paymentForm').onsubmit=async event=>{
     resetForm(); notify('Đã tải hóa đơn. AI đang đọc và đối chiếu thông tin…');
     try {
       const verification=await api.analyzeEvidence(result.id);
-      notify(verification.status==='READY_FOR_APPROVAL'?'AI hoàn tất các kiểm tra hiện có. Hồ sơ sẵn sàng để quản lý tài chính bấm duyệt cuối.':verification.status==='CFO_REVIEW'?'Tổng gồm VAT vượt 20 triệu; hồ sơ đã chuyển người đứng đầu nhánh tài chính duyệt cuối.':verification.status==='NEEDS_INFO'?'AI chưa đọc chắc hoặc phát hiện dữ liệu chưa khớp. Hãy xem câu hỏi trong hồ sơ và bổ sung.':'AI đã ghi kết quả phân tích.');
+      notify(verification.status==='READY_FOR_APPROVAL'?'AI hoàn tất các kiểm tra hiện có; quản lý tài chính sẽ kiểm tra trước. Nếu vượt 20 triệu/hồ sơ hoặc tổng 100 triệu/ngày, hồ sơ cần Giám đốc cấp quyền.':verification.status==='TREASURER_REVIEW'?'AI gắn cờ điểm cần xem; hồ sơ đã chuyển Quản lý Tài chính kiểm tra trước.':verification.status==='NEEDS_INFO'?'Hồ sơ cần bổ sung thông tin.':'AI đã ghi kết quả phân tích.');
     } catch(e) {
       notify('Đã gửi hồ sơ; AI chưa đọc được PDF. Quản lý tài chính có thể kiểm tra thủ công. Ngân sách/chính sách vẫn chưa được đối chiếu.',true);
     }

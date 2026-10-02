@@ -1,14 +1,14 @@
-# FIN-DEMO-1 · Chính sách mẫu cho hackathon
+# FIN-APPROVAL-1 · Hạn mức quyền phê duyệt
 
-Được xây dựng từ phạm vi người dùng chốt ngày 22/09/2026. Hạn mức 20 triệu là quyền tự động của tác tử trong bản mẫu. Các ngân sách dưới đây là số giả định để demo, không phải số liệu thật.
+Các mức bên dưới là hạn mức quyền duyệt của quy trình FinRef cho bản hackathon; không đại diện cho ngân sách thật của phòng ban.
 
-1. Chỉ yêu cầu hóa đơn PDF, tối đa 10 MB; có thể là PDF có chữ hoặc PDF scan.
-2. Hóa đơn phải đọc được; đối chiếu người mua, nhà cung cấp, số/ngày hóa đơn và tổng thanh toán với form. Không suy diễn dữ kiện không đọc được. Không xác nhận thật/giả từ hình dấu/chữ ký.
-3. Danh mục: `printing` trong `MKT-OPS-2026`; `office_supplies` trong `OPS-2026`; `training` trong `HR-2026`. Mỗi ngân sách 100 triệu. Danh mục khác/mã khác được chuyển U2.
-4. `committed` là tổng tiền đã phê duyệt. Mỗi phê duyệt trừ phần khả dụng trong cùng transaction. Migration tính các phê duyệt cũ thuộc ngân sách này để tránh coi ngân sách cũ là chưa sử dụng.
-5. Không còn nghi vấn, danh mục hợp lệ, đủ ngân sách, số tiền 1..20.000.000 VNĐ → tự phê duyệt. Trên 20 triệu → U3 gửi GĐTC. Hóa đơn đã được duyệt có cùng nhà cung cấp/số hóa đơn → U1, không duyệt lại.
-6. U1: người nộp bổ sung đúng chứng từ hoặc thủ quỹ kiểm tra và ghi câu trả lời/căn cứ, xác nhận đủ bốn kiểm tra minh chứng. Sau đó SQL đánh giá lại. Thủ quỹ không được bỏ qua ngân sách hoặc tự duyệt khoản trên 20 triệu.
-7. U2: GĐTC có thể chấp nhận ngoại lệ cho **riêng hồ sơ** với lý do bắt buộc. Nếu mã ngân sách tồn tại, số tiền vẫn tính vào `committed` kể cả vượt trần theo ngoại lệ; các ca thường quy sau đó bị chặn. Ngoại lệ không sửa chính sách chung. Mã chưa có chỉ được phê duyệt riêng với ngoại lệ và nhật ký.
-8. U3: GĐTC trả lời đồng ý/từ chối/yêu cầu bổ sung. Mỗi lần quyết định kiểm lại nghi vấn, hóa đơn trùng và ngân sách hiện tại.
-9. U1 được kiểm tra trước U2 rồi U3. Câu hỏi nêu dữ kiện, hồ sơ, số tiền hoặc điều kiện chính sách vướng mắc. Ca thường quy không có câu hỏi.
-10. Dừng ở phê duyệt; không có lệnh chuyển tiền. Trước sử dụng thực tế cần chính sách thật, dữ liệu ngân sách tin cậy, xác thực chứng từ và đánh giá mô hình trên bộ chứng từ đại diện.
+1. Tổng tiền xét duyệt là tổng thanh toán hóa đơn đã gồm VAT.
+2. Hồ sơ có cờ nghi vấn hoặc dữ kiện chưa chắc luôn được chuyển **Quản lý Tài chính** kiểm tra trước. AI không được tự duyệt.
+3. Quản lý Tài chính có thể duyệt cuối nếu hồ sơ đã được kiểm tra, số tiền không quá **20.000.000 ₫/hồ sơ**, và tổng các hồ sơ đã duyệt trong ngày sau khi cộng hồ sơ này không quá **100.000.000 ₫**.
+4. Nếu số tiền hồ sơ **trên 20.000.000 ₫** hoặc tổng duyệt trong ngày sau khi cộng hồ sơ sẽ **trên 100.000.000 ₫**, Quản lý Tài chính ghi nhận đã kiểm tra; hồ sơ chuyển **Giám đốc Tài chính** cấp quyền. Giám đốc có thể xem mọi hồ sơ trên 20 triệu trong suốt quy trình và là người quyết định cuối cho hồ sơ được chuyển cấp.
+5. Giám đốc phải ghi lý do khi cấp quyền. Hồ sơ được Giám đốc duyệt vẫn cộng vào tổng duyệt trong ngày, kể cả khi khiến tổng vượt 100 triệu. Các hồ sơ sau trong ngày tiếp tục được đối chiếu với tổng đã duyệt mới.
+6. Tổng duyệt trong ngày gồm các hồ sơ có thời điểm phê duyệt trong cùng ngày lịch **Asia/Bangkok**, trên tất cả mã ngân sách và bộ phận. Tổng bắt đầu lại lúc 00:00 giờ Bangkok.
+7. Khi tổng duyệt trong ngày **vượt 80.000.000 ₫**, giao diện Quản lý Tài chính hiển thị tổng đã duyệt và số còn lại trên hạn mức 100 triệu. Nếu Giám đốc đã cấp quyền cho khoản vượt, số còn lại là 0 và giao diện nêu mức vượt.
+8. Trùng hóa đơn vẫn bị chặn. Giám đốc không thể bỏ qua nghi vấn chưa được Quản lý Tài chính xử lý, hoặc duyệt trùng hóa đơn đã được duyệt.
+9. Quyết định duyệt chỉ ghi nhận phê duyệt; hệ thống không thực hiện chuyển tiền.
+10. Hạn mức ngày không thay thế việc đối chiếu ngân sách theo mã, chính sách chi tiêu, MST công ty, nhà cung cấp được duyệt, PO hoặc lịch sử thanh toán. Các nguồn dữ liệu đó chưa được kết nối.
