@@ -3,8 +3,9 @@
 ## Phạm vi
 
 - Hóa đơn đầu vào: PDF có chữ chọn/copy hoặc PDF scan dạng ảnh. Chỉ hóa đơn là file đính kèm bắt buộc; tối đa 10 MB.
-- Tổng thanh toán trên form phải là tổng đã gồm VAT. Quản lý Tài chính kiểm tra mọi hồ sơ trước. Hồ sơ **lớn hơn 20.000.000 VND** hoặc làm tổng duyệt trong ngày vượt **100.000.000 VND** cần Giám đốc Tài chính cấp quyền; đúng ngưỡng vẫn trong hạn mức.
-- AI trích xuất dữ kiện, tính toán và gợi ý tuyến. Chỉ người có quyền mới tạo trạng thái `APPROVED`.
+- Tổng thanh toán trên form phải là tổng đã gồm VAT. AI đánh giá hóa đơn đạt điều kiện thì hóa đơn **≤20.000.000 VND** vào hàng chờ Quản lý; hóa đơn **>20.000.000 VND** vào hàng Giám đốc. Hồ sơ gắn cờ cần Quản lý xử lý trước.
+- Hàng chờ động gồm các hóa đơn đã đủ điều kiện nhưng chưa duyệt, không gom theo ngày nộp. Tổng **100.000.000 VND/ngày** tính chung toàn công ty, theo giờ Bangkok. `APPROVED` là chấp thuận khoản phải trả theo quy ước cuộc thi, không có chuyển khoản thật.
+- Quản lý và Giám đốc có thể duyệt từng hóa đơn hoặc duyệt tất cả trong hàng của mình. Nếu toàn bộ đợt của Quản lý vượt hạn mức ngày, toàn bộ đợt chuyển `CFO_REVIEW`; Giám đốc cần ghi lý do khi duyệt.
 - Hạn mức quyền duyệt không đồng nghĩa với ngân sách thật: ngân sách theo mã và chính sách chi tiêu vẫn chưa được đối chiếu. CLEAR chỉ xác nhận các kiểm tra hiện có.
 - AI không xác nhận tính xác thực của hóa đơn, nguồn phát hành hoặc chữ ký số.
 
@@ -22,15 +23,17 @@ node --test tests/*.test.cjs
 | ID | Tiền điều kiện và thao tác | Kết quả mong đợi |
 |---|---|---|
 | SC-01 | Mở `demo.html`, chọn ba role và chạy Verify | Demo ghi rõ đang mô phỏng; không báo AI đã đọc file hoặc đã kiểm tra policy/budget. |
-| SC-02 | Đăng nhập ba tài khoản mẫu, xem danh sách và quyền đọc file | Applicant chỉ thấy hồ sơ của mình; treasurer xử lý hàng đợi tài chính; CFO có thể xem mọi hồ sơ trên 20 triệu và các hồ sơ đã chuyển cấp. |
-| SC-03 | Gửi hồ sơ với PDF đọc rõ, các trường và tổng gồm VAT khớp; chạy OpenAI analysis | Hồ sơ vào `READY_FOR_APPROVAL`; chưa phải `APPROVED`. Quản lý tài chính kiểm tra và duyệt cuối nếu còn trong cả hai hạn mức; nếu vượt thì chuyển `CFO_REVIEW`. |
-| SC-04 | Gửi hồ sơ có tổng thanh toán gồm VAT là 20.000.001 | Hồ sơ chờ Quản lý Tài chính trước. Khi người này xác nhận đã kiểm tra, hồ sơ vào `CFO_REVIEW`; Giám đốc ghi lý do để cấp quyền và duyệt cuối. |
+| SC-02 | Đăng nhập ba tài khoản mẫu, xem danh sách và quyền đọc file | Applicant chỉ thấy hồ sơ của mình; treasurer thấy hàng chờ đủ điều kiện ≤20 triệu; CFO thấy hàng chờ >20 triệu và các hồ sơ được chuyển cấp. |
+| SC-03 | Gửi hồ sơ với PDF đọc rõ, các trường và tổng gồm VAT khớp; chạy OpenAI analysis, số tiền ≤20 triệu | Hồ sơ vào `READY_FOR_APPROVAL`; Quản lý thấy trong hàng chờ mà không cần kiểm tra lại từng hóa đơn. Chưa có quyết định `APPROVED` cho tới khi người quản lý duyệt. |
+| SC-04 | Gửi hồ sơ có tổng thanh toán gồm VAT là 20.000.001 | Nếu AI đánh giá đạt, hồ sơ vào `CFO_REVIEW` thẳng; Giám đốc duyệt và ghi lý do. Nếu dữ kiện bị gắn cờ, Quản lý xử lý trước rồi mới chuyển cấp. |
 | SC-05 | Dùng PDF mờ, thiếu trường, sai số/ngày hoặc tổng VAT không khớp | Hồ sơ vào `TREASURER_REVIEW`; Quản lý Tài chính kiểm tra trước, có thể yêu cầu bổ sung, từ chối, hoặc duyệt/chuyển Giám đốc theo hạn mức. |
 | SC-06 | Tắt cấu hình AI và gửi hồ sơ | Hồ sơ vẫn được lưu ở `TREASURER_REVIEW`; quản lý tài chính có thể kiểm tra thủ công các dữ kiện hóa đơn trước khi duyệt/chuyển cấp. |
 | SC-07 | Tổng đã duyệt hôm nay là 80.000.000 ₫ rồi duyệt thêm 1 ₫ | Tổng đã vượt 80 triệu; Quản lý Tài chính thấy cảnh báo và số dư còn lại 19.999.999 ₫. |
-| SC-08 | Tổng đã duyệt hôm nay là 90 triệu; Quản lý Tài chính duyệt thêm hồ sơ 10 triệu | Tổng đúng 100 triệu; Quản lý Tài chính có thể duyệt cuối. |
-| SC-09 | Tổng đã duyệt hôm nay là 90.000.001 ₫; Quản lý Tài chính duyệt thêm hồ sơ 10 triệu | Dự kiến vượt 100 triệu; chuyển `CFO_REVIEW`. Giám đốc cấp quyền với lý do; khoản này vẫn cộng vào tổng ngày. |
-| SC-10 | Hai hồ sơ được duyệt gần như đồng thời khi tổng ngày sát 100 triệu | RPC tuần tự hóa quyết định; không thể có hai hồ sơ cùng dùng một số dư còn lại cũ. |
+| SC-08 | Tổng công ty đã duyệt hôm nay là 90 triệu; hàng Quản lý chờ một hóa đơn 10 triệu | Duyệt riêng hoặc duyệt tất cả được chấp nhận; tổng đúng 100 triệu. |
+| SC-09 | Tổng công ty đã duyệt hôm nay là 90 triệu; hàng Quản lý chờ hai hóa đơn 6 triệu | Duyệt tất cả chuyển nguyên đợt lên `CFO_REVIEW`. Quản lý vẫn có thể duyệt riêng một hóa đơn 6 triệu trong phần ngân sách còn lại. |
+| SC-10 | Giám đốc duyệt danh sách làm tổng ngày vượt 100 triệu | Bắt buộc có lý do; các hóa đơn được duyệt và vẫn cộng vào tổng toàn công ty trong ngày. |
+| SC-11 | Một phần tử trong lệnh duyệt tất cả có phiên bản cũ, sai vai trò hoặc không đủ điều kiện | Toàn bộ lệnh thất bại; không hóa đơn nào được duyệt một phần. Tải lại danh sách để dùng phiên bản mới. |
+| SC-12 | Hai yêu cầu duyệt gần như đồng thời khi tổng ngày sát 100 triệu | RPC tuần tự hóa quyết định; không thể có hai lượt cùng dùng một số dư cũ. |
 
 SC-03–SC-05 cần PDF mẫu được phép sử dụng, OpenAI API và Supabase thử nghiệm. Kết quả từng ca cần được ghi lại riêng; bộ luật cục bộ không thay thế các ca này.
 

@@ -59,7 +59,7 @@
       for (let offset = 0; ; offset += pageSize) {
         const page = await this.request(`/rest/v1/requests?select=*&order=created_at.desc,id.desc${scope}&limit=${pageSize}&offset=${offset}`);
         all.push(...page);
-        if (role !== 'cfo' || page.length < pageSize) return all;
+        if (page.length < pageSize) return all;
       }
     }
     audit(id) { return this.request('/rest/v1/audit_events?request_id=eq.' + encodeURIComponent(id) + '&select=actor_role,old_status,new_status,reason,created_at,version&order=id.desc&limit=50'); }

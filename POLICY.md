@@ -1,14 +1,30 @@
-# FIN-APPROVAL-1 · Hạn mức quyền phê duyệt
+# FIN-APPROVAL-2 · Hàng chờ và thẩm quyền duyệt
 
-Các mức bên dưới là hạn mức quyền duyệt của quy trình FinRef cho bản hackathon; không đại diện cho ngân sách thật của phòng ban.
+> Đây là quy ước nghiệp vụ của bản hackathon. `APPROVED` nghĩa là công ty đã chấp thuận khoản phải trả theo quy trình; ứng dụng không thực hiện chuyển tiền và không xác nhận giao dịch ngân hàng.
 
-1. Tổng tiền xét duyệt là tổng thanh toán hóa đơn đã gồm VAT.
-2. Hồ sơ có cờ nghi vấn hoặc dữ kiện chưa chắc luôn được chuyển **Quản lý Tài chính** kiểm tra trước. AI không được tự duyệt.
-3. Quản lý Tài chính có thể duyệt cuối nếu hồ sơ đã được kiểm tra, số tiền không quá **20.000.000 ₫/hồ sơ**, và tổng các hồ sơ đã duyệt trong ngày sau khi cộng hồ sơ này không quá **100.000.000 ₫**.
-4. Nếu số tiền hồ sơ **trên 20.000.000 ₫** hoặc tổng duyệt trong ngày sau khi cộng hồ sơ sẽ **trên 100.000.000 ₫**, Quản lý Tài chính ghi nhận đã kiểm tra; hồ sơ chuyển **Giám đốc Tài chính** cấp quyền. Giám đốc có thể xem mọi hồ sơ trên 20 triệu trong suốt quy trình và là người quyết định cuối cho hồ sơ được chuyển cấp.
-5. Giám đốc phải ghi lý do khi cấp quyền. Hồ sơ được Giám đốc duyệt vẫn cộng vào tổng duyệt trong ngày, kể cả khi khiến tổng vượt 100 triệu. Các hồ sơ sau trong ngày tiếp tục được đối chiếu với tổng đã duyệt mới.
-6. Tổng duyệt trong ngày gồm các hồ sơ có thời điểm phê duyệt trong cùng ngày lịch **Asia/Bangkok**, trên tất cả mã ngân sách và bộ phận. Tổng bắt đầu lại lúc 00:00 giờ Bangkok.
-7. Khi tổng duyệt trong ngày **vượt 80.000.000 ₫**, giao diện Quản lý Tài chính hiển thị tổng đã duyệt và số còn lại trên hạn mức 100 triệu. Nếu Giám đốc đã cấp quyền cho khoản vượt, số còn lại là 0 và giao diện nêu mức vượt.
-8. Trùng hóa đơn vẫn bị chặn. Giám đốc không thể bỏ qua nghi vấn chưa được Quản lý Tài chính xử lý, hoặc duyệt trùng hóa đơn đã được duyệt.
-9. Quyết định duyệt chỉ ghi nhận phê duyệt; hệ thống không thực hiện chuyển tiền.
-10. Hạn mức ngày không thay thế việc đối chiếu ngân sách theo mã, chính sách chi tiêu, MST công ty, nhà cung cấp được duyệt, PO hoặc lịch sử thanh toán. Các nguồn dữ liệu đó chưa được kết nối.
+## Vai trò và trạng thái
+
+1. AI trích xuất và đối chiếu hóa đơn với thông tin người nộp. `READY_FOR_APPROVAL` có nghĩa hóa đơn đã qua các kiểm tra hiện có, đủ điều kiện để người có thẩm quyền duyệt. Quản lý không cần kiểm tra lại từng hóa đơn đã ở trạng thái này.
+2. Nếu dữ kiện thiếu, không chắc hoặc không khớp, hồ sơ vào `TREASURER_REVIEW`. Quản lý tài chính cần xử lý các điểm gắn cờ trước. Nếu quản lý xác nhận hồ sơ nhưng khoản chi vượt thẩm quyền, hồ sơ được đưa lên Giám đốc.
+3. `CFO_REVIEW` là hàng chờ của Giám đốc Tài chính. Hàng này nhận hóa đơn trên 20 triệu đã đạt kiểm tra, hóa đơn quản lý chuyển lên do tổng ngày vượt hạn mức, và ngoại lệ khác được chuyển cấp.
+
+## Hàng chờ và cách duyệt
+
+4. Hàng chờ là danh sách động của mọi hóa đơn đủ điều kiện nhưng chưa được duyệt tại thời điểm xem. Hệ thống không gom theo ngày lập hóa đơn hay tạo đợt cố định.
+5. Hàng của Quản lý tự gom mọi hóa đơn `READY_FOR_APPROVAL` có tổng thanh toán không quá **20.000.000 ₫/hóa đơn**, bất kể ngày gửi. Quản lý có nút duyệt từng hóa đơn và nút duyệt tất cả hóa đơn đang chờ.
+6. Quản lý có thể duyệt từng hóa đơn hoặc cả danh sách khi tổng đã duyệt trong ngày cộng số tiền được duyệt không vượt **100.000.000 ₫**. Nếu duyệt tất cả làm vượt mức này, toàn bộ danh sách vừa yêu cầu được chuyển `CFO_REVIEW`; quản lý vẫn có thể duyệt từng hóa đơn để dùng phần ngân sách còn lại.
+7. Hàng của Giám đốc có giao diện danh sách tương tự, gồm hóa đơn trên 20 triệu đủ điều kiện và các hồ sơ quản lý đã chuyển cấp. Giám đốc có thể duyệt riêng hoặc duyệt toàn bộ hàng chờ.
+8. Giám đốc bắt buộc ghi lý do cho quyết định duyệt. Nếu tổng sau quyết định vượt 100 triệu/ngày, lý do đó ghi nhận việc chấp thuận ngoại lệ; khoản đã duyệt vẫn được cộng vào tổng ngày.
+9. Duyệt hàng loạt là nguyên tử: nếu một hồ sơ đã đổi trạng thái/phiên bản hoặc không thuộc thẩm quyền, không hóa đơn nào trong yêu cầu đó được duyệt một phần. Máy chủ luôn tính lại hạn mức trước khi ghi quyết định.
+
+## Hạn mức ngày
+
+10. **100.000.000 ₫ là hạn mức chung của toàn công ty**, cộng mọi hóa đơn đã được duyệt, tất cả phòng ban và mã ngân sách; không phải hạn mức riêng từng danh mục.
+11. Ngày được tính theo múi giờ `Asia/Bangkok`, từ 00:00 đến trước 00:00 ngày tiếp theo. Danh sách chờ không được chia theo ngày; chỉ tổng đã duyệt mới được tính theo ngày.
+12. Giao diện tài chính hiển thị tổng đã duyệt hôm nay, số dư hạn mức, tổng tiền hàng chờ và dự kiến sau khi duyệt. Hệ thống tuần tự hóa thao tác duyệt để hai lượt đồng thời không cùng dùng một phần ngân sách.
+
+## Ranh giới kiểm tra
+
+13. Hóa đơn trùng nhà cung cấp và số hóa đơn không được duyệt lần nữa.
+14. Duyệt không thay thế việc kiểm tra ngân sách kế toán theo mã, chính sách chi tiêu, mã số thuế công ty, danh sách nhà cung cấp được duyệt, PO hoặc lịch sử thanh toán; các nguồn dữ liệu này chưa được kết nối.
+15. AI không xác nhận tính xác thực của hóa đơn, nguồn phát hành hoặc chữ ký số. Ngoại lệ hạn mức do Giám đốc chịu trách nhiệm ghi lý do trong nhật ký.
