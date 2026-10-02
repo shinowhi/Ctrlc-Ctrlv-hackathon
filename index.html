@@ -28,21 +28,22 @@
         <button class="nav-item" id="newRequest" data-scroll="request-card"><span>＋</span> Tạo đề nghị</button>
         <button class="nav-item" data-scroll="audit-card"><span>◌</span> Nhật ký hồ sơ</button>
       </nav>
-      <div class="sidebar-note clay-inset"><span class="eyebrow">HẠN MỨC PHÊ DUYỆT</span><strong>20.000.000 ₫</strong><p>Tính theo tổng thanh toán đã gồm VAT. Khoản trên ngưỡng chuyển người đứng đầu nhánh tài chính.</p></div>
+      <div class="sidebar-note clay-inset"><span class="eyebrow">HẠN MỨC PHÊ DUYỆT</span><strong>20.000.000 ₫ / hồ sơ</strong><p>Tổng duyệt trong ngày tối đa 100.000.000 ₫. Khi vượt 80.000.000 ₫, hệ thống báo số dư cho Quản lý Tài chính. Phần vượt cần Giám đốc cấp quyền.</p></div>
       <div class="profile clay-inset"><div class="avatar">F</div><div><strong id="profileName"></strong><span id="profileRole"></span></div></div>
     </aside>
     <main class="main-content">
       <header class="topbar"><div><span class="eyebrow" id="roleLabel"></span><h1 id="pageTitle"></h1><p class="muted">Hóa đơn PDF · Tổng thanh toán gồm VAT · Người có thẩm quyền duyệt cuối</p></div><div class="topbar-actions"><button class="secondary-button clay-button" id="refreshButton">Làm mới</button><button class="logout-button" id="logoutButton">Đăng xuất</button></div></header>
       <p class="notice" id="message" role="status" aria-live="polite"></p>
-      <aside class="scope-note" role="note"><strong>Phạm vi kết quả:</strong> CLEAR chỉ nghĩa là các trường hóa đơn, phép tính tổng và đối chiếu với form đã đạt kiểm tra hiện có. Hệ thống chưa kiểm tra ngân sách/chính sách, MST doanh nghiệp, NCC được duyệt, PO hay lịch sử thanh toán; kết quả không xác nhận tính xác thực của hóa đơn. Hồ sơ chỉ thành <strong>Đã duyệt</strong> sau thao tác của người có thẩm quyền.</aside>
+      <aside class="scope-note daily-limit-note hidden" id="dailyLimitNotice" role="status" aria-live="polite"></aside>
+      <aside class="scope-note" role="note"><strong>Phạm vi kết quả:</strong> hồ sơ gắn cờ được Quản lý Tài chính kiểm tra trước. Quản lý duyệt cuối khi hồ sơ không quá 20.000.000 ₫ và tổng duyệt ngày không quá 100.000.000 ₫; phần vượt cần Giám đốc Tài chính cấp quyền. Hệ thống chưa kiểm tra ngân sách theo mã/chính sách chi tiêu, MST doanh nghiệp, NCC được duyệt, PO hay lịch sử thanh toán; kết quả không xác nhận tính xác thực của hóa đơn.</aside>
       <section class="stats-grid" aria-label="Thống kê hồ sơ được phép xem">
         <article class="stat-card clay-card peach"><div class="stat-icon">◷</div><div><span class="stat-label">Chờ kiểm tra thủ công</span><strong id="waitingCount">0</strong></div></article>
-        <article class="stat-card clay-card lavender"><div class="stat-icon">↗</div><div><span class="stat-label">Chờ người đứng đầu nhánh tài chính</span><strong id="cfoCount">0</strong></div></article>
+        <article class="stat-card clay-card lavender"><div class="stat-icon">↗</div><div><span class="stat-label">Chờ Giám đốc Tài chính cấp quyền</span><strong id="cfoCount">0</strong></div></article>
         <article class="stat-card clay-card mint"><div class="stat-icon">✓</div><div><span class="stat-label">Sẵn sàng duyệt</span><strong id="readyCount">0</strong></div></article>
         <article class="stat-card clay-card sky"><div class="stat-icon">!</div><div><span class="stat-label">Cần bổ sung</span><strong id="infoCount">0</strong></div></article>
       </section>
       <section class="clay-card queue-card" id="queue-card">
-        <div class="card-heading"><div><span class="eyebrow">HỒ SƠ THANH TOÁN</span><h2 id="queueTitle">Danh sách hồ sơ</h2></div><label class="field">Lọc trạng thái<select id="statusFilter"><option value="">Tất cả</option><option value="TREASURER_REVIEW">Chờ quản lý tài chính kiểm tra</option><option value="READY_FOR_APPROVAL">Sẵn sàng duyệt</option><option value="CFO_REVIEW">Chờ người đứng đầu nhánh tài chính</option><option value="NEEDS_INFO">Cần bổ sung</option><option value="APPROVED">Đã duyệt</option><option value="REJECTED">Từ chối</option></select></label></div>
+        <div class="card-heading"><div><span class="eyebrow">HỒ SƠ THANH TOÁN</span><h2 id="queueTitle">Danh sách hồ sơ</h2></div><label class="field">Lọc trạng thái<select id="statusFilter"><option value="">Tất cả</option><option value="TREASURER_REVIEW">Chờ quản lý tài chính kiểm tra</option><option value="READY_FOR_APPROVAL">Sẵn sàng duyệt</option><option value="CFO_REVIEW">Chờ Giám đốc Tài chính cấp quyền</option><option value="NEEDS_INFO">Cần bổ sung</option><option value="APPROVED">Đã duyệt</option><option value="REJECTED">Từ chối</option></select></label></div>
         <div class="table-wrap"><table><thead><tr><th>Mã hồ sơ</th><th>Người đề nghị</th><th>Số tiền</th><th>Trạng thái</th><th>Chi tiết</th></tr></thead><tbody id="queueBody"></tbody></table></div>
         <p class="muted" id="syncStatus">Tự cập nhật mỗi 10 giây · tối đa 200 hồ sơ mới nhất.</p>
       </section>

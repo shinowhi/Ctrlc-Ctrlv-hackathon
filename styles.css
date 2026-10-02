@@ -219,6 +219,8 @@ td small { display: block; margin-top: 3px; color: #a1aabb; font-size: 9px; }
 .notice.error {color:#a32138;background:#fff0f1;border-radius:12px;padding:12px}
 .scope-note {margin:0 0 18px;padding:13px 16px;border:1px solid #eadba9;border-radius:14px;color:#665827;background:#fff8df;font-size:12px;line-height:1.55}
 .scope-note.compact {margin:14px 0;font-size:11px}
+.daily-limit-note {border-color:#e5b76d;background:#fff3dc;color:#664713;font-weight:600}
+.daily-limit-note.error {border-color:#e6a2a9;background:#fff0f1;color:#a32138}
 .invoice-analysis {margin:16px 0;padding:16px;border-radius:16px;background:rgba(238,242,249,.72)}
 .invoice-analysis h3 {margin:0 0 9px;font-size:14px}
 .invoice-field {padding:8px 0;border-top:1px solid var(--line)}

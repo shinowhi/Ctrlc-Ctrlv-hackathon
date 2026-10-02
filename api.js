@@ -52,9 +52,19 @@
       return rows[0];
     }
     async logout() { try { if(this.session) await this.request('/auth/v1/logout?scope=local',{method:'POST'}); } finally {this.remember(null);} }
-    list() { return this.request('/rest/v1/requests?select=*&order=created_at.desc&limit=200'); }
+    async list(role) {
+      const pageSize = 200;
+      const scope = role === 'cfo' ? '&or=(amount.gt.20000000,status.eq.CFO_REVIEW)' : '';
+      const all = [];
+      for (let offset = 0; ; offset += pageSize) {
+        const page = await this.request(`/rest/v1/requests?select=*&order=created_at.desc,id.desc${scope}&limit=${pageSize}&offset=${offset}`);
+        all.push(...page);
+        if (role !== 'cfo' || page.length < pageSize) return all;
+      }
+    }
     audit(id) { return this.request('/rest/v1/audit_events?request_id=eq.' + encodeURIComponent(id) + '&select=actor_role,old_status,new_status,reason,created_at,version&order=id.desc&limit=50'); }
     rpc(name,args) { return this.request('/rest/v1/rpc/' + name,{method:'POST',body:JSON.stringify(args)}); }
+    dailyApprovalSummary() { return this.rpc('daily_approval_summary',{}); }
     async analyzeEvidence(requestId) {
       if (!this.session) throw new Error('Vui lòng đăng nhập.');
       if (this.session.expires_at < Date.now()/1000 + 60) await this.refresh();

@@ -19,6 +19,8 @@
 6. Khi thành công, kiểm tra có bảng `profiles`, `requests`, `audit_events` và bucket `evidence` **Private**.
    - Nếu project đã tạo từ schema cũ, chạy một lần `supabase/migrations/20260925-remove-request-evidence.sql` thay vì chạy lại `schema.sql`.
    - Nếu đã chạy `supabase/sprint1.sql`, sao lưu database rồi chạy một lần `supabase/migrations/20260926-human-approval-duplicate-guard.sql` trong đúng project Supabase. Migration giữ nguyên hồ sơ và các bảng ngân sách mẫu; nó khôi phục RPC khớp với giao diện, gỡ nhánh tự duyệt và chặn bấm duyệt khi cùng nhà cung cấp + số hóa đơn đã có hồ sơ được duyệt. Khi gặp trùng, người duyệt phải yêu cầu làm rõ hoặc từ chối. Migration không thay đổi các quyết định cũ, chấp nhận frontend Production hiện tại không gửi `invoiceType`, và chưa thêm ngân sách theo tháng. Không chạy lại `sprint1.sql` hoặc dùng `rollback-sprint1.sql` cùng giao diện hiện tại.
+   - Với database đang dùng schema và migration đến `20260930`, chạy một lần `supabase/migrations/20261002-daily-approval-limits.sql` **trước khi deploy giao diện mới**. Migration ghi nhận giờ duyệt của hồ sơ cũ, đưa hồ sơ đang chờ Giám đốc về Quản lý Tài chính kiểm tra trước, áp dụng hạn mức 20 triệu/hồ sơ và tổng 100 triệu/ngày (Asia/Bangkok), cùng cảnh báo Quản lý Tài chính khi tổng vượt 80 triệu. Giám đốc cấp quyền cho phần vượt; khoản được cấp quyền vẫn tính vào tổng ngày. Không chạy lại migration này sau khi đã áp dụng.
+   - Project Supabase mới dùng `supabase/schema.sql` hiện tại đã có cùng các quy tắc; không cần chạy riêng migration 20261002.
 7. Trong phần Authentication / sign-up settings, tắt cho người dùng tự đăng ký tài khoản mới nếu đang bật. Tài khoản của nhóm được tạo bằng script quản trị ở bước 2. Không tắt chức năng đăng nhập bằng email/password.
 
 Tìm thông tin kết nối trong nút **Connect** hoặc **Project Settings → API / API Keys** (tên mục có thể thay đổi):
@@ -106,11 +108,13 @@ Sau này sửa code, commit rồi push GitHub là Vercel build lại. Nếu đ�
 
 1. Máy A đăng nhập `nopdon@finref.test`. Điền form, đính kèm hóa đơn PDF và gửi.
 2. Máy B đăng nhập `thuquy@finref.test`. Đơn sẽ xuất hiện sau tối đa khoảng 10 giây hoặc bấm **Làm mới**. Mở hồ sơ; hóa đơn PDF hiện sẵn trong trang để đối chiếu.
-3. Thử đơn **20.000.000 đồng đã gồm VAT**: hồ sơ sẵn sàng cho quản lý tài chính bấm duyệt cuối.
-4. Thử đơn **20.000.001 đồng đã gồm VAT**: hồ sơ chuyển sang người đứng đầu nhánh tài chính; người này bấm duyệt cuối.
-5. Máy C đăng nhập `gdtc@finref.test`, mở đơn đã chuyển và duyệt hoặc từ chối.
-6. Máy A kiểm tra trạng thái và nhật ký. Thử thêm **yêu cầu bổ sung → người nộp tải lại hóa đơn PDF → gửi lại → quản lý tài chính kiểm tra**.
-7. Giám khảo mở live URL không có tài khoản vẫn truy cập được trang đầu; chọn **Trải nghiệm demo không cần tài khoản** để xem luồng mẫu độc lập. Demo này không ghi vào hồ sơ online.
+3. Thử đơn **20.000.000 đồng đã gồm VAT** khi tổng duyệt ngày sau đó không quá 100 triệu: Quản lý Tài chính kiểm tra và có thể duyệt cuối.
+4. Thử đơn **20.000.001 đồng đã gồm VAT**: Quản lý Tài chính kiểm tra trước; nếu xác nhận hồ sơ ổn thì chuyển Giám đốc Tài chính cấp quyền. Giám đốc cũng xem được hồ sơ trên 20 triệu trong lúc Quản lý Tài chính đang kiểm tra.
+5. Tạo tổng duyệt trong ngày vượt **80 triệu**: Quản lý Tài chính thấy thông báo tổng đã duyệt và số còn lại trên hạn mức 100 triệu.
+6. Thử hồ sơ làm tổng duyệt ngày vượt **100 triệu**: Quản lý Tài chính kiểm tra trước, sau đó chuyển Giám đốc cấp quyền; khoản Giám đốc duyệt vẫn tính vào tổng ngày.
+7. Máy C đăng nhập `gdtc@finref.test`, mở hồ sơ đã chuyển và cấp quyền hoặc từ chối; thử cả hồ sơ đang chờ Quản lý Tài chính nhưng có số tiền trên 20 triệu để xác nhận quyền xem.
+8. Máy A kiểm tra trạng thái và nhật ký. Thử thêm **yêu cầu bổ sung → người nộp tải lại hóa đơn PDF → gửi lại → quản lý tài chính kiểm tra**.
+9. Giám khảo mở live URL không có tài khoản vẫn truy cập được trang đầu; chọn **Trải nghiệm demo không cần tài khoản** để xem luồng mẫu độc lập. Demo này không ghi vào hồ sơ online.
 
 Có thể thử cùng một máy bằng các trình duyệt hoặc cửa sổ riêng. Mỗi tab lưu phiên đăng nhập riêng; khi dùng chung máy, nên đăng xuất sau khi thử.
 
@@ -158,7 +162,7 @@ Hóa đơn trong phiên bản này phải là PDF (PDF có chữ chọn/copy ho�
 
 Khi dùng `supabase/schema.sql` hiện tại hoặc đã chạy migration `20260926-human-approval-duplicate-guard.sql`, thao tác duyệt cuối sẽ bị chặn nếu nhà cung cấp và số hóa đơn trùng với một hồ sơ đã duyệt. Người duyệt cần yêu cầu làm rõ hoặc từ chối; không có ngoại lệ tự động. Quy tắc này chỉ đối chiếu hồ sơ đã duyệt, không phải xác minh hóa đơn với cơ quan thuế.
 
-Kết quả AI chỉ chuyển hồ sơ sang `READY_FOR_APPROVAL`, `CFO_REVIEW` hoặc `NEEDS_INFO`. Trạng thái `APPROVED` chỉ được tạo bởi thao tác của người có role phù hợp. Mốc 20.000.000 đồng tính theo tổng thanh toán đã gồm VAT; đúng mốc vẫn thuộc quản lý tài chính, cao hơn chuyển người đứng đầu nhánh tài chính.
+Kết quả AI chỉ chuyển hồ sơ sang `READY_FOR_APPROVAL`, `TREASURER_REVIEW` hoặc `NEEDS_INFO`; mọi hồ sơ, gồm cả hồ sơ AI gắn cờ, đều qua Quản lý Tài chính trước. Trạng thái `APPROVED` chỉ được tạo bởi thao tác của người có role phù hợp. Mốc 20.000.000 đồng tính theo tổng thanh toán đã gồm VAT; đúng mốc vẫn trong thẩm quyền Quản lý Tài chính nếu tổng ngày không vượt 100 triệu. Hồ sơ trên 20 triệu hoặc làm tổng duyệt ngày vượt 100 triệu cần Giám đốc Tài chính cấp quyền sau bước kiểm tra; cảnh báo 80 triệu hiển thị cho Quản lý Tài chính.
 
 Ngân sách/chính sách, MST công ty, NCC được duyệt, PO và lịch sử thanh toán chưa có dữ liệu để đối chiếu. Hệ thống không đánh dấu các mục này là đạt, chưa thể phân loại U2, và không xác nhận tính xác thực/nguồn phát hành hay chữ ký số của hóa đơn.
 

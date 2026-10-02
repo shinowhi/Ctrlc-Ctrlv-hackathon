@@ -15,13 +15,15 @@ FinRef hỗ trợ số hóa bước tiếp nhận và rà soát đề nghị tha
 
 Bản production hiện đang chạy trên Vercel. Tích hợp Azure trong working tree cần được cấu hình biến môi trường và deploy riêng trước khi production sử dụng. MVP tập trung vào quy trình đề nghị thanh toán hóa đơn; phân hệ nhân sự chưa nằm trong phạm vi phiên bản này.
 
+Checkout hiện tại bổ sung luồng hạn mức quyền duyệt theo [chính sách FIN-APPROVAL-1](POLICY.md): hồ sơ gắn cờ được Quản lý Tài chính kiểm tra trước; hồ sơ trên 20 triệu hoặc làm tổng duyệt ngày vượt 100 triệu cần Giám đốc Tài chính cấp quyền. Hạn mức ngày được tính trên tổng hồ sơ đã duyệt theo giờ Bangkok; cảnh báo cho Quản lý Tài chính xuất hiện khi tổng vượt 80 triệu. Thay đổi này mới nằm trong mã nguồn cục bộ: cần chạy migration Supabase và deploy giao diện trước khi production áp dụng.
+
 ### Đã xây dựng
 
 - Giao diện web cho người nộp đơn và các vai trò tài chính: Quản lý tài chính (`treasurer`) và Người đứng đầu nhánh tài chính (`cfo`).
 - Luồng tạo hồ sơ thanh toán, nhập tổng tiền đã gồm VAT và gửi hóa đơn PDF.
 - Tích hợp luồng đọc hóa đơn bằng Azure Document Intelligence `prebuilt-invoice` (có thể chọn OpenAI Responses API) và lưu trữ/xử lý hồ sơ qua Supabase Auth, Storage và RPC.
 - Đối chiếu tên người mua, nhà cung cấp, số/ngày hóa đơn và tổng thanh toán với form; kiểm tra tiền trước thuế + VAT. Số tiền còn phải thanh toán chỉ hiển thị thông tin.
-- Phân luồng hồ sơ: cần bổ sung thông tin (`U1`), chuyển cấp khi tổng tiền vượt 20.000.000 đồng (`U3`), hoặc đưa vào hàng đợi chờ người có thẩm quyền quyết định.
+- Phân luồng hồ sơ: cờ nghi vấn chuyển Quản lý Tài chính kiểm tra trước; Giám đốc Tài chính cấp quyền cho hồ sơ trên 20 triệu hoặc tổng duyệt trong ngày vượt 100 triệu.
 - Quyết định duyệt cuối do người có thẩm quyền thực hiện; AI không tự phê duyệt và hệ thống không chuyển tiền.
 - Demo offline và các bộ testcase/kiểm tra luật để hỗ trợ trình bày MVP.
 

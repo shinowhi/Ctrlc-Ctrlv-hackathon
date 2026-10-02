@@ -1,5 +1,5 @@
 (function(root) {
-  // Preview only. Database RPCs enforce the same invoice and authority boundaries.
+  // Preview only. The online RPCs also enforce the daily aggregate and two-stage authority flow.
   function assess(amount,checks={}) {
     if(!Number.isSafeInteger(amount)||amount<=0||amount>999999999999) return 'U1';
     if(['pdf','fieldsMatch','totalsConsistent','confidenceSufficient'].some(k=>checks[k]!==true)) return 'U1';
