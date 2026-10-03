@@ -21,7 +21,7 @@ async function main(){
     const folder=profiles.applicant.id+'/'+randomUUID();
     const body=new Blob(['%PDF-1.4\n% Synthetic test fixture; no genuine invoice\n%%EOF'],{type:'application/pdf'});
     await applicant.upload(folder+'/invoice.pdf',body);await applicant.upload(folder+'/request.pdf',body);
-    return applicant.rpc('submit_request',{p_id:id,p_expected_version:version,p_invoice_path:folder+'/invoice.pdf',p_request_path:folder+'/request.pdf',p_payload:{requesterType:'employee',requester:'TEST ONLINE',department:'TEST',budgetCode:'TEST',purpose:'TEST ONLY - synthetic evidence',vendor:'TEST',invoiceNumber:randomUUID(),invoiceDate:new Date().toISOString().slice(0,10),amount}});
+    return applicant.rpc('submit_request',{p_id:id,p_expected_version:version,p_invoice_path:folder+'/invoice.pdf',p_request_path:folder+'/request.pdf',p_payload:{requesterType:'employee',requester:'TEST ONLINE',department:'TEST',buyerCompany:'TEST COMPANY',budgetCode:'TEST',purpose:'TEST ONLY - synthetic evidence',vendor:'TEST',invoiceNumber:randomUUID(),invoiceDate:new Date().toISOString().slice(0,10),amount}});
   }
   const review=(client,r,action='approve',checks=all,reason='')=>client.rpc('review_request',{p_id:r.id,p_expected_version:r.version,p_action:action,p_checks:checks,p_reason:reason});
   let r=await submit(20000000);assert.equal(r.status,'TREASURER_REVIEW');

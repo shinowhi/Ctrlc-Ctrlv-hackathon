@@ -1,5 +1,7 @@
 'use strict';
 
+const { normalizeInvoiceNumber, comparePartyName } = require('../invoice-matching.js');
+
 const json = (res, status, body) => {
   res.status(status).setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify(body));
@@ -61,12 +63,6 @@ const outputText = result => result.output?.flatMap(item => item.content || []).
 const fields = ['buyerName', 'vendor', 'taxCode', 'invoiceNumber', 'invoiceDate', 'amountBeforeTax', 'vatAmount', 'totalAmount', 'amountDue'];
 const labels = { buyerName: 'tên người mua/đơn vị nhận hóa đơn', vendor: 'nhà cung cấp', invoiceNumber: 'số hóa đơn', invoiceDate: 'ngày hóa đơn', amountBeforeTax: 'tiền trước thuế', vatAmount: 'tiền VAT', totalAmount: 'tổng thanh toán' };
 const confidenceThresholds = { buyerName: 0.85, vendor: 0.85, invoiceNumber: 0.90, invoiceDate: 0.85, amountBeforeTax: 0.90, vatAmount: 0.90, totalAmount: 0.90 };
-const normalized = value => String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('vi');
-const normalizedInvoiceNumber = value => {
-  const text = normalized(value);
-  return /^\d+$/.test(text) ? text.replace(/^0+(?=\d)/, '') : text;
-};
-
 function assess(request, analysis) {
   const data = analysis.fields || {};
   const issues = [];
@@ -84,11 +80,20 @@ function assess(request, analysis) {
   if (!parsedDate || Number.isNaN(parsedDate.valueOf()) || parsedDate.toISOString().slice(0, 10) !== date) issues.push('Ngày hóa đơn không có định dạng YYYY-MM-DD hợp lệ.');
   if (Number.isSafeInteger(data.amountBeforeTax?.value) && Number.isSafeInteger(data.vatAmount?.value) && Number.isSafeInteger(data.totalAmount?.value)
     && data.amountBeforeTax.value + data.vatAmount.value !== data.totalAmount.value) issues.push('Tiền trước thuế cộng VAT không khớp tổng thanh toán.');
-  if (normalized(data.vendor?.value) !== normalized(request.payload.vendor)) issues.push('Nhà cung cấp trên hóa đơn không khớp form.');
-  if (normalized(data.buyerName?.value) !== normalized(request.payload.requester)) issues.push('Tên người mua trên hóa đơn không khớp họ tên/phòng ban trên form.');
-  if (normalizedInvoiceNumber(data.invoiceNumber?.value) !== normalizedInvoiceNumber(request.payload.invoiceNumber)) issues.push('Số hóa đơn trên PDF không khớp form.');
-  if ((data.invoiceDate?.value || '') !== (request.payload.invoiceDate || '')) issues.push('Ngày hóa đơn trên PDF không khớp form.');
-  if (data.totalAmount?.value !== Number(request.amount)) issues.push('Tổng thanh toán đã gồm VAT không khớp số tiền trên form.');
+  const vendorMatch = comparePartyName(data.vendor?.value, request.payload.vendor);
+  const buyerMatch = comparePartyName(data.buyerName?.value, request.payload.buyerCompany);
+  const invoiceNumberMatch = normalizeInvoiceNumber(data.invoiceNumber?.value) === normalizeInvoiceNumber(request.payload.invoiceNumber);
+  const invoiceDateMatch = (data.invoiceDate?.value || '') === (request.payload.invoiceDate || '');
+  const totalAmountMatch = data.totalAmount?.value === Number(request.amount);
+  if (vendorMatch.status === 'POSSIBLE_MATCH') issues.push('Tên nhà cung cấp gần khớp nhưng khác dấu/ký tự; Quản lý cần đối chiếu trên hóa đơn.');
+  else if (vendorMatch.status === 'UNVERIFIED') issues.push('Chưa đủ dữ liệu để đối chiếu nhà cung cấp.');
+  else if (vendorMatch.status === 'MISMATCH') issues.push('Nhà cung cấp trên hóa đơn không khớp form.');
+  if (buyerMatch.status === 'POSSIBLE_MATCH') issues.push('Tên công ty mua gần khớp nhưng khác dấu/ký tự; Quản lý cần đối chiếu trên hóa đơn.');
+  else if (buyerMatch.status === 'UNVERIFIED') issues.push('Chưa có tên công ty mua trên form để đối chiếu với hóa đơn.');
+  else if (buyerMatch.status === 'MISMATCH') issues.push('Tên công ty mua trên hóa đơn không khớp form.');
+  if (!invoiceNumberMatch) issues.push('Số hóa đơn trên PDF không khớp form.');
+  if (!invoiceDateMatch) issues.push('Ngày hóa đơn trên PDF không khớp form.');
+  if (!totalAmountMatch) issues.push('Tổng thanh toán đã gồm VAT không khớp số tiền trên form.');
 
   const uniqueIssues = [...new Set(issues)];
   const code = uniqueIssues.length ? 'U1' : Number(request.amount) > 20000000 ? 'U3' : 'CLEAR';
@@ -101,7 +106,11 @@ function assess(request, analysis) {
     code,
     reason,
     question: code === 'U1' ? `Vui lòng kiểm tra và bổ sung/cập nhật: ${uniqueIssues.join(' ')}` : '',
-    checks: { formFieldsMatch: uniqueIssues.every(item => !item.includes('không khớp form')), totalsConsistent: uniqueIssues.every(item => !item.includes('không khớp tổng thanh toán')) }
+    matching: { vendor: vendorMatch, buyerCompany: buyerMatch,
+      invoiceNumber: invoiceNumberMatch ? 'MATCH' : 'MISMATCH', invoiceDate: invoiceDateMatch ? 'MATCH' : 'MISMATCH',
+      totalAmount: totalAmountMatch ? 'MATCH' : 'MISMATCH' },
+    checks: { formFieldsMatch: vendorMatch.status === 'MATCH' && buyerMatch.status === 'MATCH' && invoiceNumberMatch && invoiceDateMatch,
+      totalsConsistent: uniqueIssues.every(item => !item.includes('không khớp tổng thanh toán')) }
   };
 }
 
@@ -130,7 +139,7 @@ const responseSchema = {
 
 const analyzeWithOpenAI = async (request, invoiceBytes) => {
   const content = [
-    { type: 'input_text', text: `Đọc hóa đơn PDF đính kèm. PDF có thể chứa chữ máy hoặc trang scan. Trích xuất đúng các trường schema; mỗi trường phải có giá trị, độ tin cậy từ 0 đến 1 và bằng chứng ngắn (trích chữ hoặc số trang). Không đoán và không kết luận hóa đơn/chữ ký số là xác thực. buyerName là người mua hoặc đơn vị được xuất hóa đơn (ví dụ trường Người mua hàng, Khách hàng, Bill To); không nhầm với nhà cung cấp. amountDue chỉ là số tiền còn phải thanh toán được ghi rõ trên hóa đơn sau các khoản đã trả; nếu không có thông tin này thì trả 0, không tự suy ra từ tổng tiền. Trường chữ không thấy trả chuỗi rỗng; số tiền không đọc được trả 0; confidence=0 và evidence rỗng. Ngày dùng YYYY-MM-DD; tiền là số nguyên VND. Hệ thống sẽ đối chiếu với dữ liệu nhập sau: ${JSON.stringify({ buyerName: request.payload.requester, vendor: request.payload.vendor, invoiceNumber: request.payload.invoiceNumber, invoiceDate: request.payload.invoiceDate, totalAmountIncludingVat: request.amount })}. Phép tính tiền trước thuế + VAT phải được thực hiện riêng bởi hệ thống.` },
+    { type: 'input_text', text: `Đọc hóa đơn PDF đính kèm. PDF có thể chứa chữ máy hoặc trang scan. Trích xuất đúng các trường schema; mỗi trường phải có giá trị, độ tin cậy từ 0 đến 1 và bằng chứng ngắn (trích chữ hoặc số trang). Không đoán và không kết luận hóa đơn/chữ ký số là xác thực. buyerName là tên công ty/pháp nhân tại mục người mua hoặc đơn vị nhận hóa đơn (ví dụ Người mua hàng, Khách hàng, Bill To); không nhầm với người đề nghị, phòng ban hay nhà cung cấp. amountDue chỉ là số tiền còn phải thanh toán được ghi rõ trên hóa đơn sau các khoản đã trả; nếu không có thông tin này thì trả 0, không tự suy ra từ tổng tiền. Trường chữ không thấy trả chuỗi rỗng; số tiền không đọc được trả 0; confidence=0 và evidence rỗng. Ngày dùng YYYY-MM-DD; tiền là số nguyên VND. Dữ liệu form để đối chiếu: ${JSON.stringify({ buyerCompany: request.payload.buyerCompany, vendor: request.payload.vendor, invoiceNumber: request.payload.invoiceNumber, invoiceDate: request.payload.invoiceDate, totalAmountIncludingVat: request.amount })}. Không dùng dữ liệu form để điền trường bị thiếu trên hóa đơn. Phép tính tiền trước thuế + VAT phải được thực hiện riêng bởi hệ thống.` },
     { type: 'input_file', filename: 'invoice.pdf', file_data: `data:application/pdf;base64,${invoiceBytes.toString('base64')}`, detail: 'high' }
   ];
   const response = await fetch('https://api.openai.com/v1/responses', {
@@ -411,7 +420,7 @@ const analyzeWithAzure = async invoiceBytes => {
   return extraction;
 };
 
-module.exports = async (req, res) => {
+const handler = async (req, res) => {
   if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed.' });
   const requestedProvider = String(process.env.INVOICE_ANALYSIS_PROVIDER || '').trim().toLowerCase();
   const azureConfigured = Boolean(process.env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT || process.env.AZURE_DOCUMENT_INTELLIGENCE_KEY);
@@ -452,3 +461,6 @@ module.exports = async (req, res) => {
     return json(res, 200, { status: result.status, analysis });
   } catch (error) { return json(res, error.status || 422, { error: error.message || 'Không đọc được minh chứng.' }); }
 };
+
+module.exports = handler;
+module.exports.assess = assess;

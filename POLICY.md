@@ -4,7 +4,7 @@
 
 ## Vai trò và trạng thái
 
-1. AI trích xuất và đối chiếu hóa đơn với thông tin người nộp. `READY_FOR_APPROVAL` có nghĩa hóa đơn đã qua các kiểm tra hiện có, đủ điều kiện để người có thẩm quyền duyệt. Quản lý không cần kiểm tra lại từng hóa đơn đã ở trạng thái này.
+1. AI trích xuất hóa đơn và đối chiếu với form. Form lưu riêng người đề nghị/phòng ban và **tên công ty mua hàng trên hóa đơn**; AI so người mua trên hóa đơn với tên công ty này, không so với nhân viên hoặc phòng ban đề nghị. `READY_FOR_APPROVAL` có nghĩa hóa đơn đã qua các kiểm tra hiện có, đủ điều kiện để người có thẩm quyền duyệt. Quản lý không cần kiểm tra lại từng hóa đơn đã ở trạng thái này.
 2. Nếu dữ kiện thiếu, không chắc hoặc không khớp, hồ sơ vào `TREASURER_REVIEW`. Quản lý tài chính cần xử lý các điểm gắn cờ trước. Nếu quản lý xác nhận hồ sơ nhưng khoản chi vượt thẩm quyền, hồ sơ được đưa lên Giám đốc.
 3. `CFO_REVIEW` là hàng chờ của Giám đốc Tài chính. Hàng này nhận hóa đơn trên 20 triệu đã đạt kiểm tra, hóa đơn quản lý chuyển lên do tổng ngày vượt hạn mức, và ngoại lệ khác được chuyển cấp.
 
@@ -25,6 +25,7 @@
 
 ## Ranh giới kiểm tra
 
-13. Hóa đơn trùng nhà cung cấp và số hóa đơn không được duyệt lần nữa.
-14. Duyệt không thay thế việc kiểm tra ngân sách kế toán theo mã, chính sách chi tiêu, mã số thuế công ty, danh sách nhà cung cấp được duyệt, PO hoặc lịch sử thanh toán; các nguồn dữ liệu này chưa được kết nối.
-15. AI không xác nhận tính xác thực của hóa đơn, nguồn phát hành hoặc chữ ký số. Ngoại lệ hạn mức do Giám đốc chịu trách nhiệm ghi lý do trong nhật ký.
+13. Chuẩn hóa số hóa đơn bằng Unicode NFKC, chữ thường và khoảng trắng; chỉ bỏ số 0 đầu khi toàn bộ số hóa đơn là chữ số. Giữ nguyên dấu phân cách và số 0 trong mã chữ-số. Hóa đơn trùng nhà cung cấp và số hóa đơn sau chuẩn hóa không được duyệt lần nữa.
+14. Tên nhà cung cấp và tên công ty mua được chuẩn hóa bằng Unicode NFKC, chữ thường và khoảng trắng. Khác biệt dấu tiếng Việt chỉ là ứng viên cần Quản lý xác nhận; không tự động xem là khớp. Chưa có danh mục alias để tự quy đổi tên pháp lý/viết tắt, nên các tên dạng này cần được xác nhận thủ công.
+15. Duyệt không thay thế việc kiểm tra ngân sách kế toán theo mã, chính sách chi tiêu, mã số thuế công ty, danh sách nhà cung cấp được duyệt, PO hoặc lịch sử thanh toán; các nguồn dữ liệu này chưa được kết nối.
+16. AI không xác nhận tính xác thực của hóa đơn, nguồn phát hành hoặc chữ ký số. Ngoại lệ hạn mức do Giám đốc chịu trách nhiệm ghi lý do trong nhật ký.

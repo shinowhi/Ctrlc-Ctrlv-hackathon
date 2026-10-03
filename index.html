@@ -60,6 +60,7 @@
               <label class="field">Loại người đề nghị<select id="requesterType"><option value="employee">Nhân viên</option><option value="department">Phòng ban</option></select></label>
               <label class="field">Họ tên / phòng ban<input id="requester" required maxlength="1000"></label>
               <label class="field">Bộ phận<input id="department" required maxlength="1000"></label>
+              <label class="field">Tên công ty mua hàng trên hóa đơn<input id="buyerCompany" required maxlength="1000" autocomplete="organization"><small>Nhập tên công ty/pháp nhân tại mục người mua trên hóa đơn.</small></label>
               <label class="field">Mã ngân sách (chưa đối chiếu)<input id="budgetCode" required maxlength="1000"></label>
               <label class="field">Mục đích chi<input id="purpose" required maxlength="1000"></label>
               <label class="field">Nhà cung cấp<input id="vendor" required maxlength="1000"></label>
@@ -81,6 +82,6 @@
     </main>
   </div>
   <noscript>Bạn cần bật JavaScript để đăng nhập.</noscript>
-  <script src="config.js"></script><script src="api.js"></script><script src="rules.js"></script><script src="app.js"></script>
+  <script src="config.js"></script><script src="api.js"></script><script src="invoice-matching.js"></script><script src="rules.js"></script><script src="app.js"></script>
 </body>
 </html>

@@ -3,6 +3,8 @@
 ## Phạm vi
 
 - Hóa đơn đầu vào: PDF có chữ chọn/copy hoặc PDF scan dạng ảnh. Chỉ hóa đơn là file đính kèm bắt buộc; tối đa 10 MB.
+- Form bắt buộc có `buyerCompany` là tên công ty/pháp nhân trên hóa đơn; không dùng tên người đề nghị hoặc phòng ban làm giá trị người mua.
+- So khớp chính xác sau Unicode NFKC, chữ thường và gộp khoảng trắng. Mã số hóa đơn thuần bỏ số 0 đầu; mã có chữ giữ số 0, dấu `/`, `-`, `.`. Khác biệt dấu ở tên nhà cung cấp/người mua cần Quản lý xác nhận.
 - Tổng thanh toán trên form phải là tổng đã gồm VAT. AI đánh giá hóa đơn đạt điều kiện thì hóa đơn **≤20.000.000 VND** vào hàng chờ Quản lý; hóa đơn **>20.000.000 VND** vào hàng Giám đốc. Hồ sơ gắn cờ cần Quản lý xử lý trước.
 - Hàng chờ động gồm các hóa đơn đã đủ điều kiện nhưng chưa duyệt, không gom theo ngày nộp. Tổng **100.000.000 VND/ngày** tính chung toàn công ty, theo giờ Bangkok. `APPROVED` là chấp thuận khoản phải trả theo quy ước cuộc thi, không có chuyển khoản thật.
 - Quản lý và Giám đốc có thể duyệt từng hóa đơn hoặc duyệt tất cả trong hàng của mình. Nếu toàn bộ đợt của Quản lý vượt hạn mức ngày, toàn bộ đợt chuyển `CFO_REVIEW`; Giám đốc cần ghi lý do khi duyệt.
@@ -34,6 +36,10 @@ node --test tests/*.test.cjs
 | SC-10 | Giám đốc duyệt danh sách làm tổng ngày vượt 100 triệu | Bắt buộc có lý do; các hóa đơn được duyệt và vẫn cộng vào tổng toàn công ty trong ngày. |
 | SC-11 | Một phần tử trong lệnh duyệt tất cả có phiên bản cũ, sai vai trò hoặc không đủ điều kiện | Toàn bộ lệnh thất bại; không hóa đơn nào được duyệt một phần. Tải lại danh sách để dùng phiên bản mới. |
 | SC-12 | Hai yêu cầu duyệt gần như đồng thời khi tổng ngày sát 100 triệu | RPC tuần tự hóa quyết định; không thể có hai lượt cùng dùng một số dư cũ. |
+| SC-13 | Người đề nghị là nhân viên A, công ty mua trên form và hóa đơn cùng là Công ty B; tên hóa đơn khác hoa/thường hoặc khoảng trắng | Buyer khớp `buyerCompany`, không so với nhân viên; tên và mã được chuẩn hóa nhất quán ở API, giao diện và database. |
+| SC-14 | Tên công ty chỉ khác dấu tiếng Việt hoặc là tên viết tắt chưa khai báo | Hồ sơ ở `TREASURER_REVIEW` với chú thích cần xác nhận; không tự động coi là khớp. |
+| SC-15 | Số hóa đơn `00123` và `123`; sau đó thử `INV-00123` và `INV-123` | Hai mã số thuần khớp theo quy tắc bỏ số 0 đầu; hai mã chữ-số không tự khớp vì số 0 có thể có ý nghĩa. |
+| SC-16 | Gửi hồ sơ thiếu tên công ty mua | Database từ chối gửi hồ sơ; hệ thống không dùng tên người đề nghị/phòng ban thay thế. |
 
 SC-03–SC-05 cần PDF mẫu được phép sử dụng, OpenAI API và Supabase thử nghiệm. Kết quả từng ca cần được ghi lại riêng; bộ luật cục bộ không thay thế các ca này.
 

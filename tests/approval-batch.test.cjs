@@ -23,6 +23,7 @@ async function fixture(){
   await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/schema.sql'),'utf8'));
   await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261002-daily-approval-limits.sql'),'utf8'));
   await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261002-z-batch-approval-queues.sql'),'utf8'));
+  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261004-invoice-name-normalization.sql'),'utf8'));
   await db.query('insert into profiles values ($1,$2,$3),($4,$5,$6),($7,$8,$9)',
     [applicant,'Applicant','applicant',treasurer,'Treasurer','treasurer',cfo,'CFO','cfo']);
   const as=async(user,sql,args=[])=>{
@@ -30,11 +31,13 @@ async function fixture(){
     await db.exec('set role authenticated');
     try{return await db.query(sql,args);}finally{await db.exec('reset role');}
   };
-  const invoice=async(amount,status='READY_FOR_APPROVAL',approvedAt=null)=>{
+  const invoice=async(amount,status='READY_FOR_APPROVAL',approvedAt=null,overrides={})=>{
     const id=crypto.randomUUID();
+    const payload={requester:'Requester '+id,requesterType:'employee',department:'Finance',buyerCompany:'Buyer Company '+id,
+      vendor:'Vendor '+id,invoiceNumber:'INV-'+id,invoiceDate:'2026-10-02',amount,...overrides.payload};
     await db.query('insert into requests(id,owner_id,payload,amount,invoice_path,status,approved_at) values($1,$2,$3,$4,$5,$6,$7)',
-      [id,applicant,{requester:'Requester '+id,vendor:'Vendor '+id,invoiceNumber:'INV-'+id,invoiceDate:'2026-10-02',amount},amount,'private/'+id+'.pdf',status,approvedAt]);
-    return {id,version:1,amount};
+      [id,applicant,payload,amount,'private/'+id+'.pdf',status,approvedAt]);
+    return {id,version:1,amount,payload};
   };
   return {db,as,invoice};
 }
@@ -64,7 +67,7 @@ test('AI eligibility leaves an invoice pending and routes amounts above 20 milli
       const beforeTax=Math.floor(amount*.8),vat=amount-beforeTax;
       const field=(value)=>({value,confidence:.99,evidence:'Đọc được trên hóa đơn mẫu'});
       const analysis={fields:{
-        buyerName:field('Requester '+request.id),vendor:field('Vendor '+request.id),
+        buyerName:field(request.payload.buyerCompany),vendor:field(request.payload.vendor),
         invoiceNumber:field('INV-'+request.id),invoiceDate:field('2026-10-02'),
         amountBeforeTax:field(beforeTax),vatAmount:field(vat),totalAmount:field(amount)
       },assessment:{reason:'Đạt kiểm tra hóa đơn'}};
@@ -81,6 +84,74 @@ test('AI eligibility leaves an invoice pending and routes amounts above 20 milli
     assert.equal(cfoInvoice.status,'CFO_REVIEW');
     assert.equal(cfoInvoice.approved_at,null);
     assert.ok(cfoInvoice.escalated_at);
+  }finally{await db.close();}
+});
+
+test('invoice analysis matches buyer company separately from employee requester and normalizes company names',async()=>{
+  const {db,invoice}=await fixture();
+  try{
+    const request=await invoice(5000000,'TREASURER_REVIEW',null,{payload:{buyerCompany:'Công ty Sao Mai',vendor:'Công ty Dịch vụ Sao Mai',invoiceNumber:'00123'}});
+    const field=value=>({value,confidence:.99,evidence:'Đọc rõ trên PDF'});
+    const analysis={fields:{
+      buyerName:field('  CÔNG TY   SAO MAI  '),vendor:field('  CÔNG TY DỊCH VỤ SAO MAI '),
+      invoiceNumber:field('１２３'),invoiceDate:field('2026-10-02'),amountBeforeTax:field(4000000),
+      vatAmount:field(1000000),totalAmount:field(5000000)
+    },assessment:{reason:'Các trường chuẩn hóa khớp form'}};
+    await db.query("select set_config('request.jwt.claim.role','service_role',false)");
+    await db.exec('set role service_role');
+    try{await db.query('select record_invoice_analysis($1,$2,$3::jsonb)',[request.id,request.version,analysis]);}
+    finally{await db.exec('reset role');}
+    const result=(await db.query('select status,checks from requests where id=$1',[request.id])).rows[0];
+    assert.equal(result.status,'READY_FOR_APPROVAL');
+    assert.equal(result.checks.invoice_fields_match,true);
+  }finally{await db.close();}
+});
+
+test('accent-insensitive company-name candidates remain in manager review; a definite buyer mismatch is never cleared',async()=>{
+  const {db,invoice}=await fixture();
+  try{
+    const request=await invoice(5000000,'TREASURER_REVIEW',null,{payload:{buyerCompany:'Công ty Sao Mai'}});
+    const field=value=>({value,confidence:.99,evidence:'Đọc rõ trên PDF'});
+    const analysis={fields:{buyerName:field('Cong ty Sao Mai'),vendor:field(request.payload.vendor),
+      invoiceNumber:field(request.payload.invoiceNumber),invoiceDate:field(request.payload.invoiceDate),
+      amountBeforeTax:field(4000000),vatAmount:field(1000000),totalAmount:field(5000000)},assessment:{reason:'Tên người mua cần xác nhận'}};
+    await db.query("select set_config('request.jwt.claim.role','service_role',false)");
+    await db.exec('set role service_role');
+    try{await db.query('select record_invoice_analysis($1,$2,$3::jsonb)',[request.id,request.version,analysis]);}
+    finally{await db.exec('reset role');}
+    const result=(await db.query('select status from requests where id=$1',[request.id])).rows[0];
+    assert.equal(result.status,'TREASURER_REVIEW');
+  }finally{await db.close();}
+});
+
+test('duplicate approval detection uses normalized supplier and invoice identifiers',async()=>{
+  const {db,as,invoice}=await fixture();
+  try{
+    const approvedAt=new Date().toISOString();
+    await invoice(1000,'APPROVED',approvedAt,{payload:{vendor:'Công ty Sao Mai',invoiceNumber:'000123'}});
+    const duplicate=await invoice(1000,'READY_FOR_APPROVAL',null,{payload:{vendor:'  CÔNG TY   SAO MAI ',invoiceNumber:'123'}});
+    await assert.rejects(as(treasurer,'select review_requests_batch($1::jsonb)',[
+      JSON.stringify([{id:duplicate.id,version:duplicate.version}])
+    ]),/trùng/i);
+  }finally{await db.close();}
+});
+
+test('new submissions require a company buyer name separate from the requester',async()=>{
+  const {db,as}=await fixture();
+  try{
+    const folder=applicant+'/'+crypto.randomUUID();
+    await db.query('insert into storage.objects(name,bucket_id) values($1,$2)',[folder+'/invoice.pdf','evidence']);
+    const payload={requesterType:'employee',requester:'Nguyễn An',department:'Marketing',budgetCode:'MKT-2026',
+      purpose:'In ấn',vendor:'Công ty Sao Mai',invoiceNumber:'INV-123',invoiceDate:'2026-10-04',amount:1000};
+    await assert.rejects(as(applicant,'select submit_request($1,$2,$3,$4,$5)',[
+      crypto.randomUUID(),payload,folder+'/invoice.pdf',null,0
+    ]),/buyerCompany/i);
+    payload.buyerCompany='Công ty Mua hàng';
+    const created=(await as(applicant,'select * from submit_request($1,$2,$3,$4,$5)',[
+      crypto.randomUUID(),payload,folder+'/invoice.pdf',null,0
+    ])).rows[0];
+    assert.equal(created.payload.buyerCompany,'Công ty Mua hàng');
+    assert.equal(created.status,'TREASURER_REVIEW');
   }finally{await db.close();}
 });
 
