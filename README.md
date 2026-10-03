@@ -20,9 +20,10 @@ Checkout hiện tại thực hiện hàng chờ và thẩm quyền theo [chính 
 ### Đã xây dựng
 
 - Giao diện web cho người nộp đơn và các vai trò tài chính: Quản lý tài chính (`treasurer`) và Người đứng đầu nhánh tài chính (`cfo`).
-- Luồng tạo hồ sơ thanh toán, nhập tổng tiền đã gồm VAT và gửi hóa đơn PDF.
+- Luồng tạo hồ sơ thanh toán, nhập tổng tiền đã gồm VAT, tên công ty mua trên hóa đơn và gửi hóa đơn PDF.
 - Tích hợp luồng đọc hóa đơn bằng Azure Document Intelligence `prebuilt-invoice` (có thể chọn OpenAI Responses API) và lưu trữ/xử lý hồ sơ qua Supabase Auth, Storage và RPC.
-- Đối chiếu tên người mua, nhà cung cấp, số/ngày hóa đơn và tổng thanh toán với form; kiểm tra tiền trước thuế + VAT. Số tiền còn phải thanh toán chỉ hiển thị thông tin.
+- Đối chiếu người mua với trường tên công ty mua riêng (không so với người đề nghị/phòng ban), cùng nhà cung cấp, số/ngày hóa đơn và tổng thanh toán; kiểm tra tiền trước thuế + VAT. Số tiền còn phải thanh toán chỉ hiển thị thông tin.
+- Chuẩn hóa số hóa đơn và tên bên bằng Unicode NFKC, chữ thường và khoảng trắng. Chỉ bỏ số 0 đầu của mã số thuần; biến thể khác dấu hoặc tên viết tắt chưa cấu hình cần Quản lý xác nhận.
 - Hàng chờ động theo trạng thái chưa duyệt, không chia đợt theo ngày nộp: Quản lý xử lý hóa đơn đủ điều kiện đến 20 triệu; Giám đốc xử lý hóa đơn trên 20 triệu và hồ sơ vượt ngân sách ngày được chuyển cấp.
 - AI đánh giá tính đủ điều kiện của hóa đơn; người có thẩm quyền quyết định cuối. `APPROVED` là chấp thuận khoản phải trả theo quy ước hackathon; ứng dụng không chuyển tiền.
 - Demo offline và các bộ testcase/kiểm tra luật để hỗ trợ trình bày MVP.

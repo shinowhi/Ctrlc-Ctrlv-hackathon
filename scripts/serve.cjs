@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '../dist');
 if (!fs.existsSync(root)) throw new Error('Run npm run build first. See HUONG-DAN-ONLINE.md');
-const allowed = new Set(['index.html','app.js','api.js','rules.js','styles.css','demo.html','demo.js','config.js','vendor/pdfjs/LICENSE']);
+const allowed = new Set(['index.html','app.js','api.js','invoice-matching.js','rules.js','styles.css','demo.html','demo.js','config.js','vendor/pdfjs/LICENSE']);
 const pdfjsAssetPattern = /^vendor\/pdfjs\/(?:pdf\.min\.mjs|pdf\.worker\.min\.mjs|(?:cmaps|standard_fonts|wasm|iccs)\/[A-Za-z0-9._-]+)$/;
 const types = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.wasm':'application/wasm','.bcmap':'application/octet-stream','.pfb':'application/octet-stream','.bin':'application/octet-stream','.icc':'application/octet-stream'};
 http.createServer((req,res) => {

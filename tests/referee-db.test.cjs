@@ -18,7 +18,7 @@ test('PostgreSQL: auto approval, escalation, ownership, flags, reuse and budget 
  let seq=0;
  async function submit(amount,opts={}){
   const id=crypto.randomUUID(),folder=applicant+'/'+crypto.randomUUID();
-  const payload={requesterType:'employee',requester:'TEST',department:'MKT',budgetCode:opts.budget||'MKT-OPS-2026',purpose:'In tài liệu',vendor:'TEST VENDOR',invoiceNumber:opts.invoice||'TEST-'+(++seq),invoiceDate:'2026-09-22',amount,invoiceType:'paper',category:opts.category||'printing'};
+  const payload={requesterType:'employee',requester:'TEST',department:'MKT',buyerCompany:'TEST COMPANY',budgetCode:opts.budget||'MKT-OPS-2026',purpose:'In tài liệu',vendor:'TEST VENDOR',invoiceNumber:opts.invoice||'TEST-'+(++seq),invoiceDate:'2026-09-22',amount,invoiceType:'paper',category:opts.category||'printing'};
   await db.query('insert into storage.objects(name,bucket_id) values($1,$3),($2,$3)',[folder+'/invoice.pdf',folder+'/request.pdf','evidence']);
   const analysis={checks:all,flags:opts.flags||[],status:opts.flags?.length?'U1':'CLEAR',confidence:1};
   const reserve=await as(applicant,'select reserve_assessment($1,$2,$3) id',[payload,folder+'/invoice.pdf',folder+'/request.pdf']);
