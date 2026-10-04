@@ -53,6 +53,14 @@ test('invoice date is shown as reference data and is not included in AI review r
   assert.doesNotMatch(appSource, /const aiConfidenceThresholds=\{[^}]*invoiceDate/s);
 });
 
+test('tax code confidence threshold is 80 percent in the AI review display', () => {
+  const appSource = fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8');
+  const analyzerSource = fs.readFileSync(path.join(__dirname, '../api/analyze-evidence.js'), 'utf8');
+  assert.match(appSource, /aiConfidenceThresholds=\{[^}]*taxCode:0\.80/);
+  assert.match(analyzerSource, /confidenceThresholds = \{[^}]*taxCode: 0\.80/);
+  assert.match(analyzerSource, /confidence\) >= confidenceThresholds\.taxCode/);
+});
+
 test('vendor directory UI supports supplier creation, verified aliases and invoice-form suggestions', () => {
   const appSource = fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8');
   const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
