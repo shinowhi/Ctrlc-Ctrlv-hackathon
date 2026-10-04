@@ -1,5 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
 const {
   normalizeInvoiceNumber,
   normalizePartyName,
@@ -27,4 +30,17 @@ test('party comparison distinguishes exact matches, possible OCR variants and mi
 
 test('verified party aliases count as exact matches', () => {
   assert.equal(comparePartyName('CTY Sao Mai', 'Công ty Sao Mai', ['CTY Sao Mai']).status, 'MATCH');
+});
+
+test('browser helper does not collide with app.js global declarations', () => {
+  const context = vm.createContext({});
+  context.window = context;
+  context.document = { getElementById: () => null };
+  context.FinRefApi = class {};
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../invoice-matching.js'), 'utf8'), context, { filename: 'invoice-matching.js' });
+  const appSource = fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8');
+  const declarationsEnd = appSource.indexOf('const normalized = normalizePartyName;');
+  assert.notEqual(declarationsEnd, -1, 'app.js declaration block should include its matching helper binding');
+  const appDeclarations = appSource.slice(0, declarationsEnd + 'const normalized = normalizePartyName;'.length);
+  assert.doesNotThrow(() => vm.runInContext(appDeclarations, context, { filename: 'app.js' }));
 });
