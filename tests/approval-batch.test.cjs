@@ -27,6 +27,7 @@ async function fixture(){
   await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261004-temporary-disable-invoice-date-analysis.sql'),'utf8'));
   await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261004-z-vendor-directory.sql'),'utf8'));
   await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261004-zz-vendor-invoice-seed.sql'),'utf8'));
+  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261004-zzz-tax-code-confidence-80.sql'),'utf8'));
   await db.query('insert into profiles values ($1,$2,$3),($4,$5,$6),($7,$8,$9)',
     [applicant,'Applicant','applicant',treasurer,'Treasurer','treasurer',cfo,'CFO','cfo']);
   const as=async(user,sql,args=[])=>{
@@ -155,11 +156,11 @@ test('a verified supplier alias is accepted in AI eligibility only when a known 
   const {db,invoice,as}=await fixture();
   try{
     const legalName='CÔNG TY TNHH ĐIỆN TỬ BẢO ANH';
-    const makeAnalysis=async(taxCode)=>{
+    const makeAnalysis=async(taxCode,taxCodeConfidence=.99)=>{
       const request=await invoice(5000000,'TREASURER_REVIEW',null,{payload:{vendor:legalName}});
-      const field=value=>({value,confidence:.99,evidence:'Đọc rõ trên hóa đơn mẫu'});
+      const field=(value,confidence=.99)=>({value,confidence,evidence:'Đọc rõ trên hóa đơn mẫu'});
       const analysis={fields:{
-        buyerName:field(request.payload.buyerCompany),vendor:field('BAO ANH ELECTRONICS'),taxCode:field(taxCode),
+        buyerName:field(request.payload.buyerCompany),vendor:field('BAO ANH ELECTRONICS'),taxCode:field(taxCode,taxCodeConfidence),
         invoiceNumber:field(request.payload.invoiceNumber),amountBeforeTax:field(4000000),vatAmount:field(1000000),totalAmount:field(5000000)
       },assessment:{reason:'Đối chiếu tên nhà cung cấp'}};
       await db.query("select set_config('request.jwt.claim.role','service_role',false)");
@@ -168,10 +169,10 @@ test('a verified supplier alias is accepted in AI eligibility only when a known 
       finally{await db.exec('reset role');}
       return (await db.query('select status,checks from requests where id=$1',[request.id])).rows[0];
     };
-    const matched=await makeAnalysis('0312500505');
+    const matched=await makeAnalysis('0312500505',.80);
     assert.equal(matched.status,'READY_FOR_APPROVAL');
     assert.equal(matched.checks.invoice_fields_match,true);
-    const differentTaxCode=await makeAnalysis('9999999999');
+    const differentTaxCode=await makeAnalysis('9999999999',.80);
     assert.equal(differentTaxCode.status,'TREASURER_REVIEW');
     assert.equal(differentTaxCode.checks.invoice_fields_match,false);
   }finally{await db.close();}

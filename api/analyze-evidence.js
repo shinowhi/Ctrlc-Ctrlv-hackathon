@@ -62,7 +62,7 @@ const asInvoiceBytes = async (path, maxBytes, sizeMessage) => {
 const outputText = result => result.output?.flatMap(item => item.content || []).map(part => part.text || '').join('') || '';
 const fields = ['buyerName', 'vendor', 'taxCode', 'invoiceNumber', 'invoiceDate', 'amountBeforeTax', 'vatAmount', 'totalAmount', 'amountDue'];
 const labels = { buyerName: 'tên người mua/đơn vị nhận hóa đơn', vendor: 'nhà cung cấp', invoiceNumber: 'số hóa đơn', invoiceDate: 'ngày hóa đơn', amountBeforeTax: 'tiền trước thuế', vatAmount: 'tiền VAT', totalAmount: 'tổng thanh toán' };
-const confidenceThresholds = { buyerName: 0.80, vendor: 0.80, invoiceNumber: 0.90, amountBeforeTax: 0.90, vatAmount: 0.90, totalAmount: 0.90 };
+const confidenceThresholds = { buyerName: 0.80, vendor: 0.80, taxCode: 0.80, invoiceNumber: 0.90, amountBeforeTax: 0.90, vatAmount: 0.90, totalAmount: 0.90 };
 function assess(request, analysis, registeredVendorMatch = null) {
   const data = analysis.fields || {};
   const issues = [];
@@ -485,7 +485,7 @@ const handler = async (req, res) => {
         method: 'POST', body: JSON.stringify({
           p_form_name: request.payload.vendor,
           p_invoice_name: extraction.fields.vendor?.value,
-          p_invoice_tax_code: Number(extraction.fields.taxCode?.confidence) >= 0.85 ? extraction.fields.taxCode?.value : null
+          p_invoice_tax_code: Number(extraction.fields.taxCode?.confidence) >= confidenceThresholds.taxCode ? extraction.fields.taxCode?.value : null
         })
       }, serviceKey, serviceKey);
     } catch {

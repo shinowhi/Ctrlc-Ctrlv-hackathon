@@ -11,7 +11,7 @@ const checkLabels={invoice:'Đã xem hóa đơn PDF',fields_match:'Nhà cung c�
 const fields=['requesterType','requester','department','buyerCompany','budgetCode','purpose','vendor','invoiceNumber','invoiceDate','amount'];
 const aiFieldLabels={buyerName:'Người mua / đơn vị nhận hóa đơn',vendor:'Nhà cung cấp',taxCode:'Mã số thuế NCC',invoiceNumber:'Số hóa đơn',invoiceDate:'Ngày hóa đơn (tham khảo)',amountBeforeTax:'Tiền trước thuế',vatAmount:'VAT',totalAmount:'Tổng thanh toán gồm VAT',amountDue:'Còn phải thanh toán (thông tin)'};
 const aiMoneyFields=new Set(['amountBeforeTax','vatAmount','totalAmount','amountDue']);
-const aiConfidenceThresholds={buyerName:0.80,vendor:0.80,taxCode:0.85,invoiceNumber:0.90,amountBeforeTax:0.90,vatAmount:0.90,totalAmount:0.90,amountDue:0.85};
+const aiConfidenceThresholds={buyerName:0.80,vendor:0.80,taxCode:0.80,invoiceNumber:0.90,amountBeforeTax:0.90,vatAmount:0.90,totalAmount:0.90,amountDue:0.85};
 let profile=null, rows=[], vendors=[], vendorDirectoryError='', selected=null, editing=null, timer=null, loading=false, busy=false, vendorSaving=false, epoch=0, dailySummary=null;
 function notify(text,error=false,login=false) { const el=$(login?'loginMessage':'message'); el.textContent=text; el.classList.toggle('error',error); }
 function time(value) { return new Date(value).toLocaleString('vi-VN'); }
