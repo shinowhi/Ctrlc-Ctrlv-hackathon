@@ -1,3 +1,4 @@
+(function (root) {
 'use strict';
 
 function normalizeText(value) {
@@ -41,7 +42,8 @@ function comparePartyName(actual, expected, verifiedAliases = []) {
   return { status: 'MISMATCH' };
 }
 
-const api = { normalizeInvoiceNumber, normalizePartyName, comparePartyName };
+const matchingApi = { normalizeInvoiceNumber, normalizePartyName, comparePartyName };
 
-if (typeof module !== 'undefined' && module.exports) module.exports = api;
-if (typeof window !== 'undefined') window.FinRefInvoiceMatching = api;
+if (typeof module !== 'undefined' && module.exports) module.exports = matchingApi;
+if (root) root.FinRefInvoiceMatching = matchingApi;
+})(typeof window === 'undefined' ? null : window);
