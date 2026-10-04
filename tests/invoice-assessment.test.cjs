@@ -45,3 +45,35 @@ test('a different company buyer remains a definite mismatch', () => {
   assert.equal(assessment.matching.buyerCompany.status, 'MISMATCH');
   assert.match(assessment.reason, /không khớp/i);
 });
+
+test('buyer and vendor confidence at 80 percent meets the lower threshold', () => {
+  const result = extraction();
+  result.fields.buyerName.confidence = 0.8;
+  result.fields.vendor.confidence = 0.8;
+
+  const assessment = assess(request(), result);
+  assert.equal(assessment.code, 'CLEAR');
+  assert.doesNotMatch(assessment.reason, /độ tin cậy khi đọc (tên người mua|nhà cung cấp)/i);
+});
+
+test('buyer and vendor confidence below 80 percent remains flagged', () => {
+  const result = extraction();
+  result.fields.buyerName.confidence = 0.79;
+  result.fields.vendor.confidence = 0.79;
+
+  const assessment = assess(request(), result);
+  assert.equal(assessment.code, 'U1');
+  assert.match(assessment.reason, /độ tin cậy khi đọc tên người mua.*dưới 80%/i);
+  assert.match(assessment.reason, /độ tin cậy khi đọc nhà cung cấp.*dưới 80%/i);
+});
+
+test('invoice date does not block assessment while its AI analysis is disabled', () => {
+  const result = extraction();
+  delete result.fields.invoiceDate;
+
+  const assessment = assess(request(), result);
+  assert.equal(assessment.code, 'CLEAR');
+  assert.equal(assessment.matching.invoiceDate, undefined);
+  assert.equal(assessment.checks.formFieldsMatch, true);
+  assert.doesNotMatch(assessment.reason, /ngày hóa đơn/i);
+});
