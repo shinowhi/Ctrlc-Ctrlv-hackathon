@@ -282,6 +282,31 @@ const normalizeAzureInvoiceDateFromLayout = result => {
   return [...byDate.values()][0];
 };
 
+const normalizeVndAmount = (amount, evidence) => {
+  if (!Number.isFinite(amount)) return null;
+
+  // Azure can interpret a Vietnamese thousands separator as a decimal point.
+  // Only repair it when the printed value is unambiguously grouped in threes
+  // and the parsed groups agree with Azure's numeric value.
+  const tokens = String(evidence || '').normalize('NFKC').match(/\d[\d.,]*/g) || [];
+  if (tokens.length !== 1) return Number.isSafeInteger(amount) ? amount : null;
+  const token = tokens[0];
+  const separators = [...token.matchAll(/[.,]/g)].map(([separator]) => separator);
+  if (!separators.length || separators.some(separator => separator !== separators[0])) {
+    return Number.isSafeInteger(amount) ? amount : null;
+  }
+  const groups = token.split(separators[0]);
+  if (groups[0].length < 1 || groups[0].length > 3 || groups.slice(1).some(group => group.length !== 3)) {
+    return Number.isSafeInteger(amount) ? amount : null;
+  }
+
+  const groupedValue = Number(groups.join(''));
+  const scale = 1000 ** (groups.length - 1);
+  if (!Number.isSafeInteger(groupedValue) || !Number.isFinite(scale)) return null;
+  if (amount === groupedValue || Math.round(amount * scale) === groupedValue) return groupedValue;
+  return null;
+};
+
 const azureField = (fields, names, kind, pages) => {
   const field = names.map(name => fields?.[name]).find(Boolean);
   let value = kind === 'money' ? 0 : '';
@@ -298,8 +323,11 @@ const azureField = (fields, names, kind, pages) => {
       if (knownForeignCurrency || !isVnd) {
         confidence = 0;
       } else {
-        value = currency.amount;
-        confidence = Number.isFinite(field.confidence) ? field.confidence : 0;
+        const normalizedAmount = normalizeVndAmount(currency.amount, field.content);
+        if (normalizedAmount !== null) {
+          value = normalizedAmount;
+          confidence = Number.isFinite(field.confidence) ? field.confidence : 0;
+        }
       }
     } else if (kind === 'date') {
       const parsedDate = [field.valueDate, field.valueString, field.content].map(parseInvoiceDate).find(Boolean);
@@ -464,3 +492,4 @@ const handler = async (req, res) => {
 
 module.exports = handler;
 module.exports.assess = assess;
+module.exports.normalizeAzureInvoice = normalizeAzureInvoice;
