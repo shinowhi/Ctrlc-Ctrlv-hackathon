@@ -67,13 +67,27 @@ test('buyer and vendor confidence below 80 percent remains flagged', () => {
   assert.match(assessment.reason, /độ tin cậy khi đọc nhà cung cấp.*dưới 80%/i);
 });
 
-test('invoice date does not block assessment while its AI analysis is disabled', () => {
+test('verified supplier aliases match while a registered tax-code conflict remains U1', () => {
+  const registeredAlias = assess(request(), extraction(), { status: 'MATCH', method: 'VERIFIED_ALIAS' });
+  assert.equal(registeredAlias.code, 'CLEAR');
+  assert.deepEqual(registeredAlias.matching.vendor, { status: 'MATCH', verifiedAlias: true });
+
+  const taxCodeConflict = assess(request(), extraction(), { status: 'MISMATCH', method: 'TAX_CODE_CONFLICT' });
+  assert.equal(taxCodeConflict.code, 'U1');
+  assert.equal(taxCodeConflict.matching.vendor.status, 'MISMATCH');
+  assert.match(taxCodeConflict.reason, /nhà cung cấp trên hóa đơn không khớp form/i);
+});
+
+test('invoice date stays out of approval assessment even when missing or low confidence', () => {
   const result = extraction();
-  delete result.fields.invoiceDate;
+  result.fields.invoiceDate = { value: '', confidence: 0, evidence: '' };
 
   const assessment = assess(request(), result);
   assert.equal(assessment.code, 'CLEAR');
   assert.equal(assessment.matching.invoiceDate, undefined);
   assert.equal(assessment.checks.formFieldsMatch, true);
   assert.doesNotMatch(assessment.reason, /ngày hóa đơn/i);
+
+  result.fields.invoiceDate = { value: '2026-09-23', confidence: 0, evidence: 'Ngày trên PDF' };
+  assert.equal(assess(request(), result).code, 'CLEAR');
 });

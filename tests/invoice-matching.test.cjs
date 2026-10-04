@@ -44,3 +44,25 @@ test('browser helper does not collide with app.js global declarations', () => {
   const appDeclarations = appSource.slice(0, declarationsEnd + 'const normalized = normalizePartyName;'.length);
   assert.doesNotThrow(() => vm.runInContext(appDeclarations, context, { filename: 'app.js' }));
 });
+
+test('invoice date is shown as reference data and is not included in AI review requirements', () => {
+  const appSource = fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8');
+  assert.match(appSource, /invoiceDate:'Ngày hóa đơn \(tham khảo\)'/);
+  assert.match(appSource, /key:'invoiceDate',label:'Ngày hóa đơn',reviewNote:'AI trích xuất để tham khảo; không dùng ngày này làm điều kiện đối chiếu hoặc duyệt\.'/);
+  assert.match(appSource, /const requiredInvoiceFields=\['buyerName','vendor','invoiceNumber','amountBeforeTax','vatAmount','totalAmount'\]/);
+  assert.doesNotMatch(appSource, /const aiConfidenceThresholds=\{[^}]*invoiceDate/s);
+});
+
+test('vendor directory UI supports supplier creation, verified aliases and invoice-form suggestions', () => {
+  const appSource = fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+  const apiSource = fs.readFileSync(path.join(__dirname, '../api.js'), 'utf8');
+  assert.match(html, /id="vendorDirectoryNav"/);
+  assert.match(html, /id="vendorCreateForm"/);
+  assert.match(html, /id="vendorAliasForm"/);
+  assert.match(html, /id="vendorAliasVerified" type="checkbox" required/);
+  assert.match(html, /list="vendorDirectoryOptions"/);
+  assert.match(appSource, /const canManageVendors=\['treasurer','cfo'\]\.includes\(p\.role\)/);
+  assert.match(apiSource, /vendorDirectory\(\) \{ return this\.rpc\('vendor_directory_list'/);
+  assert.match(apiSource, /saveVendor\(vendorId,legalName,taxCode,aliases\)/);
+});

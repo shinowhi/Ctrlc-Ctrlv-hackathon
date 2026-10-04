@@ -9,14 +9,14 @@ const roles={applicant:'Người nộp đơn',treasurer:'Quản lý tài chính'
 const statuses={TREASURER_REVIEW:'Chờ quản lý tài chính xử lý',READY_FOR_APPROVAL:'Sẵn sàng duyệt',CFO_REVIEW:'Chờ Giám đốc Tài chính duyệt',NEEDS_INFO:'Cần bổ sung',APPROVED:'Đã duyệt',REJECTED:'Từ chối'};
 const checkLabels={invoice:'Đã xem hóa đơn PDF',fields_match:'Nhà cung cấp, người mua và số hóa đơn khớp form',total_includes_vat:'Tổng thanh toán trên form đã gồm VAT và khớp hóa đơn'};
 const fields=['requesterType','requester','department','buyerCompany','budgetCode','purpose','vendor','invoiceNumber','invoiceDate','amount'];
-const aiFieldLabels={buyerName:'Người mua / đơn vị nhận hóa đơn',vendor:'Nhà cung cấp',taxCode:'Mã số thuế NCC',invoiceNumber:'Số hóa đơn',amountBeforeTax:'Tiền trước thuế',vatAmount:'VAT',totalAmount:'Tổng thanh toán gồm VAT',amountDue:'Còn phải thanh toán (thông tin)'};
+const aiFieldLabels={buyerName:'Người mua / đơn vị nhận hóa đơn',vendor:'Nhà cung cấp',taxCode:'Mã số thuế NCC',invoiceNumber:'Số hóa đơn',invoiceDate:'Ngày hóa đơn (tham khảo)',amountBeforeTax:'Tiền trước thuế',vatAmount:'VAT',totalAmount:'Tổng thanh toán gồm VAT',amountDue:'Còn phải thanh toán (thông tin)'};
 const aiMoneyFields=new Set(['amountBeforeTax','vatAmount','totalAmount','amountDue']);
 const aiConfidenceThresholds={buyerName:0.80,vendor:0.80,taxCode:0.85,invoiceNumber:0.90,amountBeforeTax:0.90,vatAmount:0.90,totalAmount:0.90,amountDue:0.85};
-let profile=null, rows=[], selected=null, editing=null, timer=null, loading=false, busy=false, epoch=0, dailySummary=null;
+let profile=null, rows=[], vendors=[], vendorDirectoryError='', selected=null, editing=null, timer=null, loading=false, busy=false, vendorSaving=false, epoch=0, dailySummary=null;
 function notify(text,error=false,login=false) { const el=$(login?'loginMessage':'message'); el.textContent=text; el.classList.toggle('error',error); }
 function time(value) { return new Date(value).toLocaleString('vi-VN'); }
 function showLogin() {
-  epoch++; clearInterval(timer); clearPdfViewer(); profile=null; rows=[]; selected=null; editing=null; dailySummary=null;
+  epoch++; clearInterval(timer); clearPdfViewer(); profile=null; rows=[]; vendors=[]; vendorDirectoryError=''; selected=null; editing=null; dailySummary=null;
   $('appShell').classList.add('hidden'); $('loginScreen').classList.remove('hidden');
   $('queueBody').innerHTML=''; $('decisionResult').innerHTML=''; $('auditList').innerHTML='';
   $('approvalTools').classList.add('hidden');
@@ -36,6 +36,8 @@ async function enter(p) {
   $('pageTitle').textContent={applicant:'Đề nghị của bạn',treasurer:'Không gian quản lý tài chính',cfo:'Duyệt cấp quyền · Giám đốc Tài chính'}[p.role];
   $('queueTitle').textContent=p.role==='applicant'?'Hồ sơ của tôi':p.role==='cfo'?'Danh sách chờ Giám đốc duyệt':'Danh sách đề nghị thanh toán';
   $('request-card').classList.toggle('hidden',p.role!=='applicant'); $('newRequest').classList.toggle('hidden',p.role!=='applicant');
+  const canManageVendors=['treasurer','cfo'].includes(p.role);
+  $('vendorDirectoryNav').classList.toggle('hidden',!canManageVendors); $('vendors-card').classList.toggle('hidden',!canManageVendors);
   $('statusFilter').value=p.role==='applicant'?'':'APPROVAL_QUEUE'; $('batchReason').value=''; resetForm(); await refresh();
   clearInterval(timer); timer=setInterval(()=>{if(!document.hidden) refresh().catch(()=>{});},10000);
 }
@@ -46,6 +48,7 @@ async function refresh() {
   try {
     const data=await api.list(profile.role); if(run!==epoch) return;
     rows=data; renderRows(); $('syncStatus').textContent='Đang hiển thị '+data.length+' hồ sơ có quyền truy cập · cập nhật mỗi 10 giây';
+    await refreshVendorDirectory(run); if(run!==epoch) return;
     await refreshDailyApprovalNotice(run); if(run!==epoch) return;
     if(selected) {
       const latest=rows.find(r=>r.id===selected.id);
@@ -53,6 +56,32 @@ async function refresh() {
       else if(latest.version!==selected.version) { await openRequest(latest.id); notify('Hồ sơ vừa được cập nhật. Hãy xem phiên bản mới trước khi xử lý.'); }
     }
   } catch(e) {if(run===epoch) {notify('Không đồng bộ được: '+e.message,true); $('syncStatus').textContent='Mất kết nối — dữ liệu đang hiển thị có thể đã cũ.'; if(!api.session) showLogin();}} finally {loading=false;}
+}
+async function refreshVendorDirectory(run=epoch) {
+  try {
+    const result=await api.vendorDirectory();
+    if(run!==epoch) return;
+    vendors=Array.isArray(result)?result:[]; vendorDirectoryError='';
+  } catch(error) {
+    if(run!==epoch) return;
+    vendors=[]; vendorDirectoryError=error.message||'Không tải được danh mục nhà cung cấp.';
+  }
+  renderVendorDirectory();
+}
+function renderVendorDirectory() {
+  const search=normalized($('vendorSearch').value);
+  const allNames=[...new Set(vendors.flatMap(v=>[v.legal_name,...(Array.isArray(v.aliases)?v.aliases:[])]).filter(Boolean))];
+  $('vendorDirectoryOptions').innerHTML=allNames.map(name=>`<option value="${esc(name)}"></option>`).join('');
+  const target=$('vendorAliasTarget'), previous=target.value;
+  target.innerHTML=vendors.map(v=>`<option value="${esc(v.vendor_id)}">${esc(v.legal_name)}</option>`).join('');
+  if(vendors.some(v=>v.vendor_id===previous)) target.value=previous;
+  const matches=vendors.filter(v=>normalized([v.legal_name,v.tax_code,...(Array.isArray(v.aliases)?v.aliases:[])].join(' ')).includes(search));
+  $('vendorDirectoryMessage').textContent=vendorDirectoryError
+    ?`Không tải được danh mục. Hãy kiểm tra đã chạy migration vendor-directory trên Supabase chưa. (${vendorDirectoryError})`
+    :vendors.length?`${vendors.length} nhà cung cấp đã xác minh. Bí danh chỉ được thêm sau khi đối chiếu với hóa đơn hoặc MST.`:'Chưa có nhà cung cấp trong danh mục.';
+  $('vendorDirectoryList').innerHTML=matches.length?matches.map(v=>`<article class="vendor-record"><div><strong>${esc(v.legal_name)}</strong><small>MST: ${esc(v.tax_code||'Chưa ghi nhận')}</small></div><div class="vendor-alias-list">${(Array.isArray(v.aliases)?v.aliases:[]).map(alias=>`<span class="vendor-alias-chip">${esc(alias)}</span>`).join('')}</div></article>`).join(''):vendors.length?'<p class="muted">Không tìm thấy nhà cung cấp phù hợp.</p>':'<p class="muted">Danh mục chưa có nhà cung cấp.</p>';
+  $('vendorCreateButton').disabled=vendorSaving;
+  $('vendorAliasButton').disabled=vendorSaving||vendors.length===0;
 }
 async function refreshDailyApprovalNotice(run=epoch) {
   const notice=$('dailyLimitNotice');
@@ -130,7 +159,8 @@ function renderAiAnalysis(ai,request=null) {
     const invoiceNumberFormatDiffers=invoiceNumberMatches&&normalized(raw)!==normalized(submittedInvoiceNumber);
     const value=aiMoneyFields.has(key)?(readableMoney?money(raw):'Chưa đọc được'):invoiceNumberFormatDiffers?submittedInvoiceNumber:String(raw||'Chưa đọc được');
     const numberNote=invoiceNumberFormatDiffers?` · Khớp form sau khi chuẩn hóa số 0 đầu (Azure đọc “${esc(raw)}”)`:'';
-    return `<div class="invoice-field${key==='amountDue'?' informational':''}"><div class="invoice-field-main"><strong>${label}</strong><span>${esc(value)}</span></div><small>Độ tin cậy ${Math.round((Number(field.confidence)||0)*100)}%${numberNote}${field.evidence?` · Bằng chứng: ${esc(field.evidence)}`:''}</small></div>`;
+    const aliasNote=key==='vendor'&&ai.assessment?.matching?.vendor?.verifiedAlias?' · Khớp bí danh đã xác minh':'';
+    return `<div class="invoice-field${key==='amountDue'?' informational':''}"><div class="invoice-field-main"><strong>${label}</strong><span>${esc(value)}</span></div><small>Độ tin cậy ${Math.round((Number(field.confidence)||0)*100)}%${numberNote}${aliasNote}${field.evidence?` · Bằng chứng: ${esc(field.evidence)}`:''}</small></div>`;
   }).join('');
   return `<section class="invoice-analysis"><h3>Kết quả đọc PDF</h3>${lines}<p class="muted">Ngân sách và chính sách chưa được kiểm tra. Độ tin cậy AI không xác thực nguồn phát hành hay chữ ký số.</p></section>`;
 }
@@ -144,7 +174,7 @@ const formReviewFields=[
   {key:'purpose',label:'Mục đích chi'},
   {key:'vendor',label:'Nhà cung cấp',analysisKey:'vendor'},
   {key:'invoiceNumber',label:'Số hóa đơn',analysisKey:'invoiceNumber'},
-  {key:'invoiceDate',label:'Ngày hóa đơn'},
+  {key:'invoiceDate',label:'Ngày hóa đơn',reviewNote:'AI trích xuất để tham khảo; không dùng ngày này làm điều kiện đối chiếu hoặc duyệt.'},
   {key:'amount',label:'Tổng thanh toán trên form (đã gồm VAT)',analysisKey:'totalAmount',read:(_,request)=>money(request.amount)},
   {key:'budgetCode',label:'Mã ngân sách'}
 ];
@@ -178,7 +208,10 @@ function buildReviewAnnotations(request,ai) {
       const expected=key==='totalAmount'?request.amount:request.payload?.[binding.formKey];
       const actual=aiMoneyFields.has(key)?Number(value):String(value||'').trim();
       const submitted=key==='totalAmount'?Number(expected):String(expected||'').trim();
-      const partyMatch=(key==='vendor'||key==='buyerName')?comparePartyName(actual,submitted):null;
+      const registeredMatch=key==='vendor'?ai?.assessment?.matching?.vendor:null;
+      const partyMatch=(key==='vendor'||key==='buyerName')
+        ?registeredMatch&&['MATCH','MISMATCH'].includes(registeredMatch.status)?registeredMatch:comparePartyName(actual,submitted)
+        :null;
       const mismatch=aiMoneyFields.has(key)?Number.isFinite(submitted)&&actual!==submitted:key==='invoiceNumber'?normalizeInvoiceNumber(actual)!==normalizeInvoiceNumber(submitted):partyMatch?partyMatch.status!=='MATCH':normalized(actual)!==normalized(submitted);
       if(mismatch) {
         const possibleNameMatch=partyMatch?.status==='POSSIBLE_MATCH';
@@ -211,7 +244,7 @@ function renderSubmittedForm(request,annotations) {
     const value=field.read?field.read(request.payload?.[field.key],request):request.payload?.[field.key];
     const annotation=field.analysisKey?annotations[field.analysisKey]:null;
     const state=annotation?.state;
-    const note=annotation?`<small class="review-mark-note">${annotation.notes.map(esc).join(' ')}</small>`:field.analysisKey?'':'<small class="review-unchecked-note">Chưa có đối chiếu tự động với hóa đơn.</small>';
+    const note=annotation?`<small class="review-mark-note">${annotation.notes.map(esc).join(' ')}</small>`:field.reviewNote?`<small class="review-unchecked-note">${esc(field.reviewNote)}</small>`:field.analysisKey?'':'<small class="review-unchecked-note">Chưa có đối chiếu tự động với hóa đơn.</small>';
     return `<div class="review-form-field${state?` marked marked--${state}`:''}"><dt>${field.label}</dt><dd>${esc(value||'—')}</dd>${note}</div>`;
   }).join('');
   return `<dl class="submitted-form-fields">${rows}</dl>`;
@@ -225,7 +258,8 @@ function renderInvoiceNotes(annotations,ai) {
     return `<li class="invoice-issue invoice-issue--${item.state}"><button type="button" class="invoice-issue-jump"${region?` data-pdf-page="${region.pageNumber}"`:''}><span class="review-mark-icon" aria-hidden="true"></span><strong>${esc(item.label)}</strong><span>${esc(value)}</span></button><small>${item.notes.map(esc).join(' ')}${region?'':` Chưa có tọa độ để khoanh vùng trên PDF.`}</small></li>`;
   }).join('')}</ul>`;
 }
-const withoutDisabledDateIssues = value => String(value||'')
+// Older saved assessments may contain date flags; date is now display-only.
+const withoutInvoiceDateAssessmentIssues = value => String(value||'')
   .replace(/(?:^|\s)(?:Không đọc rõ ngày hóa đơn|Độ tin cậy khi đọc ngày hóa đơn dưới \d+%|Thiếu bằng chứng đọc ngày hóa đơn|Ngày hóa đơn không có định dạng YYYY-MM-DD hợp lệ|Ngày hóa đơn trên PDF không khớp form)\.\s*/giu,' ')
   .replace(/Vui lòng kiểm tra và bổ sung\/cập nhật:\s*$/iu,'')
   .replace(/\s+/g,' ')
@@ -343,8 +377,8 @@ async function openRequest(id) {
     (profile.role==='cfo'&&(r.status==='CFO_REVIEW'||(r.status==='READY_FOR_APPROVAL'&&Number(r.amount)>20000000)));
   const manualChecks=profile.role==='treasurer'&&r.status==='TREASURER_REVIEW';
   const ai=r.checks?.ai;
-  const visibleReason=withoutDisabledDateIssues(r.reason);
-  const visibleQuestion=withoutDisabledDateIssues(ai?.assessment?.question);
+  const visibleReason=withoutInvoiceDateAssessmentIssues(r.reason);
+  const visibleQuestion=withoutInvoiceDateAssessmentIssues(ai?.assessment?.question);
   const annotations=buildReviewAnnotations(r,ai);
   const metadata={ 'Người đề nghị':r.payload.requester,'Bộ phận':r.payload.department,'Công ty mua trên hóa đơn':r.payload.buyerCompany,'Mục đích':r.payload.purpose,'Nhà cung cấp':r.payload.vendor,'Số hóa đơn':r.payload.invoiceNumber,'Ngày hóa đơn':r.payload.invoiceDate,'Mã ngân sách':r.payload.budgetCode };
   const reviewLayout=isReviewer?`<div class="reviewer-layout"><section class="submitted-form-panel"><div class="review-pane-heading"><span class="eyebrow">BÊN TRÁI · FORM NGƯỜI NỘP</span><h3>Thông tin đã gửi</h3><p class="muted">Các giá trị giữ nguyên như lúc nộp hồ sơ.</p></div><div class="review-legend"><span class="legend-yellow"><i></i>Vàng · AI chưa đọc chắc</span><span class="legend-red"><i></i>Đỏ · sai lệch đã rõ</span><small>Trường khớp và đủ rõ không đánh dấu.</small></div>${renderSubmittedForm(r,annotations)}</section><section class="invoice-review-panel"><div class="review-pane-heading"><span class="eyebrow">BÊN PHẢI · MINH CHỨNG</span><h3>Hóa đơn PDF</h3><p class="muted">Các khung màu chỉ vị trí cần kiểm tra trên hóa đơn.</p></div><div id="reviewPdfToolbar" class="pdf-toolbar hidden"><button id="reviewPdfPrevious" type="button" aria-label="Trang trước">‹</button><span id="reviewPdfPageLabel">Trang 1</span><button id="reviewPdfNext" type="button" aria-label="Trang sau">›</button><span class="pdf-toolbar-spacer"></span><button id="reviewPdfZoomOut" type="button" aria-label="Thu nhỏ">−</button><button id="reviewPdfZoomIn" type="button" aria-label="Phóng to">＋</button></div><p id="reviewPdfStatus" class="muted">Đang mở hóa đơn…</p><div id="reviewPdfWrap" class="pdf-viewer-wrap"><div id="reviewPdfStage" class="pdf-stage" tabindex="0" aria-label="Trang hóa đơn và các vùng cần kiểm tra"></div></div><div class="invoice-issues"><h4>Ghi chú cần kiểm tra</h4><div id="invoiceIssueList">${renderInvoiceNotes(annotations,ai)}</div></div></section></div>${renderAiAnalysis(ai,r)}`:`<div class="decision-meta">${Object.entries(metadata).map(([k,v])=>`<div class="meta-row"><span>${k}</span><strong>${esc(v)}</strong></div>`).join('')}</div>${renderAiAnalysis(ai,r)}<section class="invoice-preview"><h3>Hóa đơn PDF</h3><p id="invoicePreviewStatus" class="muted">Đang mở hóa đơn…</p><iframe id="invoicePreview" title="Hóa đơn PDF" class="hidden"></iframe></section>`;
@@ -430,6 +464,34 @@ function validateFile(file,invoice=false) {
   if(invoice&&file.type!=='application/pdf') throw new Error('Hóa đơn trong đợt này phải là PDF, có thể là PDF chữ hoặc PDF scan.');
   return {'application/pdf':'pdf','image/jpeg':'jpg','image/png':'png'}[file.type];
 }
+$('vendorCreateForm').onsubmit=async event=>{
+  event.preventDefault(); if(vendorSaving||!['treasurer','cfo'].includes(profile?.role)) return;
+  vendorSaving=true; renderVendorDirectory();
+  try {
+    await api.saveVendor(null,$('vendorLegalName').value.trim(),$('vendorTaxCode').value.trim(),[]);
+    $('vendorCreateForm').reset();
+    await refreshVendorDirectory();
+    notify('Đã thêm nhà cung cấp. Tên pháp lý đã được đưa vào danh sách chọn cho người nộp.');
+  } catch(error) {notify('Chưa thêm được nhà cung cấp: '+error.message,true);}
+  finally {vendorSaving=false;renderVendorDirectory();}
+};
+$('vendorAliasForm').onsubmit=async event=>{
+  event.preventDefault(); if(vendorSaving||!['treasurer','cfo'].includes(profile?.role)) return;
+  const vendor=vendors.find(item=>item.vendor_id===$('vendorAliasTarget').value);
+  if(!vendor) {notify('Hãy chọn nhà cung cấp trong danh mục.',true);return;}
+  vendorSaving=true; renderVendorDirectory();
+  try {
+    const alias=$('vendorAliasName').value.trim();
+    await api.saveVendor(vendor.vendor_id,vendor.legal_name,vendor.tax_code||'',[
+      ...(Array.isArray(vendor.aliases)?vendor.aliases:[]),alias
+    ]);
+    $('vendorAliasForm').reset();
+    await refreshVendorDirectory();
+    notify(`Đã xác minh và thêm bí danh “${alias}” cho ${vendor.legal_name}.`);
+  } catch(error) {notify('Chưa thêm được bí danh: '+error.message,true);}
+  finally {vendorSaving=false;renderVendorDirectory();}
+};
+$('vendorSearch').oninput=renderVendorDirectory;
 $('paymentForm').onsubmit=async event=>{
   event.preventDefault(); if(busy||profile?.role!=='applicant') return;
   setBusy(true);
