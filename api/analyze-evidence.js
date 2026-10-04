@@ -60,10 +60,10 @@ const asInvoiceBytes = async (path, maxBytes, sizeMessage) => {
 };
 
 const outputText = result => result.output?.flatMap(item => item.content || []).map(part => part.text || '').join('') || '';
-const fields = ['buyerName', 'vendor', 'taxCode', 'invoiceNumber', 'amountBeforeTax', 'vatAmount', 'totalAmount', 'amountDue'];
-const labels = { buyerName: 'tên người mua/đơn vị nhận hóa đơn', vendor: 'nhà cung cấp', invoiceNumber: 'số hóa đơn', amountBeforeTax: 'tiền trước thuế', vatAmount: 'tiền VAT', totalAmount: 'tổng thanh toán' };
+const fields = ['buyerName', 'vendor', 'taxCode', 'invoiceNumber', 'invoiceDate', 'amountBeforeTax', 'vatAmount', 'totalAmount', 'amountDue'];
+const labels = { buyerName: 'tên người mua/đơn vị nhận hóa đơn', vendor: 'nhà cung cấp', invoiceNumber: 'số hóa đơn', invoiceDate: 'ngày hóa đơn', amountBeforeTax: 'tiền trước thuế', vatAmount: 'tiền VAT', totalAmount: 'tổng thanh toán' };
 const confidenceThresholds = { buyerName: 0.80, vendor: 0.80, invoiceNumber: 0.90, amountBeforeTax: 0.90, vatAmount: 0.90, totalAmount: 0.90 };
-function assess(request, analysis) {
+function assess(request, analysis, registeredVendorMatch = null) {
   const data = analysis.fields || {};
   const issues = [];
   const required = ['buyerName', 'vendor', 'invoiceNumber', 'amountBeforeTax', 'vatAmount', 'totalAmount'];
@@ -77,7 +77,11 @@ function assess(request, analysis) {
   }
   if (Number.isSafeInteger(data.amountBeforeTax?.value) && Number.isSafeInteger(data.vatAmount?.value) && Number.isSafeInteger(data.totalAmount?.value)
     && data.amountBeforeTax.value + data.vatAmount.value !== data.totalAmount.value) issues.push('Tiền trước thuế cộng VAT không khớp tổng thanh toán.');
-  const vendorMatch = comparePartyName(data.vendor?.value, request.payload.vendor);
+  const plainVendorMatch = comparePartyName(data.vendor?.value, request.payload.vendor);
+  const registeredStatus = registeredVendorMatch?.status;
+  const vendorMatch = ['MATCH','MISMATCH'].includes(registeredStatus)
+    ? { status: registeredStatus, ...(registeredVendorMatch.method === 'VERIFIED_ALIAS' ? { verifiedAlias: true } : {}) }
+    : plainVendorMatch;
   const buyerMatch = comparePartyName(data.buyerName?.value, request.payload.buyerCompany);
   const invoiceNumberMatch = normalizeInvoiceNumber(data.invoiceNumber?.value) === normalizeInvoiceNumber(request.payload.invoiceNumber);
   const totalAmountMatch = data.totalAmount?.value === Number(request.amount);
@@ -122,7 +126,7 @@ const invoiceSchema = {
   type: 'object', additionalProperties: false,
   properties: Object.fromEntries(fields.map(key => [key,
     fieldSchema(['amountBeforeTax', 'vatAmount', 'totalAmount', 'amountDue'].includes(key) ? 'integer' : 'string',
-      ['amountBeforeTax', 'vatAmount', 'totalAmount', 'amountDue'].includes(key) ? 'VND, số nguyên; trả 0 nếu hóa đơn không có hoặc không đọc được.' : 'Trả chuỗi rỗng nếu không đọc được.')
+      ['amountBeforeTax', 'vatAmount', 'totalAmount', 'amountDue'].includes(key) ? 'VND, số nguyên; trả 0 nếu hóa đơn không có hoặc không đọc được.' : key === 'invoiceDate' ? 'Ngày trên hóa đơn theo YYYY-MM-DD nếu đọc rõ; trả chuỗi rỗng nếu không đọc rõ hoặc không xác định được.' : 'Trả chuỗi rỗng nếu không đọc được.')
   ])),
   required: fields
 };
@@ -134,7 +138,7 @@ const responseSchema = {
 
 const analyzeWithOpenAI = async (request, invoiceBytes) => {
   const content = [
-    { type: 'input_text', text: `Đọc hóa đơn PDF đính kèm. PDF có thể chứa chữ máy hoặc trang scan. Trích xuất đúng các trường schema; mỗi trường phải có giá trị, độ tin cậy từ 0 đến 1 và bằng chứng ngắn (trích chữ hoặc số trang). Không đoán và không kết luận hóa đơn/chữ ký số là xác thực. buyerName là tên công ty/pháp nhân tại mục người mua hoặc đơn vị nhận hóa đơn (ví dụ Người mua hàng, Khách hàng, Bill To); không nhầm với người đề nghị, phòng ban hay nhà cung cấp. amountDue chỉ là số tiền còn phải thanh toán được ghi rõ trên hóa đơn sau các khoản đã trả; nếu không có thông tin này thì trả 0, không tự suy ra từ tổng tiền. Trường chữ không thấy trả chuỗi rỗng; số tiền không đọc được trả 0; confidence=0 và evidence rỗng. Tiền là số nguyên VND. Dữ liệu form để đối chiếu: ${JSON.stringify({ buyerCompany: request.payload.buyerCompany, vendor: request.payload.vendor, invoiceNumber: request.payload.invoiceNumber, totalAmountIncludingVat: request.amount })}. Không dùng dữ liệu form để điền trường bị thiếu trên hóa đơn. Phép tính tiền trước thuế + VAT phải được thực hiện riêng bởi hệ thống.` },
+    { type: 'input_text', text: `Đọc hóa đơn PDF đính kèm. PDF có thể chứa chữ máy hoặc trang scan. Trích xuất đúng các trường schema; mỗi trường phải có giá trị, độ tin cậy từ 0 đến 1 và bằng chứng ngắn (trích chữ hoặc số trang). Không đoán và không kết luận hóa đơn/chữ ký số là xác thực. buyerName là tên công ty/pháp nhân tại mục người mua hoặc đơn vị nhận hóa đơn (ví dụ Người mua hàng, Khách hàng, Bill To); không nhầm với người đề nghị, phòng ban hay nhà cung cấp. invoiceDate là ngày ghi trên hóa đơn, đổi sang YYYY-MM-DD chỉ khi ngày/tháng/năm đọc rõ; nếu mơ hồ hoặc không đọc được, trả chuỗi rỗng, confidence=0 và evidence rỗng. Ngày hóa đơn chỉ để hiển thị tham khảo, không dùng làm điều kiện đánh giá hoặc duyệt. amountDue chỉ là số tiền còn phải thanh toán được ghi rõ trên hóa đơn sau các khoản đã trả; nếu không có thông tin này thì trả 0, không tự suy ra từ tổng tiền. Trường chữ không thấy trả chuỗi rỗng; số tiền không đọc được trả 0; confidence=0 và evidence rỗng. Tiền là số nguyên VND. Dữ liệu form để đối chiếu: ${JSON.stringify({ buyerCompany: request.payload.buyerCompany, vendor: request.payload.vendor, invoiceNumber: request.payload.invoiceNumber, totalAmountIncludingVat: request.amount })}. Không dùng dữ liệu form để điền trường bị thiếu trên hóa đơn. Phép tính tiền trước thuế + VAT phải được thực hiện riêng bởi hệ thống.` },
     { type: 'input_file', filename: 'invoice.pdf', file_data: `data:application/pdf;base64,${invoiceBytes.toString('base64')}`, detail: 'high' }
   ];
   const response = await fetch('https://api.openai.com/v1/responses', {
@@ -356,6 +360,7 @@ const normalizeAzureInvoice = result => {
     vendor: azureField(fields, ['VendorName'], 'string', pages),
     taxCode: azureField(fields, ['VendorTaxId'], 'string', pages),
     invoiceNumber,
+    invoiceDate: azureField(fields, ['InvoiceDate'], 'date', pages),
     amountBeforeTax: azureField(fields, ['SubTotal'], 'money', pages),
     vatAmount: azureField(fields, ['TotalTax'], 'money', pages),
     totalAmount: azureField(fields, ['InvoiceTotal'], 'money', pages),
@@ -428,7 +433,17 @@ const analyzeWithAzure = async invoiceBytes => {
   // https://learn.microsoft.com/en-us/azure/ai-services/document-intelligence/concept/analyze-document-response?view=doc-intel-4.0.0
   // Vietnamese OCR support: https://learn.microsoft.com/en-us/azure/ai-services/document-intelligence/language-support/ocr?view=doc-intel-4.0.0
   const invoiceResult = await analyzeAzureModel(endpoint.origin, 'prebuilt-invoice', invoiceBytes, apiVersion, 35000);
-  return normalizeAzureInvoice(invoiceResult);
+  const extraction = normalizeAzureInvoice(invoiceResult);
+  if (!extraction.fields.invoiceDate.value) {
+    try {
+      const layoutResult = await analyzeAzureModel(endpoint.origin, 'prebuilt-layout', invoiceBytes, apiVersion, 12000);
+      const layoutDate = normalizeAzureInvoiceDateFromLayout(layoutResult);
+      if (layoutDate.value) extraction.fields.invoiceDate = layoutDate;
+    } catch {
+      // Date extraction is display-only; a failed fallback must not block the invoice assessment.
+    }
+  }
+  return extraction;
 };
 
 const handler = async (req, res) => {
@@ -463,9 +478,21 @@ const handler = async (req, res) => {
     const extraction = provider === 'azure'
       ? await analyzeWithAzure(invoiceBytes)
       : await analyzeWithOpenAI(request, invoiceBytes);
-    const assessment = assess(request, extraction);
-    const analysis = { ...extraction, assessment, policyChecked: false, budgetChecked: false };
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    let registeredVendorMatch = null;
+    try {
+      registeredVendorMatch = await supabase('/rest/v1/rpc/resolve_vendor_name_match', {
+        method: 'POST', body: JSON.stringify({
+          p_form_name: request.payload.vendor,
+          p_invoice_name: extraction.fields.vendor?.value,
+          p_invoice_tax_code: Number(extraction.fields.taxCode?.confidence) >= 0.85 ? extraction.fields.taxCode?.value : null
+        })
+      }, serviceKey, serviceKey);
+    } catch {
+      // Keep the existing conservative text comparison if the vendor directory migration is not installed yet.
+    }
+    const assessment = assess(request, extraction, registeredVendorMatch);
+    const analysis = { ...extraction, assessment, policyChecked: false, budgetChecked: false };
     const result = await supabase('/rest/v1/rpc/record_invoice_analysis', {
       method: 'POST', body: JSON.stringify({ p_id: request.id, p_expected_version: request.version, p_analysis: analysis })
     }, serviceKey, serviceKey);
@@ -476,3 +503,4 @@ const handler = async (req, res) => {
 module.exports = handler;
 module.exports.assess = assess;
 module.exports.normalizeAzureInvoice = normalizeAzureInvoice;
+module.exports.normalizeAzureInvoiceDateFromLayout = normalizeAzureInvoiceDateFromLayout;

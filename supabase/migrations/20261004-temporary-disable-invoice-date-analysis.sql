@@ -1,5 +1,5 @@
--- Temporarily exclude invoice-date OCR from eligibility while keeping the
--- applicant-submitted invoice date in the request payload.
+-- Invoice date may be stored in p_analysis for display, but it is informational
+-- only and must stay out of field matching and AI eligibility requirements.
 begin;
 
 create or replace function public.record_invoice_analysis(p_id uuid,p_expected_version integer,p_analysis jsonb)

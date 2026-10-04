@@ -65,6 +65,10 @@
     audit(id) { return this.request('/rest/v1/audit_events?request_id=eq.' + encodeURIComponent(id) + '&select=actor_role,old_status,new_status,reason,created_at,version&order=id.desc&limit=50'); }
     rpc(name,args) { return this.request('/rest/v1/rpc/' + name,{method:'POST',body:JSON.stringify(args)}); }
     dailyApprovalSummary() { return this.rpc('daily_approval_summary',{}); }
+    vendorDirectory() { return this.rpc('vendor_directory_list',{}); }
+    saveVendor(vendorId,legalName,taxCode,aliases) {
+      return this.rpc('save_vendor',{p_vendor_id:vendorId,p_legal_name:legalName,p_tax_code:taxCode,p_aliases:aliases});
+    }
     async analyzeEvidence(requestId) {
       if (!this.session) throw new Error('Vui lòng đăng nhập.');
       if (this.session.expires_at < Date.now()/1000 + 60) await this.refresh();
