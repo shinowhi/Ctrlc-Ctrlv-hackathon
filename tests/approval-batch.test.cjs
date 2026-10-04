@@ -24,6 +24,7 @@ async function fixture(){
   await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261002-daily-approval-limits.sql'),'utf8'));
   await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261002-z-batch-approval-queues.sql'),'utf8'));
   await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261004-invoice-name-normalization.sql'),'utf8'));
+  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261004-temporary-disable-invoice-date-analysis.sql'),'utf8'));
   await db.query('insert into profiles values ($1,$2,$3),($4,$5,$6),($7,$8,$9)',
     [applicant,'Applicant','applicant',treasurer,'Treasurer','treasurer',cfo,'CFO','cfo']);
   const as=async(user,sql,args=[])=>{
@@ -84,6 +85,26 @@ test('AI eligibility leaves an invoice pending and routes amounts above 20 milli
     assert.equal(cfoInvoice.status,'CFO_REVIEW');
     assert.equal(cfoInvoice.approved_at,null);
     assert.ok(cfoInvoice.escalated_at);
+  }finally{await db.close();}
+});
+
+test('buyer/vendor confidence at 80 percent is eligible without an AI invoice-date field',async()=>{
+  const {db,invoice}=await fixture();
+  try{
+    const request=await invoice(5000000,'TREASURER_REVIEW');
+    const field=(value,confidence=.99)=>({value,confidence,evidence:'Đọc được trên hóa đơn mẫu'});
+    const analysis={fields:{
+      buyerName:field(request.payload.buyerCompany,.8),vendor:field(request.payload.vendor,.8),
+      invoiceNumber:field('INV-'+request.id),amountBeforeTax:field(4000000),vatAmount:field(1000000),totalAmount:field(5000000)
+    },assessment:{reason:'Các trường còn lại đạt kiểm tra'}};
+    await db.query("select set_config('request.jwt.claim.role','service_role',false)");
+    await db.exec('set role service_role');
+    try{await db.query('select record_invoice_analysis($1,$2,$3::jsonb)',[request.id,request.version,analysis]);}
+    finally{await db.exec('reset role');}
+    const result=(await db.query('select status,checks from requests where id=$1',[request.id])).rows[0];
+    assert.equal(result.status,'READY_FOR_APPROVAL');
+    assert.equal(result.checks.invoice_fields_match,true);
+    assert.equal(Object.hasOwn(result.checks.ai.fields,'invoiceDate'),false);
   }finally{await db.close();}
 });
 

@@ -60,13 +60,13 @@ const asInvoiceBytes = async (path, maxBytes, sizeMessage) => {
 };
 
 const outputText = result => result.output?.flatMap(item => item.content || []).map(part => part.text || '').join('') || '';
-const fields = ['buyerName', 'vendor', 'taxCode', 'invoiceNumber', 'invoiceDate', 'amountBeforeTax', 'vatAmount', 'totalAmount', 'amountDue'];
-const labels = { buyerName: 'tên người mua/đơn vị nhận hóa đơn', vendor: 'nhà cung cấp', invoiceNumber: 'số hóa đơn', invoiceDate: 'ngày hóa đơn', amountBeforeTax: 'tiền trước thuế', vatAmount: 'tiền VAT', totalAmount: 'tổng thanh toán' };
-const confidenceThresholds = { buyerName: 0.85, vendor: 0.85, invoiceNumber: 0.90, invoiceDate: 0.85, amountBeforeTax: 0.90, vatAmount: 0.90, totalAmount: 0.90 };
+const fields = ['buyerName', 'vendor', 'taxCode', 'invoiceNumber', 'amountBeforeTax', 'vatAmount', 'totalAmount', 'amountDue'];
+const labels = { buyerName: 'tên người mua/đơn vị nhận hóa đơn', vendor: 'nhà cung cấp', invoiceNumber: 'số hóa đơn', amountBeforeTax: 'tiền trước thuế', vatAmount: 'tiền VAT', totalAmount: 'tổng thanh toán' };
+const confidenceThresholds = { buyerName: 0.80, vendor: 0.80, invoiceNumber: 0.90, amountBeforeTax: 0.90, vatAmount: 0.90, totalAmount: 0.90 };
 function assess(request, analysis) {
   const data = analysis.fields || {};
   const issues = [];
-  const required = ['buyerName', 'vendor', 'invoiceNumber', 'invoiceDate', 'amountBeforeTax', 'vatAmount', 'totalAmount'];
+  const required = ['buyerName', 'vendor', 'invoiceNumber', 'amountBeforeTax', 'vatAmount', 'totalAmount'];
   for (const key of required) {
     const field = data[key] || {};
     const valueMissing = typeof field.value === 'string' ? !field.value.trim() : !Number.isSafeInteger(field.value) || field.value < 0;
@@ -75,15 +75,11 @@ function assess(request, analysis) {
     if (!Number.isFinite(field.confidence) || field.confidence < threshold) issues.push(`Độ tin cậy khi đọc ${labels[key]} dưới ${Math.round(threshold * 100)}%.`);
     if (!String(field.evidence || '').trim()) issues.push(`Thiếu bằng chứng đọc ${labels[key]}.`);
   }
-  const date = data.invoiceDate?.value || '';
-  const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(`${date}T00:00:00Z`) : null;
-  if (!parsedDate || Number.isNaN(parsedDate.valueOf()) || parsedDate.toISOString().slice(0, 10) !== date) issues.push('Ngày hóa đơn không có định dạng YYYY-MM-DD hợp lệ.');
   if (Number.isSafeInteger(data.amountBeforeTax?.value) && Number.isSafeInteger(data.vatAmount?.value) && Number.isSafeInteger(data.totalAmount?.value)
     && data.amountBeforeTax.value + data.vatAmount.value !== data.totalAmount.value) issues.push('Tiền trước thuế cộng VAT không khớp tổng thanh toán.');
   const vendorMatch = comparePartyName(data.vendor?.value, request.payload.vendor);
   const buyerMatch = comparePartyName(data.buyerName?.value, request.payload.buyerCompany);
   const invoiceNumberMatch = normalizeInvoiceNumber(data.invoiceNumber?.value) === normalizeInvoiceNumber(request.payload.invoiceNumber);
-  const invoiceDateMatch = (data.invoiceDate?.value || '') === (request.payload.invoiceDate || '');
   const totalAmountMatch = data.totalAmount?.value === Number(request.amount);
   if (vendorMatch.status === 'POSSIBLE_MATCH') issues.push('Tên nhà cung cấp gần khớp nhưng khác dấu/ký tự; Quản lý cần đối chiếu trên hóa đơn.');
   else if (vendorMatch.status === 'UNVERIFIED') issues.push('Chưa đủ dữ liệu để đối chiếu nhà cung cấp.');
@@ -92,7 +88,6 @@ function assess(request, analysis) {
   else if (buyerMatch.status === 'UNVERIFIED') issues.push('Chưa có tên công ty mua trên form để đối chiếu với hóa đơn.');
   else if (buyerMatch.status === 'MISMATCH') issues.push('Tên công ty mua trên hóa đơn không khớp form.');
   if (!invoiceNumberMatch) issues.push('Số hóa đơn trên PDF không khớp form.');
-  if (!invoiceDateMatch) issues.push('Ngày hóa đơn trên PDF không khớp form.');
   if (!totalAmountMatch) issues.push('Tổng thanh toán đã gồm VAT không khớp số tiền trên form.');
 
   const uniqueIssues = [...new Set(issues)];
@@ -107,9 +102,9 @@ function assess(request, analysis) {
     reason,
     question: code === 'U1' ? `Vui lòng kiểm tra và bổ sung/cập nhật: ${uniqueIssues.join(' ')}` : '',
     matching: { vendor: vendorMatch, buyerCompany: buyerMatch,
-      invoiceNumber: invoiceNumberMatch ? 'MATCH' : 'MISMATCH', invoiceDate: invoiceDateMatch ? 'MATCH' : 'MISMATCH',
+      invoiceNumber: invoiceNumberMatch ? 'MATCH' : 'MISMATCH',
       totalAmount: totalAmountMatch ? 'MATCH' : 'MISMATCH' },
-    checks: { formFieldsMatch: vendorMatch.status === 'MATCH' && buyerMatch.status === 'MATCH' && invoiceNumberMatch && invoiceDateMatch,
+    checks: { formFieldsMatch: vendorMatch.status === 'MATCH' && buyerMatch.status === 'MATCH' && invoiceNumberMatch,
       totalsConsistent: uniqueIssues.every(item => !item.includes('không khớp tổng thanh toán')) }
   };
 }
@@ -139,7 +134,7 @@ const responseSchema = {
 
 const analyzeWithOpenAI = async (request, invoiceBytes) => {
   const content = [
-    { type: 'input_text', text: `Đọc hóa đơn PDF đính kèm. PDF có thể chứa chữ máy hoặc trang scan. Trích xuất đúng các trường schema; mỗi trường phải có giá trị, độ tin cậy từ 0 đến 1 và bằng chứng ngắn (trích chữ hoặc số trang). Không đoán và không kết luận hóa đơn/chữ ký số là xác thực. buyerName là tên công ty/pháp nhân tại mục người mua hoặc đơn vị nhận hóa đơn (ví dụ Người mua hàng, Khách hàng, Bill To); không nhầm với người đề nghị, phòng ban hay nhà cung cấp. amountDue chỉ là số tiền còn phải thanh toán được ghi rõ trên hóa đơn sau các khoản đã trả; nếu không có thông tin này thì trả 0, không tự suy ra từ tổng tiền. Trường chữ không thấy trả chuỗi rỗng; số tiền không đọc được trả 0; confidence=0 và evidence rỗng. Ngày dùng YYYY-MM-DD; tiền là số nguyên VND. Dữ liệu form để đối chiếu: ${JSON.stringify({ buyerCompany: request.payload.buyerCompany, vendor: request.payload.vendor, invoiceNumber: request.payload.invoiceNumber, invoiceDate: request.payload.invoiceDate, totalAmountIncludingVat: request.amount })}. Không dùng dữ liệu form để điền trường bị thiếu trên hóa đơn. Phép tính tiền trước thuế + VAT phải được thực hiện riêng bởi hệ thống.` },
+    { type: 'input_text', text: `Đọc hóa đơn PDF đính kèm. PDF có thể chứa chữ máy hoặc trang scan. Trích xuất đúng các trường schema; mỗi trường phải có giá trị, độ tin cậy từ 0 đến 1 và bằng chứng ngắn (trích chữ hoặc số trang). Không đoán và không kết luận hóa đơn/chữ ký số là xác thực. buyerName là tên công ty/pháp nhân tại mục người mua hoặc đơn vị nhận hóa đơn (ví dụ Người mua hàng, Khách hàng, Bill To); không nhầm với người đề nghị, phòng ban hay nhà cung cấp. amountDue chỉ là số tiền còn phải thanh toán được ghi rõ trên hóa đơn sau các khoản đã trả; nếu không có thông tin này thì trả 0, không tự suy ra từ tổng tiền. Trường chữ không thấy trả chuỗi rỗng; số tiền không đọc được trả 0; confidence=0 và evidence rỗng. Tiền là số nguyên VND. Dữ liệu form để đối chiếu: ${JSON.stringify({ buyerCompany: request.payload.buyerCompany, vendor: request.payload.vendor, invoiceNumber: request.payload.invoiceNumber, totalAmountIncludingVat: request.amount })}. Không dùng dữ liệu form để điền trường bị thiếu trên hóa đơn. Phép tính tiền trước thuế + VAT phải được thực hiện riêng bởi hệ thống.` },
     { type: 'input_file', filename: 'invoice.pdf', file_data: `data:application/pdf;base64,${invoiceBytes.toString('base64')}`, detail: 'high' }
   ];
   const response = await fetch('https://api.openai.com/v1/responses', {
@@ -188,7 +183,9 @@ const toIsoDate = (year, month, day) => {
 };
 
 const invoiceDateCandidates = value => {
-  const text = String(value || '');
+  // Azure may include English translations in parentheses in bilingual OCR,
+  // for example: "Ngày (Date) 24 tháng (month) 09 năm (year) 2026".
+  const text = String(value || '').replace(/\([\p{L}\s]{1,32}\)/gu, ' ');
   if (!text.trim()) return [];
   const candidates = [];
   const addDate = (date, match, start) => {
@@ -359,7 +356,6 @@ const normalizeAzureInvoice = result => {
     vendor: azureField(fields, ['VendorName'], 'string', pages),
     taxCode: azureField(fields, ['VendorTaxId'], 'string', pages),
     invoiceNumber,
-    invoiceDate: azureField(fields, ['InvoiceDate'], 'date', pages),
     amountBeforeTax: azureField(fields, ['SubTotal'], 'money', pages),
     vatAmount: azureField(fields, ['TotalTax'], 'money', pages),
     totalAmount: azureField(fields, ['InvoiceTotal'], 'money', pages),
@@ -427,25 +423,12 @@ const analyzeWithAzure = async invoiceBytes => {
     throw new Error('Azure Document Intelligence endpoint chưa hợp lệ.');
   }
   const apiVersion = '2024-11-30';
-  // Microsoft REST v4.0: submit base64Source and poll Operation-Location; Layout returns page lines, words, spans, and confidence.
+  // Microsoft REST v4.0: submit base64Source and poll Operation-Location.
   // Sources: https://learn.microsoft.com/en-us/rest/api/aiservices/document-models/analyze-document?view=rest-aiservices-v4.0+(2024-11-30)
   // https://learn.microsoft.com/en-us/azure/ai-services/document-intelligence/concept/analyze-document-response?view=doc-intel-4.0.0
   // Vietnamese OCR support: https://learn.microsoft.com/en-us/azure/ai-services/document-intelligence/language-support/ocr?view=doc-intel-4.0.0
   const invoiceResult = await analyzeAzureModel(endpoint.origin, 'prebuilt-invoice', invoiceBytes, apiVersion, 35000);
-  const extraction = normalizeAzureInvoice(invoiceResult);
-  const invoiceDate = extraction.fields.invoiceDate;
-  if (!invoiceDate.value || invoiceDate.confidence < confidenceThresholds.invoiceDate || !invoiceDate.evidence.trim()) {
-    try {
-      const layoutResult = await analyzeAzureModel(endpoint.origin, 'prebuilt-layout', invoiceBytes, apiVersion, 12000);
-      const layoutDate = normalizeAzureInvoiceDateFromLayout(layoutResult);
-      if (layoutDate.value && (!invoiceDate.value || layoutDate.confidence > invoiceDate.confidence)) {
-        extraction.fields.invoiceDate = layoutDate;
-      }
-    } catch (error) {
-      console.warn('Azure Layout date fallback failed:', error.message);
-    }
-  }
-  return extraction;
+  return normalizeAzureInvoice(invoiceResult);
 };
 
 const handler = async (req, res) => {
