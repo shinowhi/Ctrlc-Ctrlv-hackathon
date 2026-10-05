@@ -7,11 +7,11 @@ const {normalizeInvoiceNumber,normalizePartyName,comparePartyName}=window.FinRef
 const normalized = normalizePartyName;
 const roles={applicant:'Người nộp đơn',treasurer:'Quản lý tài chính',cfo:'Giám đốc Tài chính'};
 const statuses={TREASURER_REVIEW:'Chờ quản lý tài chính xử lý',READY_FOR_APPROVAL:'Sẵn sàng duyệt',CFO_REVIEW:'Chờ Giám đốc Tài chính duyệt',NEEDS_INFO:'Cần bổ sung',APPROVED:'Đã duyệt',REJECTED:'Từ chối'};
-const checkLabels={invoice:'Đã xem hóa đơn PDF',fields_match:'Nhà cung cấp, người mua và số hóa đơn khớp form',total_includes_vat:'Tổng thanh toán trên form đã gồm VAT và khớp hóa đơn'};
+const checkLabels={invoice:'Đã xem hóa đơn PDF',fields_match:'Nhà cung cấp, người mua và số hóa đơn khớp form',total_includes_vat:'Tổng thanh toán trên form khớp tổng cuối cùng trên hóa đơn'};
 const fields=['requesterType','requester','department','buyerCompany','budgetCode','purpose','vendor','invoiceNumber','invoiceDate','amount'];
-const aiFieldLabels={buyerName:'Người mua / đơn vị nhận hóa đơn',vendor:'Nhà cung cấp',taxCode:'Mã số thuế NCC',invoiceNumber:'Số hóa đơn',invoiceDate:'Ngày hóa đơn (tham khảo)',amountBeforeTax:'Tiền trước thuế',vatAmount:'VAT',totalAmount:'Tổng thanh toán gồm VAT',amountDue:'Còn phải thanh toán (thông tin)'};
-const aiMoneyFields=new Set(['amountBeforeTax','vatAmount','totalAmount','amountDue']);
-const aiConfidenceThresholds={buyerName:0.80,vendor:0.80,taxCode:0.80,invoiceNumber:0.90,amountBeforeTax:0.90,vatAmount:0.90,totalAmount:0.90,amountDue:0.85};
+const aiFieldLabels={invoiceKind:'Loại hóa đơn',buyerName:'Người mua / đơn vị nhận hóa đơn',vendor:'Nhà cung cấp',taxCode:'Mã số thuế NCC',invoiceNumber:'Số hóa đơn',invoiceDate:'Ngày hóa đơn (tham khảo)',amountBeforeTax:'Tiền trước thuế',vatAmount:'VAT',discountAmount:'Chiết khấu',totalAmount:'Tổng thanh toán cuối cùng',amountDue:'Còn phải thanh toán (thông tin)'};
+const aiMoneyFields=new Set(['amountBeforeTax','vatAmount','discountAmount','totalAmount','amountDue']);
+const aiConfidenceThresholds={invoiceKind:0.90,buyerName:0.80,vendor:0.80,taxCode:0.80,invoiceNumber:0.90,amountBeforeTax:0.90,vatAmount:0.90,totalAmount:0.90,amountDue:0.85};
 let profile=null, rows=[], vendors=[], vendorDirectoryError='', selected=null, editing=null, timer=null, loading=false, busy=false, vendorSaving=false, epoch=0, dailySummary=null;
 function notify(text,error=false,login=false) { const el=$(login?'loginMessage':'message'); el.textContent=text; el.classList.toggle('error',error); }
 function time(value) { return new Date(value).toLocaleString('vi-VN'); }
@@ -153,19 +153,23 @@ function renderAiAnalysis(ai,request=null) {
   const lines=Object.entries(aiFieldLabels).map(([key,label])=>{
     const field=ai.fields[key]||{}, raw=field.value;
     if(key==='amountDue'&&(!Number.isSafeInteger(raw)||raw<=0)) return '';
-    const readableMoney=Number.isSafeInteger(raw)&&(raw>0||(key==='vatAmount'&&raw===0&&Number(field.confidence)>0));
+    const displayRaw=key==='discountAmount'&&Number.isSafeInteger(raw)?Math.abs(raw):raw;
+    if(key==='discountAmount'&&(!Number.isSafeInteger(displayRaw)||displayRaw<=0)) return '';
+    const readableMoney=Number.isSafeInteger(displayRaw)&&(displayRaw>0||(key==='vatAmount'&&displayRaw===0&&Number(field.confidence)>0));
+    const invoiceKindValue=key==='invoiceKind'?{SALES:'Hóa đơn bán hàng',VAT:'Hóa đơn VAT'}[String(raw||'').toUpperCase()]||'Chưa xác định':'';
+    const notComparedVat=key==='vatAmount'&&String(ai.fields.invoiceKind?.value||'').toUpperCase()==='SALES'&&raw===0;
     const submittedInvoiceNumber=String(request?.payload?.invoiceNumber??'').trim();
     const invoiceNumberMatches=key==='invoiceNumber'&&/^\d+$/.test(normalized(raw))&&/^\d+$/.test(normalized(submittedInvoiceNumber))&&normalizeInvoiceNumber(raw)===normalizeInvoiceNumber(submittedInvoiceNumber);
     const invoiceNumberFormatDiffers=invoiceNumberMatches&&normalized(raw)!==normalized(submittedInvoiceNumber);
-    const value=aiMoneyFields.has(key)?(readableMoney?money(raw):'Chưa đọc được'):invoiceNumberFormatDiffers?submittedInvoiceNumber:String(raw||'Chưa đọc được');
+    const value=key==='invoiceKind'?invoiceKindValue:aiMoneyFields.has(key)?(notComparedVat?'Không dùng để đối chiếu':readableMoney?money(displayRaw):'Chưa đọc được'):invoiceNumberFormatDiffers?submittedInvoiceNumber:String(raw||'Chưa đọc được');
     const numberNote=invoiceNumberFormatDiffers?` · Khớp form sau khi chuẩn hóa số 0 đầu (Azure đọc “${esc(raw)}”)`:'';
     const aliasNote=key==='vendor'&&ai.assessment?.matching?.vendor?.verifiedAlias?' · Khớp bí danh đã xác minh':'';
     return `<div class="invoice-field${key==='amountDue'?' informational':''}"><div class="invoice-field-main"><strong>${label}</strong><span>${esc(value)}</span></div><small>Độ tin cậy ${Math.round((Number(field.confidence)||0)*100)}%${numberNote}${aliasNote}${field.evidence?` · Bằng chứng: ${esc(field.evidence)}`:''}</small></div>`;
   }).join('');
   return `<section class="invoice-analysis"><h3>Kết quả đọc PDF</h3>${lines}<p class="muted">Ngân sách và chính sách chưa được kiểm tra. Độ tin cậy AI không xác thực nguồn phát hành hay chữ ký số.</p></section>`;
 }
-const reviewFieldBindings={buyerName:{formKey:'buyerCompany',label:'Công ty mua trên hóa đơn'},vendor:{formKey:'vendor',label:'Nhà cung cấp'},invoiceNumber:{formKey:'invoiceNumber',label:'Số hóa đơn'},totalAmount:{formKey:'amount',label:'Tổng thanh toán gồm VAT'}};
-const requiredInvoiceFields=['buyerName','vendor','invoiceNumber','amountBeforeTax','vatAmount','totalAmount'];
+const reviewFieldBindings={buyerName:{formKey:'buyerCompany',label:'Công ty mua trên hóa đơn'},vendor:{formKey:'vendor',label:'Nhà cung cấp'},invoiceNumber:{formKey:'invoiceNumber',label:'Số hóa đơn'},totalAmount:{formKey:'amount',label:'Tổng thanh toán cuối cùng'}};
+const requiredInvoiceFields=['invoiceKind','buyerName','vendor','invoiceNumber','totalAmount'];
 const formReviewFields=[
   {key:'requesterType',label:'Loại người đề nghị',read:value=>value==='department'?'Phòng ban':'Nhân viên'},
   {key:'requester',label:'Họ tên / phòng ban'},
@@ -175,16 +179,19 @@ const formReviewFields=[
   {key:'vendor',label:'Nhà cung cấp',analysisKey:'vendor'},
   {key:'invoiceNumber',label:'Số hóa đơn',analysisKey:'invoiceNumber'},
   {key:'invoiceDate',label:'Ngày hóa đơn',reviewNote:'AI trích xuất để tham khảo; không dùng ngày này làm điều kiện đối chiếu hoặc duyệt.'},
-  {key:'amount',label:'Tổng thanh toán trên form (đã gồm VAT)',analysisKey:'totalAmount',read:(_,request)=>money(request.amount)},
+  {key:'amount',label:'Tổng thanh toán trên form',analysisKey:'totalAmount',read:(_,request)=>money(request.amount)},
   {key:'budgetCode',label:'Mã ngân sách'}
 ];
 function reviewValue(key,field) {
   const value=field?.value;
+  if(key==='invoiceKind') return {SALES:'Hóa đơn bán hàng',VAT:'Hóa đơn VAT'}[String(value||'').toUpperCase()]||'Chưa xác định';
   if(aiMoneyFields.has(key)) return Number.isSafeInteger(value)?money(value):'Chưa đọc được';
   return String(value??'').trim()||'Chưa đọc được';
 }
 function buildReviewAnnotations(request,ai) {
   const source=ai?.fields||{};
+  const invoiceKind=String(source.invoiceKind?.value||'UNKNOWN').toUpperCase();
+  const required=[...requiredInvoiceFields,...(invoiceKind==='VAT'?['amountBeforeTax','vatAmount']:[])];
   const annotations={};
   const add=(key,state,note)=>{
     if(!annotations[key]) annotations[key]={key,label:aiFieldLabels[key]||key,state:'yellow',notes:[],regions:Array.isArray(source[key]?.regions)?source[key].regions:[]};
@@ -192,16 +199,16 @@ function buildReviewAnnotations(request,ai) {
     if(state==='red') item.state='red';
     if(!item.notes.includes(note)) item.notes.push(note);
   };
-  for(const key of requiredInvoiceFields) {
+  for(const key of required) {
     const field=source[key]||{};
     const value=field.value;
     const isZeroVat=key==='vatAmount'&&value===0&&Number(field.confidence)>0;
-    const present=aiMoneyFields.has(key)?Number.isSafeInteger(value)&&(value>0||isZeroVat):typeof value==='string'&&Boolean(value.trim());
+    const present=key==='invoiceKind'?['SALES','VAT'].includes(String(value||'').toUpperCase()):aiMoneyFields.has(key)?Number.isSafeInteger(value)&&(value>0||isZeroVat):typeof value==='string'&&Boolean(value.trim());
     const confidence=Number(field.confidence);
     const confident=Number.isFinite(confidence)&&confidence>=(aiConfidenceThresholds[key]??0.85)&&Boolean(String(field.evidence||'').trim());
     if(!present||!confident) {
       const confidenceText=Number.isFinite(confidence)?` Độ tin cậy ${Math.round(confidence*100)}%.`:'';
-      add(key,'yellow',`${!present?'Chưa đọc được trường này.':'Kết quả đọc còn chưa chắc.'}${confidenceText} Hãy đối chiếu trực tiếp với hóa đơn.`);
+      add(key,'yellow',`${key==='invoiceKind'&&!present?'Chưa xác định được đây là hóa đơn bán hàng hay hóa đơn VAT.':!present?'Chưa đọc được trường này.':'Kết quả đọc còn chưa chắc.'}${confidenceText} Hãy đối chiếu trực tiếp với hóa đơn.`);
     }
     const binding=reviewFieldBindings[key];
     if(binding&&present) {
@@ -230,12 +237,23 @@ function buildReviewAnnotations(request,ai) {
       add(key,'yellow',`Trường thông tin này đọc chưa chắc${Number.isFinite(confidence)?` (độ tin cậy ${Math.round(confidence*100)}%)`:''}. Hãy kiểm tra trực tiếp trên hóa đơn.`);
     }
   }
-  const amountFields=['amountBeforeTax','vatAmount','totalAmount'].map(key=>({key,field:source[key]||{}}));
-  const amounts=amountFields.map(({field})=>field.value);
-  if(amounts.every(Number.isSafeInteger)&&amounts[0]+amounts[1]!==amounts[2]) {
-    const confident=amountFields.every(({key,field})=>Number(field.confidence)>=(aiConfidenceThresholds[key]??0.85)&&String(field.evidence||'').trim());
-    const note=confident?'Tiền trước thuế cộng VAT không khớp tổng thanh toán.':'Phép tính tiền chưa thể xác nhận do một hoặc nhiều trường đọc chưa chắc.';
-    for(const key of ['amountBeforeTax','vatAmount','totalAmount']) add(key,confident?'red':'yellow',note);
+  if(invoiceKind==='VAT') {
+    const amountFields=['amountBeforeTax','vatAmount','totalAmount'].map(key=>({key,field:source[key]||{}}));
+    const amounts=amountFields.map(({field})=>field.value);
+    if(amounts.every(Number.isSafeInteger)) {
+      const discountField=source.discountAmount||{};
+      const discount=Number.isSafeInteger(discountField.value)?Math.abs(discountField.value):0;
+      const discountConfident=Number(discountField.confidence)>=0.90&&Boolean(String(discountField.evidence||'').trim());
+      const subtotalBeforeDiscount=/(?:before\s+discount|trước\s+chiết\s+khấu)/iu.test(String(source.amountBeforeTax?.evidence||''));
+      const discountCanBeSubtracted=discount>0&&discountConfident&&subtotalBeforeDiscount;
+      if(amounts[0]+amounts[1]-(discountCanBeSubtracted?discount:0)!==amounts[2]) {
+        const confident=amountFields.every(({key,field})=>Number(field.confidence)>=(aiConfidenceThresholds[key]??0.85)&&String(field.evidence||'').trim());
+        const note=discount>0&&!discountCanBeSubtracted
+          ?'Hóa đơn VAT có chiết khấu nhưng chưa rõ khoản này đã được trừ trước thuế hay chưa; cần Quản lý xác minh.'
+          :confident?'Tiền trước thuế cộng VAT, sau khi trừ chiết khấu được ghi rõ trước thuế (nếu có), không khớp tổng thanh toán.':'Phép tính tiền chưa thể xác nhận do một hoặc nhiều trường đọc chưa chắc.';
+        for(const key of ['amountBeforeTax','vatAmount','totalAmount']) add(key,confident?'red':'yellow',note);
+      }
+    }
   }
   return annotations;
 }
@@ -388,7 +406,7 @@ async function openRequest(id) {
       ?`<p class="muted">Hồ sơ có điểm cần xác minh. Quản lý tài chính kiểm tra hóa đơn và form trước; nếu được xác nhận nhưng vượt 20 triệu/hồ sơ hoặc tổng 100 triệu/ngày, hệ thống chuyển Giám đốc cấp quyền.</p><div class="review-checks">${Object.entries(checkLabels).map(([k,v])=>`<label class="plain-check"><input type="checkbox" name="${k}">${v}</label>`).join('')}</div>`
       :'<p class="muted">AI đã đánh giá hóa đơn đạt điều kiện. Quản lý không cần kiểm tra lại từng hồ sơ; hãy xem tổng danh sách và số dư hạn mức ngày rồi duyệt riêng hoặc duyệt cả danh sách.</p>';
   const reviewForm=mayReview?`<form id="reviewForm" class="review-form">${reviewerMessage}<label class="field">${profile.role==='cfo'?'Lý do duyệt':'Ghi chú kiểm tra / nội dung cần bổ sung'}<textarea id="reviewReason" maxlength="2000" rows="3" placeholder="${profile.role==='cfo'?'Bắt buộc khi Giám đốc duyệt':'Bắt buộc khi yêu cầu bổ sung hoặc từ chối'}"></textarea></label><div class="decision-actions"><button class="action-secondary" type="button" data-action="clarify">Yêu cầu bổ sung</button><button class="action-secondary" type="button" data-action="reject">Từ chối</button><button class="action-primary" type="button" data-action="approve">${profile.role==='cfo'?'Duyệt và ghi lý do':manualChecks?'Xác nhận đã kiểm tra và xử lý':'Duyệt hóa đơn'}</button></div></form>`:'';
-  $('decisionResult').innerHTML=`<div class="decision-banner ${r.status==='APPROVED'?'ready':r.status==='REJECTED'?'reject':r.status==='READY_FOR_APPROVAL'?'ready':'escalate'}"><div><strong>${statuses[r.status]||esc(r.status)}</strong><small>PAY-${esc(r.id.slice(0,8))} · phiên bản ${r.version}</small></div></div><h2 class="detail-amount">${money(r.amount)} <small>đã gồm VAT</small></h2>${visibleReason?`<p class="notice">${esc(visibleReason)}</p>`:''}${visibleQuestion?`<p class="notice">${esc(visibleQuestion)}</p>`:''}${reviewLayout}<div class="scope-note compact"><strong>Chưa kiểm tra:</strong> ngân sách theo mã, chính sách chi tiêu, MST doanh nghiệp, NCC được duyệt, PO và lịch sử hóa đơn/thanh toán. AI không xác thực nguồn phát hành hoặc chữ ký số.</div>${reviewForm}${profile.role==='applicant'&&r.status==='NEEDS_INFO'?'<button class="primary-button clay-button" id="supplementButton">Bổ sung và gửi lại</button>':''}`;
+  $('decisionResult').innerHTML=`<div class="decision-banner ${r.status==='APPROVED'?'ready':r.status==='REJECTED'?'reject':r.status==='READY_FOR_APPROVAL'?'ready':'escalate'}"><div><strong>${statuses[r.status]||esc(r.status)}</strong><small>PAY-${esc(r.id.slice(0,8))} · phiên bản ${r.version}</small></div></div><h2 class="detail-amount">${money(r.amount)} <small>theo form</small></h2>${visibleReason?`<p class="notice">${esc(visibleReason)}</p>`:''}${visibleQuestion?`<p class="notice">${esc(visibleQuestion)}</p>`:''}${reviewLayout}<div class="scope-note compact"><strong>Chưa kiểm tra:</strong> ngân sách theo mã, chính sách chi tiêu, MST doanh nghiệp, NCC được duyệt, PO và lịch sử hóa đơn/thanh toán. AI không xác thực nguồn phát hành hoặc chữ ký số.</div>${reviewForm}${profile.role==='applicant'&&r.status==='NEEDS_INFO'?'<button class="primary-button clay-button" id="supplementButton">Bổ sung và gửi lại</button>':''}`;
   const viewerToken=pdfViewToken;
   api.signedUrl(r.invoice_path).then(url=>{
     if(epoch!==run||selected?.id!==id) return;
@@ -450,7 +468,7 @@ async function review(r,action) {
   const checks={}; document.querySelectorAll('#reviewForm input[type=checkbox]').forEach(c=>checks[c.name]=c.checked);
   if(action==='approve'&&profile.role==='treasurer'&&r.status==='TREASURER_REVIEW') {
     const result=FinRefRules.assess(r.amount,{pdf:checks.invoice,fieldsMatch:checks.fields_match,totalsConsistent:checks.total_includes_vat,confidenceSufficient:true});
-    if(result==='U1') {notify('U1: chưa đủ xác nhận về PDF, trường form hoặc tổng thanh toán gồm VAT. Hãy kiểm tra minh chứng hoặc yêu cầu bổ sung.',true);return;}
+    if(result==='U1') {notify('U1: chưa đủ xác nhận về PDF, trường form hoặc tổng thanh toán cuối cùng. Hãy kiểm tra minh chứng hoặc yêu cầu bổ sung.',true);return;}
   }
   setBusy(true);
   try {

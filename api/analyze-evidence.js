@@ -60,13 +60,20 @@ const asInvoiceBytes = async (path, maxBytes, sizeMessage) => {
 };
 
 const outputText = result => result.output?.flatMap(item => item.content || []).map(part => part.text || '').join('') || '';
-const fields = ['buyerName', 'vendor', 'taxCode', 'invoiceNumber', 'invoiceDate', 'amountBeforeTax', 'vatAmount', 'totalAmount', 'amountDue'];
-const labels = { buyerName: 'tên người mua/đơn vị nhận hóa đơn', vendor: 'nhà cung cấp', invoiceNumber: 'số hóa đơn', invoiceDate: 'ngày hóa đơn', amountBeforeTax: 'tiền trước thuế', vatAmount: 'tiền VAT', totalAmount: 'tổng thanh toán' };
-const confidenceThresholds = { buyerName: 0.80, vendor: 0.80, taxCode: 0.80, invoiceNumber: 0.90, amountBeforeTax: 0.90, vatAmount: 0.90, totalAmount: 0.90 };
+const fields = ['invoiceKind', 'buyerName', 'vendor', 'taxCode', 'invoiceNumber', 'invoiceDate', 'amountBeforeTax', 'vatAmount', 'discountAmount', 'totalAmount', 'amountDue'];
+const labels = { invoiceKind: 'loại hóa đơn', buyerName: 'tên người mua/đơn vị nhận hóa đơn', vendor: 'nhà cung cấp', invoiceNumber: 'số hóa đơn', invoiceDate: 'ngày hóa đơn', amountBeforeTax: 'tiền trước thuế', vatAmount: 'tiền VAT', totalAmount: 'tổng thanh toán cuối cùng' };
+const confidenceThresholds = { invoiceKind: 0.90, buyerName: 0.80, vendor: 0.80, taxCode: 0.80, invoiceNumber: 0.90, amountBeforeTax: 0.90, vatAmount: 0.90, totalAmount: 0.90 };
 function assess(request, analysis, registeredVendorMatch = null) {
   const data = analysis.fields || {};
   const issues = [];
-  const required = ['buyerName', 'vendor', 'invoiceNumber', 'amountBeforeTax', 'vatAmount', 'totalAmount'];
+  const invoiceKind = String(data.invoiceKind?.value || 'UNKNOWN').trim().toUpperCase();
+  const knownInvoiceKind = ['SALES', 'VAT'].includes(invoiceKind);
+  const invoiceKindField = data.invoiceKind || {};
+  if (!knownInvoiceKind) issues.push('Chưa xác định chắc loại hóa đơn bán hàng hay hóa đơn VAT.');
+  else if (!Number.isFinite(invoiceKindField.confidence) || invoiceKindField.confidence < confidenceThresholds.invoiceKind
+    || !String(invoiceKindField.evidence || '').trim()) issues.push('Độ tin cậy khi phân loại hóa đơn dưới 90% hoặc thiếu bằng chứng.');
+
+  const required = ['buyerName', 'vendor', 'invoiceNumber', 'totalAmount', ...(invoiceKind === 'VAT' ? ['amountBeforeTax', 'vatAmount'] : [])];
   for (const key of required) {
     const field = data[key] || {};
     const valueMissing = typeof field.value === 'string' ? !field.value.trim() : !Number.isSafeInteger(field.value) || field.value < 0;
@@ -75,8 +82,25 @@ function assess(request, analysis, registeredVendorMatch = null) {
     if (!Number.isFinite(field.confidence) || field.confidence < threshold) issues.push(`Độ tin cậy khi đọc ${labels[key]} dưới ${Math.round(threshold * 100)}%.`);
     if (!String(field.evidence || '').trim()) issues.push(`Thiếu bằng chứng đọc ${labels[key]}.`);
   }
-  if (Number.isSafeInteger(data.amountBeforeTax?.value) && Number.isSafeInteger(data.vatAmount?.value) && Number.isSafeInteger(data.totalAmount?.value)
-    && data.amountBeforeTax.value + data.vatAmount.value !== data.totalAmount.value) issues.push('Tiền trước thuế cộng VAT không khớp tổng thanh toán.');
+  let totalsConsistent = invoiceKind === 'SALES';
+  if (invoiceKind === 'VAT'
+    && Number.isSafeInteger(data.amountBeforeTax?.value)
+    && Number.isSafeInteger(data.vatAmount?.value)
+    && Number.isSafeInteger(data.totalAmount?.value)) {
+    const discountField = data.discountAmount || {};
+    const discount = Number.isSafeInteger(discountField.value) ? Math.abs(discountField.value) : 0;
+    const discountConfidence = Number(discountField.confidence);
+    const discountEvidence = String(discountField.evidence || '').trim();
+    const subtotalClearlyBeforeDiscount = /(?:before\s+discount|trước\s+chiết\s+khấu)/iu.test(String(data.amountBeforeTax.evidence || ''));
+    const discountCanBeSubtracted = discount > 0 && discountConfidence >= 0.90 && Boolean(discountEvidence) && subtotalClearlyBeforeDiscount;
+    const expectedTotal = data.amountBeforeTax.value + data.vatAmount.value - (discountCanBeSubtracted ? discount : 0);
+    totalsConsistent = expectedTotal === data.totalAmount.value;
+    if (!totalsConsistent) {
+      issues.push(discount > 0 && !discountCanBeSubtracted
+        ? 'Hóa đơn VAT có chiết khấu nhưng chưa rõ khoản này đã được trừ trước thuế hay chưa; cần Quản lý xác minh.'
+        : 'Tiền trước thuế cộng VAT, sau khi trừ chiết khấu được ghi rõ trước thuế (nếu có), không khớp tổng thanh toán.');
+    }
+  }
   const plainVendorMatch = comparePartyName(data.vendor?.value, request.payload.vendor);
   const registeredStatus = registeredVendorMatch?.status;
   const vendorMatch = ['MATCH','MISMATCH'].includes(registeredStatus)
@@ -92,31 +116,33 @@ function assess(request, analysis, registeredVendorMatch = null) {
   else if (buyerMatch.status === 'UNVERIFIED') issues.push('Chưa có tên công ty mua trên form để đối chiếu với hóa đơn.');
   else if (buyerMatch.status === 'MISMATCH') issues.push('Tên công ty mua trên hóa đơn không khớp form.');
   if (!invoiceNumberMatch) issues.push('Số hóa đơn trên PDF không khớp form.');
-  if (!totalAmountMatch) issues.push('Tổng thanh toán đã gồm VAT không khớp số tiền trên form.');
+  if (!totalAmountMatch) issues.push('Tổng thanh toán cuối cùng trên hóa đơn không khớp số tiền trên form.');
 
   const uniqueIssues = [...new Set(issues)];
   const code = uniqueIssues.length ? 'U1' : Number(request.amount) > 20000000 ? 'U3' : 'CLEAR';
   const reason = code === 'U1'
     ? uniqueIssues.join(' ')
     : code === 'U3'
-      ? `Tổng thanh toán ${new Intl.NumberFormat('vi-VN').format(request.amount)} ₫ đã gồm VAT, vượt ngưỡng 20.000.000 ₫.`
-      : 'Các trường hóa đơn đang kiểm tra và phép tính tổng đã khớp form; chờ người có thẩm quyền bấm duyệt.';
+      ? `Tổng thanh toán cuối cùng ${new Intl.NumberFormat('vi-VN').format(request.amount)} ₫ vượt ngưỡng 20.000.000 ₫.`
+    : invoiceKind === 'SALES'
+      ? 'Hóa đơn bán hàng: tổng thanh toán cuối cùng khớp form; không áp dụng phép cộng VAT. Chờ người có thẩm quyền bấm duyệt.'
+      : 'Hóa đơn VAT: phép tính tiền trước thuế và VAT khớp tổng cuối cùng; chờ người có thẩm quyền bấm duyệt.';
   return {
     code,
     reason,
     question: code === 'U1' ? `Vui lòng kiểm tra và bổ sung/cập nhật: ${uniqueIssues.join(' ')}` : '',
-    matching: { vendor: vendorMatch, buyerCompany: buyerMatch,
+    matching: { invoiceKind: knownInvoiceKind ? 'MATCH' : 'UNVERIFIED', vendor: vendorMatch, buyerCompany: buyerMatch,
       invoiceNumber: invoiceNumberMatch ? 'MATCH' : 'MISMATCH',
       totalAmount: totalAmountMatch ? 'MATCH' : 'MISMATCH' },
-    checks: { formFieldsMatch: vendorMatch.status === 'MATCH' && buyerMatch.status === 'MATCH' && invoiceNumberMatch,
-      totalsConsistent: uniqueIssues.every(item => !item.includes('không khớp tổng thanh toán')) }
+    checks: { formFieldsMatch: knownInvoiceKind && vendorMatch.status === 'MATCH' && buyerMatch.status === 'MATCH' && invoiceNumberMatch,
+      totalsConsistent }
   };
 }
 
-const fieldSchema = (type, description) => ({
+const fieldSchema = (type, description, enumValues = null) => ({
   type: 'object', additionalProperties: false,
   properties: {
-    value: { type, description },
+    value: { type, description, ...(enumValues ? { enum: enumValues } : {}) },
     confidence: { type: 'number', minimum: 0, maximum: 1 },
     evidence: { type: 'string', description: 'Trích ngắn nội dung đã thấy hoặc số trang; để trống nếu không thấy.' }
   },
@@ -125,8 +151,10 @@ const fieldSchema = (type, description) => ({
 const invoiceSchema = {
   type: 'object', additionalProperties: false,
   properties: Object.fromEntries(fields.map(key => [key,
-    fieldSchema(['amountBeforeTax', 'vatAmount', 'totalAmount', 'amountDue'].includes(key) ? 'integer' : 'string',
-      ['amountBeforeTax', 'vatAmount', 'totalAmount', 'amountDue'].includes(key) ? 'VND, số nguyên; trả 0 nếu hóa đơn không có hoặc không đọc được.' : key === 'invoiceDate' ? 'Ngày trên hóa đơn theo YYYY-MM-DD nếu đọc rõ; trả chuỗi rỗng nếu không đọc rõ hoặc không xác định được.' : 'Trả chuỗi rỗng nếu không đọc được.')
+    fieldSchema(['amountBeforeTax', 'vatAmount', 'discountAmount', 'totalAmount', 'amountDue'].includes(key) ? 'integer' : 'string',
+      key === 'invoiceKind' ? 'Chỉ phân loại theo tiêu đề rõ trên hóa đơn: SALES, VAT hoặc UNKNOWN.'
+        : ['amountBeforeTax', 'vatAmount', 'discountAmount', 'totalAmount', 'amountDue'].includes(key) ? 'VND, số nguyên; trả 0 nếu hóa đơn không có hoặc không đọc được.' : key === 'invoiceDate' ? 'Ngày trên hóa đơn theo YYYY-MM-DD nếu đọc rõ; trả chuỗi rỗng nếu không đọc rõ hoặc không xác định được.' : 'Trả chuỗi rỗng nếu không đọc được.',
+      key === 'invoiceKind' ? ['SALES', 'VAT', 'UNKNOWN'] : null)
   ])),
   required: fields
 };
@@ -138,7 +166,7 @@ const responseSchema = {
 
 const analyzeWithOpenAI = async (request, invoiceBytes) => {
   const content = [
-    { type: 'input_text', text: `Đọc hóa đơn PDF đính kèm. PDF có thể chứa chữ máy hoặc trang scan. Trích xuất đúng các trường schema; mỗi trường phải có giá trị, độ tin cậy từ 0 đến 1 và bằng chứng ngắn (trích chữ hoặc số trang). Không đoán và không kết luận hóa đơn/chữ ký số là xác thực. buyerName là tên công ty/pháp nhân tại mục người mua hoặc đơn vị nhận hóa đơn (ví dụ Người mua hàng, Khách hàng, Bill To); không nhầm với người đề nghị, phòng ban hay nhà cung cấp. invoiceDate là ngày ghi trên hóa đơn, đổi sang YYYY-MM-DD chỉ khi ngày/tháng/năm đọc rõ; nếu mơ hồ hoặc không đọc được, trả chuỗi rỗng, confidence=0 và evidence rỗng. Ngày hóa đơn chỉ để hiển thị tham khảo, không dùng làm điều kiện đánh giá hoặc duyệt. amountDue chỉ là số tiền còn phải thanh toán được ghi rõ trên hóa đơn sau các khoản đã trả; nếu không có thông tin này thì trả 0, không tự suy ra từ tổng tiền. Trường chữ không thấy trả chuỗi rỗng; số tiền không đọc được trả 0; confidence=0 và evidence rỗng. Tiền là số nguyên VND. Dữ liệu form để đối chiếu: ${JSON.stringify({ buyerCompany: request.payload.buyerCompany, vendor: request.payload.vendor, invoiceNumber: request.payload.invoiceNumber, totalAmountIncludingVat: request.amount })}. Không dùng dữ liệu form để điền trường bị thiếu trên hóa đơn. Phép tính tiền trước thuế + VAT phải được thực hiện riêng bởi hệ thống.` },
+    { type: 'input_text', text: `Đọc hóa đơn PDF đính kèm. PDF có thể chứa chữ máy hoặc trang scan. Trích xuất đúng các trường schema; mỗi trường phải có giá trị, độ tin cậy từ 0 đến 1 và bằng chứng ngắn (trích chữ hoặc số trang). Không đoán và không kết luận hóa đơn/chữ ký số là xác thực. invoiceKind chỉ phân loại theo tiêu đề rõ: SALES nếu ghi HÓA ĐƠN BÁN HÀNG/SALES INVOICE; VAT nếu ghi HÓA ĐƠN GIÁ TRỊ GIA TĂNG/HÓA ĐƠN GTGT/VAT INVOICE; UNKNOWN nếu thiếu, mơ hồ hoặc có dấu hiệu mâu thuẫn. Bằng chứng phân loại phải trích tiêu đề. buyerName là tên công ty/pháp nhân tại mục người mua hoặc đơn vị nhận hóa đơn (ví dụ Người mua hàng, Khách hàng, Bill To); không nhầm với người đề nghị, phòng ban hay nhà cung cấp. invoiceDate là ngày ghi trên hóa đơn, đổi sang YYYY-MM-DD chỉ khi ngày/tháng/năm đọc rõ; nếu mơ hồ hoặc không đọc được, trả chuỗi rỗng, confidence=0 và evidence rỗng. Ngày hóa đơn chỉ để hiển thị tham khảo, không dùng làm điều kiện đánh giá hoặc duyệt. amountBeforeTax là số tiền trước VAT đúng như hóa đơn ghi; nếu hóa đơn ghi rõ là trước chiết khấu, giữ nguyên số đó và đưa cụm “trước chiết khấu/before discount” vào evidence, không tự trừ. discountAmount là độ lớn dương của khoản chiết khấu được in rõ, kể cả khi hóa đơn thể hiện bằng số âm hoặc ngoặc đơn; nếu không có hoặc không đọc được thì trả 0, confidence=0, evidence rỗng. Với hóa đơn bán hàng, totalAmount là tổng thanh toán cuối cùng sau chiết khấu; việc đánh giá chỉ đối chiếu tổng này với form, không bắt buộc cộng VAT. Với hóa đơn VAT, trích riêng tiền trước thuế, VAT, chiết khấu và tổng thanh toán cuối cùng; không tự tính hoặc sửa số. amountDue chỉ là số tiền còn phải thanh toán được ghi rõ trên hóa đơn sau các khoản đã trả; nếu không có thông tin này thì trả 0, không tự suy ra từ tổng tiền. Trường chữ không thấy trả chuỗi rỗng; số tiền không đọc được trả 0; confidence=0 và evidence rỗng. Tiền là số nguyên VND. Dữ liệu form để đối chiếu: ${JSON.stringify({ buyerCompany: request.payload.buyerCompany, vendor: request.payload.vendor, invoiceNumber: request.payload.invoiceNumber, submittedTotalAmount: request.amount })}. Không dùng dữ liệu form để điền trường bị thiếu trên hóa đơn. Hệ thống, không phải AI, thực hiện phép tính; với VAT chỉ trừ chiết khấu khi bằng chứng ghi rõ khoản tiền trước thuế là trước chiết khấu.` },
     { type: 'input_file', filename: 'invoice.pdf', file_data: `data:application/pdf;base64,${invoiceBytes.toString('base64')}`, detail: 'high' }
   ];
   const response = await fetch('https://api.openai.com/v1/responses', {
@@ -345,6 +373,29 @@ const azureField = (fields, names, kind, pages) => {
   return { value, confidence, evidence, regions: azureRegions(field, pages) };
 };
 
+const normalizeInvoiceTypeText = value => String(value || '')
+  .normalize('NFD')
+  .replace(/\p{Diacritic}/gu, '')
+  .replace(/[đĐ]/gu, 'D')
+  .toLocaleUpperCase('vi');
+
+const classifyAzureInvoiceType = analyzeResult => {
+  const text = typeof analyzeResult?.content === 'string'
+    ? analyzeResult.content
+    : (analyzeResult?.pages || []).flatMap(page => (page.lines || []).map(line => line.content || '')).join('\n');
+  const normalized = normalizeInvoiceTypeText(text);
+  const salesPattern = /(?:HOA\s+DON\s+BAN\s+HANG|SALES\s+INVOICE)/u;
+  const vatPattern = /(?:HOA\s+DON\s+GIA\s+TRI\s+GIA\s+TANG|HOA\s+DON\s+GTGT|VAT\s+INVOICE|VALUE\s+ADDED\s+TAX\s+INVOICE)/u;
+  const isSales = salesPattern.test(normalized);
+  const isVat = vatPattern.test(normalized);
+  if (isSales === isVat) return { value: 'UNKNOWN', confidence: 0, evidence: '', regions: [] };
+
+  const pattern = isSales ? salesPattern : vatPattern;
+  const evidence = text.split(/\r?\n/u).find(line => pattern.test(normalizeInvoiceTypeText(line))) || '';
+  if (!evidence.trim()) return { value: 'UNKNOWN', confidence: 0, evidence: '', regions: [] };
+  return { value: isSales ? 'SALES' : 'VAT', confidence: 0.99, evidence: evidence.trim().slice(0, 240), regions: [] };
+};
+
 const normalizeAzureInvoice = result => {
   const analyzeResult = result?.analyzeResult;
   const fields = analyzeResult?.documents?.[0]?.fields;
@@ -356,6 +407,7 @@ const normalizeAzureInvoice = result => {
     invoiceNumber.value = invoiceNumberEvidence;
   }
   return { fields: {
+    invoiceKind: classifyAzureInvoiceType(analyzeResult),
     buyerName: azureField(fields, ['CustomerName', 'CustomerAddressRecipient', 'BillingAddressRecipient'], 'string', pages),
     vendor: azureField(fields, ['VendorName'], 'string', pages),
     taxCode: azureField(fields, ['VendorTaxId'], 'string', pages),
@@ -363,6 +415,7 @@ const normalizeAzureInvoice = result => {
     invoiceDate: azureField(fields, ['InvoiceDate'], 'date', pages),
     amountBeforeTax: azureField(fields, ['SubTotal'], 'money', pages),
     vatAmount: azureField(fields, ['TotalTax'], 'money', pages),
+    discountAmount: azureField(fields, ['DiscountAmount', 'TotalDiscount', 'Discount'], 'money', pages),
     totalAmount: azureField(fields, ['InvoiceTotal'], 'money', pages),
     amountDue: azureField(fields, ['AmountDue'], 'money', pages)
   } };

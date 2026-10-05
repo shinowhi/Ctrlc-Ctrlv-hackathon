@@ -49,7 +49,7 @@ test('invoice date is shown as reference data and is not included in AI review r
   const appSource = fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8');
   assert.match(appSource, /invoiceDate:'Ngày hóa đơn \(tham khảo\)'/);
   assert.match(appSource, /key:'invoiceDate',label:'Ngày hóa đơn',reviewNote:'AI trích xuất để tham khảo; không dùng ngày này làm điều kiện đối chiếu hoặc duyệt\.'/);
-  assert.match(appSource, /const requiredInvoiceFields=\['buyerName','vendor','invoiceNumber','amountBeforeTax','vatAmount','totalAmount'\]/);
+  assert.match(appSource, /const requiredInvoiceFields=\['invoiceKind','buyerName','vendor','invoiceNumber','totalAmount'\]/);
   assert.doesNotMatch(appSource, /const aiConfidenceThresholds=\{[^}]*invoiceDate/s);
 });
 

@@ -14,9 +14,10 @@ const request = () => ({
 const extraction = () => {
   const field = value => ({ value, confidence: 0.99, evidence: 'Đọc rõ trên hóa đơn' });
   return { fields: {
+    invoiceKind: field('VAT'),
     buyerName: field('  CÔNG TY   MUA HÀNG '), vendor: field('  CÔNG TY SAO MAI '),
     invoiceNumber: field('００１２３'), invoiceDate: field('2026-10-04'),
-    amountBeforeTax: field(4000), vatAmount: field(1000), totalAmount: field(5000)
+    amountBeforeTax: field(4000), vatAmount: field(1000), discountAmount: { value: 0, confidence: 0, evidence: '' }, totalAmount: field(5000)
   } };
 };
 
