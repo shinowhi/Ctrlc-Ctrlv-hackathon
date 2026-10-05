@@ -33,7 +33,7 @@
       <div class="profile clay-inset"><div class="avatar">F</div><div><strong id="profileName"></strong><span id="profileRole"></span></div></div>
     </aside>
     <main class="main-content">
-      <header class="topbar"><div><span class="eyebrow" id="roleLabel"></span><h1 id="pageTitle"></h1><p class="muted">Hóa đơn PDF · Tổng thanh toán gồm VAT · Người có thẩm quyền duyệt cuối</p></div><div class="topbar-actions"><button class="secondary-button clay-button" id="refreshButton">Làm mới</button><button class="logout-button" id="logoutButton">Đăng xuất</button></div></header>
+      <header class="topbar"><div><span class="eyebrow" id="roleLabel"></span><h1 id="pageTitle"></h1><p class="muted">Hóa đơn PDF · Tổng thanh toán cuối cùng · Người có thẩm quyền duyệt cuối</p></div><div class="topbar-actions"><button class="secondary-button clay-button" id="refreshButton">Làm mới</button><button class="logout-button" id="logoutButton">Đăng xuất</button></div></header>
       <p class="notice" id="message" role="status" aria-live="polite"></p>
       <aside class="scope-note daily-limit-note hidden" id="dailyLimitNotice" role="status" aria-live="polite"></aside>
       <aside class="scope-note" role="note"><strong>Quy tắc duyệt:</strong> AI đánh giá hóa đơn đạt điều kiện thì hóa đơn ≤20.000.000 ₫ vào hàng chờ Quản lý; hóa đơn trên mức này vào hàng chờ Giám đốc. Hồ sơ gắn cờ được Quản lý xử lý trước. Quản lý có thể duyệt riêng hoặc cả danh sách khi tổng công ty trong ngày không quá 100.000.000 ₫; đợt làm vượt mức chuyển Giám đốc. `APPROVED` là chấp thuận khoản phải trả theo quy ước cuộc thi, không phải xác nhận đã chuyển tiền. Hệ thống chưa kiểm tra ngân sách theo mã/chính sách chi tiêu, MST doanh nghiệp, NCC được duyệt, PO hay lịch sử thanh toán.</aside>
@@ -88,7 +88,7 @@
               <label class="field">Nhà cung cấp<input id="vendor" required maxlength="1000" list="vendorDirectoryOptions" autocomplete="organization"><datalist id="vendorDirectoryOptions"></datalist><small>Chọn tên đã có trong danh mục hoặc nhập tên theo hóa đơn.</small></label>
               <label class="field">Số hóa đơn<input id="invoiceNumber" required maxlength="1000"></label>
               <label class="field">Ngày hóa đơn<input id="invoiceDate" type="date" required></label>
-              <label class="field">Tổng thanh toán trên hóa đơn, đã gồm VAT (VNĐ)<input id="amount" type="number" min="1" max="999999999999" step="1" required></label>
+              <label class="field">Tổng thanh toán cuối cùng trên hóa đơn (VNĐ)<input id="amount" type="number" min="1" max="999999999999" step="1" required></label>
             </div>
             <div class="form-section"><strong>Minh chứng bắt buộc</strong><p class="muted">Loại hóa đơn được ghi nhận tự động là điện tử. Tệp minh chứng cần ở dạng PDF (có chữ chọn/copy hoặc PDF scan), tối đa 10 MB.</p>
               <label class="field file-field">Hóa đơn (PDF)<input id="invoiceFile" type="file" accept="application/pdf,.pdf" required></label>
