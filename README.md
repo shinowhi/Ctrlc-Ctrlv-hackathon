@@ -23,7 +23,7 @@ Checkout hiện tại thực hiện hàng chờ và thẩm quyền theo [chính 
 - Luồng tạo hồ sơ thanh toán, nhập tổng thanh toán cuối cùng, tên công ty mua trên hóa đơn và gửi hóa đơn PDF.
 - Tích hợp luồng đọc hóa đơn bằng Azure Document Intelligence `prebuilt-invoice` (có thể chọn OpenAI Responses API) và lưu trữ/xử lý hồ sơ qua Supabase Auth, Storage và RPC.
 - Phân loại rõ hóa đơn bán hàng/VAT. Hóa đơn bán hàng chỉ đối chiếu tổng thanh toán cuối cùng; hóa đơn VAT mới kiểm tra phép cộng tiền trước thuế và VAT. Chiết khấu được trích xuất riêng; chỉ trừ khỏi phép tính VAT khi hóa đơn ghi rõ tiền trước thuế là trước chiết khấu. Số tiền còn phải thanh toán chỉ hiển thị thông tin.
-- Tên người mua chỉ được miễn đối chiếu khi AI phân loại `NOT_REQUIRED` từ chính hóa đơn với độ tin cậy ít nhất 85% và có bằng chứng; để trống hoặc OCR không đọc được tự nó không đủ. Khi OCR Azure không đọc chắc tên người mua, hệ thống dùng OpenAI để phân loại nếu đã cấu hình khóa. MST từ 80% có thể xác nhận nhà cung cấp trong danh mục khi MST khớp đúng công ty người nộp đã chọn; tên nhà cung cấp rõ nhưng mâu thuẫn với danh mục vẫn cần xử lý.
+- Tên người mua được miễn đối chiếu với mọi hóa đơn `SALES` theo chính sách sản phẩm; AI vẫn giữ nguyên kết quả OCR và không giả lập tên người mua bị thiếu. Với hóa đơn VAT, trường này vẫn cần được đọc hoặc được phân loại `NOT_REQUIRED` với độ tin cậy ít nhất 85% và bằng chứng. MST từ 80% có thể xác nhận nhà cung cấp trong danh mục. Tên OCR khớp chính xác bí danh đã xác minh cũng xác nhận danh tính NCC dù confidence OCR dưới 80%; nếu MST đọc đủ tin cậy mà mâu thuẫn với danh mục, hồ sơ vẫn bị giữ lại.
 - Chuẩn hóa số hóa đơn và tên bên bằng Unicode NFKC, chữ thường và khoảng trắng. Chỉ bỏ số 0 đầu của mã số thuần; biến thể khác dấu hoặc tên viết tắt chưa cấu hình cần Quản lý xác nhận.
 - Hàng chờ động theo trạng thái chưa duyệt, không chia đợt theo ngày nộp: Quản lý xử lý hóa đơn đủ điều kiện đến 20 triệu; Giám đốc xử lý hóa đơn trên 20 triệu và hồ sơ vượt ngân sách ngày được chuyển cấp.
 - AI đánh giá tính đủ điều kiện của hóa đơn; người có thẩm quyền quyết định cuối. `APPROVED` là chấp thuận khoản phải trả theo quy ước hackathon; ứng dụng không chuyển tiền.
@@ -46,6 +46,6 @@ Quản lý mở hồ sơ để xem hóa đơn PDF ngay trong trang; đơn đề 
 
 ### Cấu hình cập nhật đánh giá hóa đơn
 
-- Chạy migration `supabase/migrations/20261006-buyer-exemption-and-tax-code-identity.sql` trên Supabase trước khi dùng luồng mới.
-- Với `INVOICE_ANALYSIS_PROVIDER=azure`, đặt `OPENAI_API_KEY` trên Vercel để phân loại trường hợp Azure không đọc được tên người mua từ hóa đơn. Lượt gọi này chỉ chạy cho hồ sơ thiếu tên hoặc tên dưới 80%; nếu chưa có khóa hoặc AI không đủ căn cứ, kết quả là `UNKNOWN` và hồ sơ tiếp tục chờ Quản lý.
+- Chạy migration `supabase/migrations/20261007-sales-buyer-and-vendor-alias-resolution.sql` sau các migration trước đó trên Supabase trước khi dùng các quy tắc mới.
+- Với `INVOICE_ANALYSIS_PROVIDER=azure`, đặt `OPENAI_API_KEY` trên Vercel để phân loại loại hóa đơn khi Azure không tìm được tiêu đề, phân loại trường hợp người mua chưa rõ, và đọc lại toàn bộ hóa đơn khi Azure không đọc được ít nhất hai trong ba trường cốt lõi: nhà cung cấp, số hóa đơn, tổng thanh toán. Các fallback chỉ chạy theo điều kiện này; nếu AI vẫn không có bằng chứng đủ tin cậy, hồ sơ tiếp tục chờ Quản lý.
 - Với `INVOICE_ANALYSIS_PROVIDER=openai`, bộ phân tích hiện có trả thêm phân loại yêu cầu tên người mua trong cùng lượt đọc.
