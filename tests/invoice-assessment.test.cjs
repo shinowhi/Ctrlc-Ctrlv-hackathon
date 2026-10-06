@@ -68,6 +68,48 @@ test('buyer and vendor confidence below 80 percent remains flagged', () => {
   assert.match(assessment.reason, /độ tin cậy khi đọc nhà cung cấp.*dưới 80%/i);
 });
 
+test('an absent buyer name is exempt only when the separate classification meets 85 percent with evidence', () => {
+  const result = extraction();
+  result.fields.buyerName = { value: '', confidence: 0, evidence: '' };
+  result.fields.buyerRequirement = {
+    value: 'NOT_REQUIRED', confidence: 0.85,
+    evidence: 'Trang 1: mục người mua để trống trên hóa đơn bán lẻ.'
+  };
+
+  const assessment = assess(request(), result);
+  assert.equal(assessment.code, 'CLEAR');
+  assert.equal(assessment.matching.buyerCompany.status, 'NOT_REQUIRED');
+  assert.equal(assessment.checks.formFieldsMatch, true);
+});
+
+test('an absent buyer name stays flagged for uncertain, low-confidence, or unsupported exemption classifications', () => {
+  for (const buyerRequirement of [
+    { value: 'NOT_REQUIRED', confidence: 0.849, evidence: 'Mục người mua để trống.' },
+    { value: 'NOT_REQUIRED', confidence: 0.95, evidence: '' },
+    { value: 'UNKNOWN', confidence: 0.99, evidence: 'Không rõ quy định người mua.' }
+  ]) {
+    const result = extraction();
+    result.fields.buyerName = { value: '', confidence: 0, evidence: '' };
+    result.fields.buyerRequirement = buyerRequirement;
+
+    const assessment = assess(request(), result);
+    assert.equal(assessment.code, 'U1');
+    assert.notEqual(assessment.matching.buyerCompany.status, 'NOT_REQUIRED');
+  }
+});
+
+test('a non-empty buyer name must still match even if the classifier says it is not required', () => {
+  const result = extraction();
+  result.fields.buyerName.value = 'Công ty khác';
+  result.fields.buyerRequirement = {
+    value: 'NOT_REQUIRED', confidence: 0.99, evidence: 'Trang 1: hóa đơn bán lẻ.'
+  };
+
+  const assessment = assess(request(), result);
+  assert.equal(assessment.code, 'U1');
+  assert.equal(assessment.matching.buyerCompany.status, 'MISMATCH');
+});
+
 test('verified supplier aliases match while a registered tax-code conflict remains U1', () => {
   const registeredAlias = assess(request(), extraction(), { status: 'MATCH', method: 'VERIFIED_ALIAS' });
   assert.equal(registeredAlias.code, 'CLEAR');
@@ -77,6 +119,31 @@ test('verified supplier aliases match while a registered tax-code conflict remai
   assert.equal(taxCodeConflict.code, 'U1');
   assert.equal(taxCodeConflict.matching.vendor.status, 'MISMATCH');
   assert.match(taxCodeConflict.reason, /nhà cung cấp trên hóa đơn không khớp form/i);
+});
+
+test('a registered tax-code match can independently verify the supplier when seller-name OCR is below 80 percent', () => {
+  const result = extraction();
+  result.fields.vendor = { value: 'Công ty Sao Mai', confidence: 0.7, evidence: 'Tên mờ trên PDF' };
+  result.fields.taxCode = { value: '0312500505', confidence: 0.8, evidence: 'Mã số thuế: 0312500505' };
+
+  const assessment = assess(request(), result, { status: 'MATCH', method: 'VERIFIED_TAX_CODE' });
+  assert.equal(assessment.code, 'CLEAR');
+  assert.equal(assessment.matching.vendor.verifiedTaxCode, true);
+});
+
+test('tax-code verification below 80 percent or without evidence cannot replace a low-confidence supplier name', () => {
+  for (const taxCode of [
+    { value: '0312500505', confidence: 0.799, evidence: 'Mã số thuế: 0312500505' },
+    { value: '0312500505', confidence: 0.99, evidence: '' }
+  ]) {
+    const result = extraction();
+    result.fields.vendor = { value: 'Công ty Sao Mai', confidence: 0.7, evidence: 'Tên mờ trên PDF' };
+    result.fields.taxCode = taxCode;
+
+    const assessment = assess(request(), result, { status: 'MATCH', method: 'VERIFIED_TAX_CODE' });
+    assert.equal(assessment.code, 'U1');
+    assert.match(assessment.reason, /độ tin cậy khi đọc nhà cung cấp dưới 80%/i);
+  }
 });
 
 test('invoice date stays out of approval assessment even when missing or low confidence', () => {
