@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { assess } = require('../api/analyze-evidence.js');
+const { assess, buildVendorMatchPayload } = require('../api/analyze-evidence.js');
 
 const request = () => ({
   amount: 5000,
@@ -119,6 +119,44 @@ test('verified supplier aliases match while a registered tax-code conflict remai
   assert.equal(taxCodeConflict.code, 'U1');
   assert.equal(taxCodeConflict.matching.vendor.status, 'MISMATCH');
   assert.match(taxCodeConflict.reason, /nhà cung cấp trên hóa đơn không khớp form/i);
+});
+
+test('an exact registered alias verifies supplier identity even when OCR confidence is below 80 percent', () => {
+  const result = extraction();
+  result.fields.vendor = { value: 'BAO ANH ELECTRONICS', confidence: 0.65, evidence: 'BAO ANH ELECTRONICS' };
+
+  const assessment = assess(request(), result, { status: 'MATCH', method: 'VERIFIED_ALIAS' });
+  assert.equal(assessment.code, 'CLEAR');
+  assert.equal(assessment.matching.vendor.verifiedAlias, true);
+  assert.equal(assessment.checks.vendorIdentityMethod, 'VERIFIED_ALIAS');
+  assert.doesNotMatch(assessment.reason, /độ tin cậy khi đọc nhà cung cấp/i);
+});
+
+test('vendor directory lookup receives evidenced OCR aliases below the confidence threshold', () => {
+  const result = extraction();
+  result.fields.vendor = { value: 'HỌ KINH DOANH L.A GREEN', confidence: 0.65, evidence: 'HỌ KINH DOANH L.A GREEN' };
+  result.fields.taxCode = { value: '068195010279', confidence: 0.75, evidence: 'MST 068195010279' };
+
+  assert.deepEqual(buildVendorMatchPayload(request(), result), {
+    p_form_name: 'Công ty Sao Mai',
+    p_invoice_name: 'HỌ KINH DOANH L.A GREEN',
+    p_invoice_name_confidence: 0.65,
+    p_invoice_tax_code: null
+  });
+});
+
+test('sales invoices do not require or compare the OCR buyer-name field', () => {
+  for (const buyerName of ['', 'A name that does not match the form']) {
+    const result = extraction();
+    result.fields.invoiceKind = { value: 'SALES', confidence: 0.99, evidence: 'HÓA ĐƠN BÁN HÀNG' };
+    result.fields.buyerName = { value: buyerName, confidence: buyerName ? 0.99 : 0, evidence: buyerName || '' };
+    result.fields.buyerRequirement = { value: 'UNKNOWN', confidence: 0, evidence: '' };
+
+    const assessment = assess(request(), result);
+    assert.equal(assessment.code, 'CLEAR');
+    assert.equal(assessment.matching.buyerCompany.status, 'NOT_REQUIRED');
+    assert.equal(assessment.checks.buyerNameRequirement, 'NOT_REQUIRED');
+  }
 });
 
 test('a registered tax-code match can independently verify the supplier when seller-name OCR is below 80 percent', () => {

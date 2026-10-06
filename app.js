@@ -166,13 +166,17 @@ function renderAiAnalysis(ai,request=null) {
     const numberNote=invoiceNumberFormatDiffers?` · Khớp form sau khi chuẩn hóa số 0 đầu (Azure đọc “${esc(raw)}”)`:'';
     const vendorMatch=ai.assessment?.matching?.vendor;
     const aliasNote=key==='vendor'&&vendorMatch?.verifiedAlias?' · Khớp bí danh đã xác minh':key==='vendor'&&vendorMatch?.verifiedTaxCode?' · MST khớp danh mục đã xác minh':'';
-    return `<div class="invoice-field${key==='amountDue'?' informational':''}"><div class="invoice-field-main"><strong>${label}</strong><span>${esc(value)}</span></div><small>Độ tin cậy ${Math.round((Number(field.confidence)||0)*100)}%${numberNote}${aliasNote}${field.evidence?` · Bằng chứng: ${esc(field.evidence)}`:''}</small></div>`;
+    const salesBuyerRule=key==='buyerRequirement'&&String(ai.fields?.invoiceKind?.value||'').toUpperCase()==='SALES';
+    const confidenceNote=salesBuyerRule?'Chính sách nghiệp vụ: không đối chiếu người mua cho hóa đơn bán hàng.':`Độ tin cậy ${Math.round((Number(field.confidence)||0)*100)}%`;
+    const displayedValue=salesBuyerRule?'Không áp dụng với hóa đơn bán hàng':value;
+    return `<div class="invoice-field${key==='amountDue'?' informational':''}"><div class="invoice-field-main"><strong>${label}</strong><span>${esc(displayedValue)}</span></div><small>${confidenceNote}${numberNote}${aliasNote}${field.evidence?` · Bằng chứng: ${esc(field.evidence)}`:''}</small></div>`;
   }).join('');
   return `<section class="invoice-analysis"><h3>Kết quả đọc PDF</h3>${lines}<p class="muted">Ngân sách và chính sách chưa được kiểm tra. Độ tin cậy AI không xác thực nguồn phát hành hay chữ ký số.</p></section>`;
 }
 const reviewFieldBindings={buyerName:{formKey:'buyerCompany',label:'Công ty mua trên hóa đơn'},vendor:{formKey:'vendor',label:'Nhà cung cấp'},invoiceNumber:{formKey:'invoiceNumber',label:'Số hóa đơn'},totalAmount:{formKey:'amount',label:'Tổng thanh toán cuối cùng'}};
 const requiredInvoiceFields=['invoiceKind','buyerName','vendor','invoiceNumber','totalAmount'];
 function isBuyerNameExempt(source) {
+  if(String(source?.invoiceKind?.value||'').toUpperCase()==='SALES') return true;
   const field=source?.buyerRequirement||{};
   return !String(source?.buyerName?.value||'').trim()
     && String(field.value||'').toUpperCase()==='NOT_REQUIRED'
@@ -184,6 +188,12 @@ function isVendorVerifiedByTaxCode(ai) {
   return ai?.assessment?.matching?.vendor?.verifiedTaxCode===true
     && Boolean(String(field.value||'').trim())
     && Number.isFinite(Number(field.confidence))&&Number(field.confidence)>=aiConfidenceThresholds.taxCode
+    && Boolean(String(field.evidence||'').trim());
+}
+function isVendorVerifiedByAlias(ai) {
+  const field=ai?.fields?.vendor||{};
+  return ai?.assessment?.matching?.vendor?.verifiedAlias===true
+    && Boolean(String(field.value||'').trim())
     && Boolean(String(field.evidence||'').trim());
 }
 const formReviewFields=[
@@ -208,8 +218,8 @@ function reviewValue(key,field) {
 function buildReviewAnnotations(request,ai) {
   const source=ai?.fields||{};
   const invoiceKind=String(source.invoiceKind?.value||'UNKNOWN').toUpperCase();
-  const buyerNameExempt=isBuyerNameExempt(source),vendorVerifiedByTaxCode=isVendorVerifiedByTaxCode(ai);
-  const required=[...requiredInvoiceFields.filter(key=>(key!=='buyerName'||!buyerNameExempt)&&(key!=='vendor'||!vendorVerifiedByTaxCode)),...(invoiceKind==='VAT'?['amountBeforeTax','vatAmount']:[])];
+  const buyerNameExempt=isBuyerNameExempt(source),vendorVerifiedByTaxCode=isVendorVerifiedByTaxCode(ai),vendorVerifiedByAlias=isVendorVerifiedByAlias(ai);
+  const required=[...requiredInvoiceFields.filter(key=>(key!=='buyerName'||!buyerNameExempt)&&(key!=='vendor'||(!vendorVerifiedByTaxCode&&!vendorVerifiedByAlias))),...(invoiceKind==='VAT'?['amountBeforeTax','vatAmount']:[])];
   const annotations={};
   const add=(key,state,note)=>{
     if(!annotations[key]) annotations[key]={key,label:aiFieldLabels[key]||key,state:'yellow',notes:[],regions:Array.isArray(source[key]?.regions)?source[key].regions:[]};
@@ -224,7 +234,7 @@ function buildReviewAnnotations(request,ai) {
     const present=key==='invoiceKind'?['SALES','VAT'].includes(String(value||'').toUpperCase()):aiMoneyFields.has(key)?Number.isSafeInteger(value)&&(value>0||isZeroVat):typeof value==='string'&&Boolean(value.trim());
     const confidence=Number(field.confidence);
     const confident=Number.isFinite(confidence)&&confidence>=(aiConfidenceThresholds[key]??0.85)&&Boolean(String(field.evidence||'').trim());
-    if((!present||!confident)&&!(key==='vendor'&&vendorVerifiedByTaxCode)) {
+    if((!present||!confident)&&!(key==='vendor'&&(vendorVerifiedByTaxCode||vendorVerifiedByAlias))) {
       const confidenceText=Number.isFinite(confidence)?` Độ tin cậy ${Math.round(confidence*100)}%.`:'';
       const buyerRequirement=String(source.buyerRequirement?.value||'UNKNOWN').toUpperCase();
       const missingBuyerMessage=key==='buyerName'&&!present
