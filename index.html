@@ -27,6 +27,7 @@
         <button class="nav-item active" data-scroll="queue-card"><span>▤</span> Hồ sơ thanh toán</button>
         <button class="nav-item" id="newRequest" data-scroll="request-card"><span>＋</span> Tạo đề nghị</button>
         <button class="nav-item hidden" id="vendorDirectoryNav" data-scroll="vendors-card"><span>⌂</span> Danh mục nhà cung cấp</button>
+        <button class="nav-item hidden" id="vendorReviewNotesNav" data-scroll="vendorReviewNotesCard"><span>▤</span> Ghi chú NCC · CFO</button>
         <button class="nav-item" data-scroll="audit-card"><span>◌</span> Nhật ký hồ sơ</button>
       </nav>
       <div class="sidebar-note clay-inset"><span class="eyebrow">HẠN MỨC PHÊ DUYỆT</span><strong>20.000.000 ₫ / hóa đơn</strong><p>Tổng tất cả hóa đơn đã duyệt trong ngày tối đa 100.000.000 ₫. Hàng chờ được gom động; khoản vượt hạn mức chuyển Giám đốc.</p></div>
@@ -74,21 +75,28 @@
         <div id="vendorDirectoryMessage" class="vendor-directory-message" role="status" aria-live="polite"></div>
         <div id="vendorDirectoryList" class="vendor-directory-list"></div>
       </section>
+      <section class="clay-card vendor-card hidden" id="vendorReviewNotesCard">
+        <div class="card-heading"><div><span class="eyebrow">CHỈ GIÁM ĐỐC TÀI CHÍNH</span><h2>Ghi chú nhà cung cấp mới</h2><p class="muted">Các doanh nghiệp chưa có trong danh mục, kèm MST trích xuất và hóa đơn gốc để CFO xem xét.</p></div></div>
+        <div id="vendorReviewNotesMessage" class="vendor-directory-message" role="status" aria-live="polite">Đang tải ghi chú…</div>
+        <div id="vendorReviewNotesList" class="vendor-directory-list"></div>
+      </section>
       <section class="online-workspace">
         <article class="clay-card request-card hidden" id="request-card">
           <div class="card-heading"><div><span class="eyebrow">NGƯỜI NỘP ĐƠN</span><h2 id="formTitle">Tạo đề nghị mới</h2></div><button class="text-button" id="cancelEdit" type="button">Làm trống form</button></div>
           <form id="paymentForm">
+            <p class="optional-fields-note">Các trường thông tin có thể để trống khi gửi. Hệ thống sẽ đánh dấu tím và trả form để bổ sung nếu thiếu; hóa đơn PDF vẫn bắt buộc.</p>
             <div class="form-grid two-col">
-              <label class="field">Loại người đề nghị<select id="requesterType"><option value="employee">Nhân viên</option><option value="department">Phòng ban</option></select></label>
-              <label class="field">Họ tên / phòng ban<input id="requester" required maxlength="1000"></label>
-              <label class="field">Bộ phận<input id="department" required maxlength="1000"></label>
-              <label class="field">Tên công ty mua hàng trên hóa đơn<input id="buyerCompany" required maxlength="1000" autocomplete="organization"><small>Nhập tên công ty/pháp nhân tại mục người mua trên hóa đơn.</small></label>
-              <label class="field">Mã ngân sách (chưa đối chiếu)<input id="budgetCode" required maxlength="1000"></label>
-              <label class="field">Mục đích chi<input id="purpose" required maxlength="1000"></label>
-              <label class="field">Nhà cung cấp<input id="vendor" required maxlength="1000" list="vendorDirectoryOptions" autocomplete="organization"><datalist id="vendorDirectoryOptions"></datalist><small>Chọn tên đã có trong danh mục hoặc nhập tên theo hóa đơn.</small></label>
-              <label class="field">Số hóa đơn<input id="invoiceNumber" required maxlength="1000"></label>
-              <label class="field">Ngày hóa đơn<input id="invoiceDate" type="date" required></label>
-              <label class="field">Tổng thanh toán cuối cùng trên hóa đơn (VNĐ)<input id="amount" type="number" min="1" max="999999999999" step="1" required></label>
+              <label class="field">Loại người đề nghị<select id="requesterType"><option value="">Chọn nếu đã biết</option><option value="employee">Nhân viên</option><option value="department">Phòng ban</option></select></label>
+              <label class="field">Họ tên / phòng ban<input id="requester" maxlength="1000"></label>
+              <label class="field">Bộ phận<input id="department" maxlength="1000"></label>
+              <label class="field">Thông tin người mua<select id="buyerMode"><option value="">Chọn trường hợp trên hóa đơn</option><option value="PERSON">Tên cá nhân</option><option value="ORGANIZATION">Tên đơn vị</option><option value="NO_NAME">Hóa đơn không ghi tên người mua</option></select></label>
+              <label class="field" id="buyerNameField">Tên người mua<input id="buyerCompany" maxlength="1000" autocomplete="organization"><small id="buyerNameHelp">Nhập tên người mua cá nhân hoặc tên pháp nhân theo lựa chọn phía trên.</small></label>
+              <label class="field">Mã ngân sách (chưa đối chiếu)<input id="budgetCode" maxlength="1000"></label>
+              <label class="field">Mục đích chi<input id="purpose" maxlength="1000"></label>
+              <label class="field">Nhà cung cấp<input id="vendor" maxlength="1000" list="vendorDirectoryOptions" autocomplete="organization"><datalist id="vendorDirectoryOptions"></datalist><small>Chọn tên đã có trong danh mục hoặc nhập tên theo hóa đơn.</small></label>
+              <label class="field">Số hóa đơn<input id="invoiceNumber" maxlength="1000"></label>
+              <label class="field">Ngày hóa đơn<input id="invoiceDate" type="date"></label>
+              <label class="field">Tổng thanh toán cuối cùng trên hóa đơn (VNĐ)<input id="amount" type="number" max="999999999999" step="1"></label>
             </div>
             <div class="form-section"><strong>Minh chứng bắt buộc</strong><p class="muted">Loại hóa đơn được ghi nhận tự động là điện tử. Tệp minh chứng cần ở dạng PDF (có chữ chọn/copy hoặc PDF scan), tối đa 10 MB.</p>
               <label class="field file-field">Hóa đơn (PDF)<input id="invoiceFile" type="file" accept="application/pdf,.pdf" required></label>
@@ -99,7 +107,7 @@
         <article class="clay-card decision-card" id="decisionCard"><div class="card-heading"><div><span class="eyebrow">CHI TIẾT HỒ SƠ</span><h2>Thông tin & xử lý</h2></div></div><div id="decisionResult"><p class="muted">Chọn “Mở” ở danh sách để xem hồ sơ và minh chứng.</p></div></article>
       </section>
       <article class="clay-card audit-card" id="audit-card"><div class="card-heading"><div><span class="eyebrow">LỊCH SỬ XỬ LÝ</span><h2>Nhật ký hồ sơ đang chọn</h2></div></div><div id="auditList"><p class="muted">Chưa chọn hồ sơ.</p></div></article>
-      <details class="verification clay-card"><summary>Kiểm tra quy tắc mẫu</summary><p class="muted">Kiểm tra logic dự kiến ở giao diện. Quyền và quyết định online được kiểm tra lại trong database.</p><button class="text-button" id="verifyButton">Chạy 15 ca kiểm tra</button><div id="verifyResult"></div></details>
+      <details class="verification clay-card"><summary>Kiểm tra quy tắc mẫu</summary><p class="muted">Preview 17 trạng thái nghiệp vụ. Ngưỡng confidence, OCR, quyền và quyết định online được kiểm tra phía API/database; preview không đọc PDF thật.</p><button class="text-button" id="verifyButton">Chạy 17 ca kiểm tra</button><div id="verifyResult"></div></details>
       <footer class="footer-note">FinRef · Chưa thực hiện chuyển tiền. Ngân sách/chính sách chưa được đối chiếu; quyết định phê duyệt cuối luôn do người có thẩm quyền thực hiện.</footer>
     </main>
   </div>

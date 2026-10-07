@@ -349,3 +349,21 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .vendor-alias-list {display:flex;flex-wrap:wrap;align-content:start;gap:6px}
 .vendor-alias-chip {max-width:100%;padding:5px 8px;border-radius:8px;color:#5f6f83;background:#eff2f7;font-size:10px;overflow-wrap:anywhere}
 @media(max-width:650px){.vendor-card{padding:16px}.vendor-management-grid,.vendor-record{grid-template-columns:1fr}.vendor-management-form .secondary-button{width:100%}}
+
+.decision-banner.review {background:#fff2c8;color:#8d6800}
+.decision-banner.cfo-wait {background:#e2efff;color:#3b6eae}
+.decision-banner.missing {background:#f0e9ff;color:#7657b8}
+.status-tag.cfo-wait {color:#3b6eae;background:#e2efff}
+.status-tag.missing {color:#7657b8;background:#f0e9ff}
+.review-form-field.marked--purple {border-color:#b9a3ef;background:#f5f0ff}
+.legend-purple i,.marked--purple .review-mark-note::before {color:#7657b8;background:#d9c9ff}
+.optional-fields-note {margin:0 0 12px;padding:10px 12px;border-radius:12px;background:#f3efff;color:#6d57aa;font-size:11px;line-height:1.5}
+.field-missing {padding:8px;border:1px solid #b9a3ef;border-radius:12px;background:#f8f4ff}
+.field-missing input,.field-missing select,.field-missing textarea {border-color:#9b80dd;box-shadow:0 0 0 2px rgba(155,128,221,.12)}
+.u1-feedback {margin:14px 0;padding:14px;border:1px solid #d9c9ff;border-radius:16px;background:#f8f4ff}
+.u1-feedback h3 {margin:0 0 4px;color:#6849a8;font-size:14px}
+.u1-feedback>p {margin:0 0 10px;color:#776b91;font-size:11px}
+.vendor-candidate {align-items:flex-start}
+.vendor-candidate-actions {display:grid;justify-items:end;gap:8px;min-width:190px}
+.ai-clear-badge {margin-left:auto;padding:7px 10px;border-radius:10px;color:#2e936d;background:var(--mint);font-size:10px;font-weight:700}
+@media(max-width:650px){.vendor-candidate-actions{justify-items:stretch;min-width:0}}
