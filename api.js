@@ -54,7 +54,7 @@
     async logout() { try { if(this.session) await this.request('/auth/v1/logout?scope=local',{method:'POST'}); } finally {this.remember(null);} }
     async list(role) {
       const pageSize = 200;
-      const scope = role === 'cfo' ? '&or=(amount.gt.20000000,status.eq.CFO_REVIEW)' : '';
+      const scope = role === 'cfo' ? '&or=(and(status.eq.READY_FOR_APPROVAL,amount.gt.20000000),status.eq.CFO_REVIEW)' : '';
       const all = [];
       for (let offset = 0; ; offset += pageSize) {
         const page = await this.request(`/rest/v1/requests?select=*&order=created_at.desc,id.desc${scope}&limit=${pageSize}&offset=${offset}`);
@@ -62,10 +62,17 @@
         if (page.length < pageSize) return all;
       }
     }
+    async getRequest(id) {
+      const rows=await this.request('/rest/v1/requests?id=eq.'+encodeURIComponent(id)+'&select=*');
+      if(!rows.length) throw new Error('Không có quyền xem hồ sơ này hoặc hồ sơ không còn tồn tại.');
+      return rows[0];
+    }
     audit(id) { return this.request('/rest/v1/audit_events?request_id=eq.' + encodeURIComponent(id) + '&select=actor_role,old_status,new_status,reason,created_at,version&order=id.desc&limit=50'); }
     rpc(name,args) { return this.request('/rest/v1/rpc/' + name,{method:'POST',body:JSON.stringify(args)}); }
     dailyApprovalSummary() { return this.rpc('daily_approval_summary',{}); }
     vendorDirectory() { return this.rpc('vendor_directory_list',{}); }
+    vendorReviewNotes() { return this.rpc('vendor_review_note_list',{}); }
+    resolveVendorReviewNote(requestId) { return this.rpc('vendor_review_note_resolve',{p_request_id:requestId}); }
     saveVendor(vendorId,legalName,taxCode,aliases) {
       return this.rpc('save_vendor',{p_vendor_id:vendorId,p_legal_name:legalName,p_tax_code:taxCode,p_aliases:aliases});
     }
