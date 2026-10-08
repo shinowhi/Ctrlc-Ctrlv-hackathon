@@ -425,3 +425,98 @@ test('CFO may approve a ready invoice over 20 million; stale versions abort the 
     assert.equal(approved.status,'APPROVED');
   }finally{await db.close();}
 });
+
+test('verified tax code recognizes an unregistered seller-name alias at 80 percent similarity',async()=>{
+  const {db,as,invoice}=await fixture();
+  try{
+    await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261007-z-agreed-payment-rules.sql'),'utf8'));
+    await db.query("select set_config('request.jwt.claim.role','service_role',false)");
+    const exactBoundary=(await db.query('select public.vendor_name_similarity($1,$2) result',
+      ['Công ty TNHH Sao Mai','Sao Mai Retail'])).rows[0].result;
+    assert.equal(Number(exactBoundary),0.8);
+    const accented=(await db.query('select public.vendor_name_similarity($1,$2) result',
+      ['Công ty TNHH Cứu Hộ Sao Mai','Cuu Ho Sao Mai'])).rows[0].result;
+    assert.equal(Number(accented),1);
+    const dWithStroke=(await db.query('select public.vendor_name_similarity($1,$2) result',
+      ['Công ty TNHH Đức Thi','Duc Thi'])).rows[0].result;
+    assert.equal(Number(dWithStroke),1);
+    const result=(await db.query(
+      'select public.resolve_vendor_name_match_with_confidence($1,$2,$3,$4) result',
+      ['HỘ KINH DOANH L.A GREEN','HỘ KINH DOANH L.A GREEN SHOP','068195010279',0.70]
+    )).rows[0].result;
+    assert.equal(result.status,'MATCH');
+    assert.equal(result.method,'VERIFIED_TAX_CODE_ALIAS_CANDIDATE');
+    assert.equal(Number(result.name_similarity),6/7);
+    assert.ok(result.vendor_id);
+
+    const uncertain=(await db.query(
+      'select public.resolve_vendor_name_match_with_confidence($1,$2,$3,$4) result',
+      ['HỘ KINH DOANH L.A GREEN','Công ty Bắc Hải','068195010279',0.95]
+    )).rows[0].result;
+    assert.equal(uncertain.status,'MISMATCH');
+    assert.equal(uncertain.method,'TAX_CODE_NAME_UNVERIFIED');
+
+    await as(treasurer,'select save_vendor(null,$1,$2,$3::text[])',[
+      'Công ty khác','0123456789',['L.A GREEN SHOP']
+    ]);
+    const registeredOtherBelowThreshold=(await db.query(
+      'select public.resolve_vendor_name_match_with_confidence($1,$2,$3,$4) result',
+      ['HỘ KINH DOANH L.A GREEN','L.A GREEN SHOP','068195010279',0.79]
+    )).rows[0].result;
+    assert.equal(registeredOtherBelowThreshold.status,'MISMATCH');
+    assert.equal(registeredOtherBelowThreshold.method,'TAX_CODE_NAME_UNVERIFIED');
+    const registeredOtherClear=(await db.query(
+      'select public.resolve_vendor_name_match_with_confidence($1,$2,$3,$4) result',
+      ['HỘ KINH DOANH L.A GREEN','L.A GREEN SHOP','068195010279',0.80]
+    )).rows[0].result;
+    assert.equal(registeredOtherClear.status,'MISMATCH');
+    assert.equal(registeredOtherClear.method,'TAX_CODE_CONFLICT');
+
+    const legalName='HỘ KINH DOANH L.A GREEN';
+    const request=await invoice(98000,'TREASURER_REVIEW',null,{payload:{
+      requesterType:'employee',department:'Finance',buyerMode:'NO_NAME',buyerCompany:'',budgetCode:'MKT-01',
+      purpose:'Office supplies',vendor:legalName,invoiceNumber:'12904',invoiceDate:'2026-10-02'
+    }});
+    const field=(value,confidence=0.99,evidence='Đọc rõ trên hóa đơn')=>({value,confidence,evidence});
+    const analysis={fields:{invoiceKind:field('SALES'),buyerName:field('',0,''),
+      vendor:field('HỌ KINH DOANH L.A GREEN SHOP',0.70,'HỌ KINH DOANH L.A GREEN SHOP'),
+      taxCode:field('068195010279',0.85,'MST 068195010279'),invoiceNumber:field('12904'),totalAmount:field(98000)},
+      assessment:{code:'CLEAR',reason:'Các trường đạt ngưỡng.',fieldIssues:[]}};
+    await db.query("select set_config('request.jwt.claim.role','service_role',false)");
+    await db.exec('set role service_role');
+    try{await db.query('select record_invoice_analysis($1,$2,$3::jsonb)',[request.id,request.version,analysis]);}
+    finally{await db.exec('reset role');}
+    const stored=(await db.query('select status,checks from requests where id=$1',[request.id])).rows[0];
+    assert.equal(stored.status,'READY_FOR_APPROVAL');
+    assert.equal(stored.checks.vendor_identity_method,'VERIFIED_TAX_CODE_ALIAS_CANDIDATE');
+    const notes=await as(cfo,'select * from vendor_review_note_list()');
+    assert.equal(notes.rows.length,1);
+    assert.equal(notes.rows[0].evidence.reviewType,'ALIAS_UPDATE');
+    assert.ok(notes.rows[0].evidence.vendorId);
+  }finally{await db.close();}
+});
+
+test('CFO alias notes stay hidden while a request is still in manager review',async()=>{
+  const {db,as,invoice}=await fixture();
+  try{
+    await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261007-z-agreed-payment-rules.sql'),'utf8'));
+    const request=await invoice(5000,'TREASURER_REVIEW');
+    await db.query('insert into vendor_review_notes(request_id,vendor_name,tax_code,invoice_path,evidence) values($1,$2,$3,$4,$5)',[
+      request.id,'L.A Green Shop','068195010279','private/'+request.id+'.pdf',JSON.stringify({reviewType:'ALIAS_UPDATE',vendorId:'some-vendor'})
+    ]);
+    let notes=await as(cfo,'select * from vendor_review_note_list()');
+    assert.equal(notes.rows.length,0);
+    let access=await as(cfo,'select can_read_request($1) allowed',[request.id]);
+    assert.equal(access.rows[0].allowed,false);
+    await assert.rejects(as(cfo,'select vendor_review_note_resolve($1)',[request.id]),/chờ Quản lý/i);
+
+    await db.query("update requests set status='READY_FOR_APPROVAL' where id=$1",[request.id]);
+    notes=await as(cfo,'select * from vendor_review_note_list()');
+    assert.equal(notes.rows.length,1);
+    access=await as(cfo,'select can_read_request($1) allowed',[request.id]);
+    assert.equal(access.rows[0].allowed,true);
+    await as(cfo,'select vendor_review_note_resolve($1)',[request.id]);
+    notes=await as(cfo,'select * from vendor_review_note_list()');
+    assert.equal(notes.rows.length,0);
+  }finally{await db.close();}
+});

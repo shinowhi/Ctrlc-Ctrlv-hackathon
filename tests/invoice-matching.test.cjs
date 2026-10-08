@@ -74,3 +74,12 @@ test('vendor directory UI supports supplier creation, verified aliases and invoi
   assert.match(apiSource, /vendorDirectory\(\) \{ return this\.rpc\('vendor_directory_list'/);
   assert.match(apiSource, /saveVendor\(vendorId,legalName,taxCode,aliases\)/);
 });
+
+test('CFO alias-update notes prefill the matched supplier and require explicit verification', () => {
+  const appSource = fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+  assert.match(appSource, /note\.evidence\?\.reviewType==='ALIAS_UPDATE'/);
+  assert.match(appSource, /vendorAliasTarget'\)\.value=note\.evidence\.vendorId/);
+  assert.match(appSource, /vendorAliasVerified'\)\.checked=false/);
+  assert.match(html, /Ghi chú cập nhật danh mục nhà cung cấp/);
+});
