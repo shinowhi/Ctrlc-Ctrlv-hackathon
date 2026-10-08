@@ -16,6 +16,7 @@ const extraction = () => {
   return { fields: {
     invoiceKind: field('VAT'),
     buyerName: field('  CÔNG TY   MUA HÀNG '), vendor: field('  CÔNG TY SAO MAI '),
+    taxCode: field('0312500505'),
     invoiceNumber: field('００１２３'), invoiceDate: field('2026-10-04'),
     amountBeforeTax: field(4000), vatAmount: field(1000), discountAmount: { value: 0, confidence: 0, evidence: '' }, totalAmount: field(5000)
   } };
@@ -110,20 +111,99 @@ test('a non-empty buyer name must still match even if the classifier says it is 
   assert.equal(assessment.matching.buyerCompany.status, 'MISMATCH');
 });
 
-test('verified supplier aliases match while a registered tax-code conflict remains U1', () => {
+test('verified supplier aliases pass while a registered tax-code conflict is rejected', () => {
   const registeredAlias = assess(request(), extraction(), { status: 'MATCH', method: 'VERIFIED_ALIAS' });
   assert.equal(registeredAlias.code, 'CLEAR');
-  assert.deepEqual(registeredAlias.matching.vendor, { status: 'MATCH', verifiedAlias: true });
+  assert.deepEqual(registeredAlias.matching.vendor, {
+    status: 'MATCH', method: 'VERIFIED_ALIAS', verifiedAlias: true, verifiedTaxCode: true
+  });
 
   const taxCodeConflict = assess(request(), extraction(), { status: 'MISMATCH', method: 'TAX_CODE_CONFLICT' });
-  assert.equal(taxCodeConflict.code, 'U1');
+  assert.equal(taxCodeConflict.code, 'REJECTED');
   assert.equal(taxCodeConflict.matching.vendor.status, 'MISMATCH');
-  assert.match(taxCodeConflict.reason, /nhà cung cấp trên hóa đơn không khớp form/i);
+  assert.match(taxCodeConflict.reason, /mâu thuẫn rõ với form\/danh mục đã xác minh/i);
 });
 
-test('an exact registered alias verifies supplier identity even when OCR confidence is below 80 percent', () => {
+test('an unavailable vendor directory does not turn a seller-name difference into an automatic rejection', () => {
   const result = extraction();
-  result.fields.vendor = { value: 'BAO ANH ELECTRONICS', confidence: 0.65, evidence: 'BAO ANH ELECTRONICS' };
+  result.fields.vendor.value = 'Công ty Sao Mai Retail';
+
+  const assessment = assess(request(), result, null);
+  assert.equal(assessment.code, 'U2');
+  assert.ok(assessment.fieldIssues.some(issue => issue.field === 'vendor' && issue.severity === 'YELLOW'));
+  assert.ok(!assessment.fieldIssues.some(issue => issue.field === 'vendor' && issue.severity === 'RED'));
+});
+
+test('a verified tax code with a seller name below 80 percent similarity stays with the manager', () => {
+  const result = extraction();
+  result.fields.vendor = { value: 'Công ty Bắc Hải', confidence: 0.95, evidence: 'Công ty Bắc Hải' };
+  result.fields.taxCode = { value: '0312500505', confidence: 0.95, evidence: 'MST 0312500505' };
+
+  const assessment = assess(request(), result, {
+    status: 'MISMATCH', method: 'TAX_CODE_NAME_UNVERIFIED', name_similarity: 0
+  });
+  assert.equal(assessment.code, 'U2');
+  assert.ok(!assessment.fieldIssues.some(issue => issue.field === 'vendor' && issue.severity === 'RED'));
+});
+
+test('a verified tax code and similar unregistered seller name pass and create an alias-update candidate', () => {
+  const result = extraction();
+  result.fields.vendor = { value: 'Sao Mai Retail', confidence: 0.70, evidence: 'Sao Mai Retail' };
+  result.fields.taxCode = { value: '0312500505', confidence: 0.85, evidence: 'MST 0312500505' };
+
+  const assessment = assess(request(), result, {
+    status: 'MATCH', method: 'VERIFIED_TAX_CODE_ALIAS_CANDIDATE', name_similarity: 0.8,
+    vendor_id: 'vendor-sao-mai'
+  });
+
+  assert.equal(assessment.code, 'CLEAR');
+  assert.equal(assessment.matching.vendor.aliasUpdateCandidate, true);
+  assert.equal(assessment.matching.vendor.verifiedTaxCode, true);
+  assert.equal(assessment.matching.vendor.verifiedAlias, undefined);
+  assert.equal(assessment.checks.vendorVerified, true);
+  assert.equal(assessment.checks.vendorAliasUpdateCandidate, true);
+  assert.ok(!assessment.fieldIssues.some(issue => issue.field === 'vendor' || issue.field === 'taxCode'));
+});
+
+test('an unregistered name below 80 percent similarity cannot pass on tax code alone', () => {
+  const result = extraction();
+  result.fields.vendor = { value: 'Sao Mai Retail', confidence: 0.9, evidence: 'Sao Mai Retail' };
+  result.fields.taxCode = { value: '0312500505', confidence: 0.95, evidence: 'MST 0312500505' };
+
+  const assessment = assess(request(), result, {
+    status: 'MISMATCH', method: 'TAX_CODE_NAME_UNVERIFIED', name_similarity: 0.799,
+    vendor_id: 'vendor-sao-mai'
+  });
+
+  assert.equal(assessment.code, 'U2');
+  assert.ok(assessment.fieldIssues.some(issue => issue.field === 'vendor' && issue.severity === 'YELLOW'));
+  assert.ok(!assessment.fieldIssues.some(issue => issue.field === 'vendor' && issue.severity === 'RED'));
+});
+
+test('a verified seller alias can differ from the form name and still pass at the agreed thresholds', () => {
+  const result = extraction();
+  result.fields.vendor = { value: 'Sao Mai Retail', confidence: 0.70, evidence: 'Sao Mai Retail' };
+  result.fields.taxCode = { value: '0312500505', confidence: 0.85, evidence: 'MST 0312500505' };
+
+  const assessment = assess(request(), result, { status: 'MATCH', method: 'VERIFIED_ALIAS' });
+  assert.equal(assessment.code, 'CLEAR');
+  assert.equal(assessment.matching.vendor.verifiedAlias, true);
+  assert.equal(assessment.matching.vendor.verifiedTaxCode, true);
+});
+
+test('a verified tax-code conflict remains a clear supplier contradiction', () => {
+  const result = extraction();
+  result.fields.vendor = { value: 'Công ty Khác', confidence: 0.95, evidence: 'Công ty Khác' };
+  result.fields.taxCode = { value: '9999999999', confidence: 0.95, evidence: 'MST 9999999999' };
+
+  const assessment = assess(request(), result, { status: 'MISMATCH', method: 'TAX_CODE_CONFLICT' });
+  assert.equal(assessment.code, 'REJECTED');
+  assert.ok(assessment.fieldIssues.some(issue => issue.field === 'vendor' && issue.severity === 'RED'));
+});
+
+test('an exact registered alias passes at the agreed 70 percent seller-name confidence floor', () => {
+  const result = extraction();
+  result.fields.vendor = { value: 'BAO ANH ELECTRONICS', confidence: 0.70, evidence: 'BAO ANH ELECTRONICS' };
 
   const assessment = assess(request(), result, { status: 'MATCH', method: 'VERIFIED_ALIAS' });
   assert.equal(assessment.code, 'CLEAR');
@@ -159,28 +239,35 @@ test('sales invoices do not require or compare the OCR buyer-name field', () => 
   }
 });
 
-test('a registered tax-code match can independently verify the supplier when seller-name OCR is below 80 percent', () => {
+test('a verified tax code and similar seller name can verify an unregistered alias below 80 percent OCR confidence', () => {
   const result = extraction();
-  result.fields.vendor = { value: 'Công ty Sao Mai', confidence: 0.7, evidence: 'Tên mờ trên PDF' };
-  result.fields.taxCode = { value: '0312500505', confidence: 0.8, evidence: 'Mã số thuế: 0312500505' };
+  result.fields.vendor = { value: 'Sao Mai Retail', confidence: 0.7, evidence: 'Tên mờ trên PDF' };
+  result.fields.taxCode = { value: '0312500505', confidence: 0.85, evidence: 'Mã số thuế: 0312500505' };
 
-  const assessment = assess(request(), result, { status: 'MATCH', method: 'VERIFIED_TAX_CODE' });
+  const assessment = assess(request(), result, {
+    status: 'MATCH', method: 'VERIFIED_TAX_CODE_ALIAS_CANDIDATE', name_similarity: 0.8,
+    vendor_id: 'vendor-sao-mai'
+  });
   assert.equal(assessment.code, 'CLEAR');
   assert.equal(assessment.matching.vendor.verifiedTaxCode, true);
+  assert.equal(assessment.matching.vendor.aliasUpdateCandidate, true);
 });
 
-test('tax-code verification below 80 percent or without evidence cannot replace a low-confidence supplier name', () => {
+test('tax-code verification below 85 percent or without evidence cannot accept an alias candidate', () => {
   for (const taxCode of [
-    { value: '0312500505', confidence: 0.799, evidence: 'Mã số thuế: 0312500505' },
+    { value: '0312500505', confidence: 0.849, evidence: 'Mã số thuế: 0312500505' },
     { value: '0312500505', confidence: 0.99, evidence: '' }
   ]) {
     const result = extraction();
-    result.fields.vendor = { value: 'Công ty Sao Mai', confidence: 0.7, evidence: 'Tên mờ trên PDF' };
+    result.fields.vendor = { value: 'Sao Mai Retail', confidence: 0.7, evidence: 'Tên mờ trên PDF' };
     result.fields.taxCode = taxCode;
 
-    const assessment = assess(request(), result, { status: 'MATCH', method: 'VERIFIED_TAX_CODE' });
-    assert.equal(assessment.code, 'U1');
-    assert.match(assessment.reason, /độ tin cậy khi đọc nhà cung cấp dưới 80%/i);
+    const assessment = assess(request(), result, {
+      status: 'MATCH', method: 'VERIFIED_TAX_CODE_ALIAS_CANDIDATE', name_similarity: 0.8,
+      vendor_id: 'vendor-sao-mai'
+    });
+    assert.equal(assessment.code, 'U2');
+    assert.match(assessment.reason, /MST chưa đủ confidence\/bằng chứng/i);
   }
 });
 

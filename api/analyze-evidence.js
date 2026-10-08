@@ -104,19 +104,28 @@ function assess(request, analysis, registeredVendorMatch = null) {
   const knownVendor=registeredStatus==='MATCH'&&registeredVendorMatch?.method==='VERIFIED_ALIAS'
     &&vendorConfidence>=confidenceThresholds.vendorAliasWithTax&&Boolean(vendorValue)&&hasEvidence('vendor')
     &&taxCodeConfidence>=confidenceThresholds.knownTaxCode&&Boolean(taxCodeValue)&&hasEvidence('taxCode');
+  const vendorAliasUpdateCandidate=registeredStatus==='MATCH'
+    &&registeredVendorMatch?.method==='VERIFIED_TAX_CODE_ALIAS_CANDIDATE'
+    &&Number(registeredVendorMatch.name_similarity)>=0.80
+    &&vendorConfidence>=confidenceThresholds.vendorAliasWithTax&&Boolean(vendorValue)&&hasEvidence('vendor')
+    &&taxCodeConfidence>=confidenceThresholds.knownTaxCode&&Boolean(taxCodeValue)&&hasEvidence('taxCode');
   const newVendorCandidate=registeredStatus==='NO_MATCH'&&nameMatch.status==='MATCH'
     &&vendorConfidence>=confidenceThresholds.vendor&&hasEvidence('vendor')
     &&taxCodeConfidence>=confidenceThresholds.taxCode&&Boolean(taxCodeValue)&&hasEvidence('taxCode');
-  const vendorVerified=knownVendor||newVendorCandidate;
+  const vendorVerified=knownVendor||newVendorCandidate||vendorAliasUpdateCandidate;
+  const vendorAccepted=vendorVerified;
   const vendorMatch=registeredStatus==='MATCH'||registeredStatus==='MISMATCH'
     ?{status:registeredStatus,method:registeredVendorMatch.method,
-      ...(knownVendor?{verifiedAlias:true,verifiedTaxCode:true}:{})}:nameMatch;
+      ...(knownVendor?{verifiedAlias:true,verifiedTaxCode:true}:{}),
+      ...(vendorAliasUpdateCandidate?{verifiedTaxCode:true,aliasUpdateCandidate:true,nameSimilarity:Number(registeredVendorMatch.name_similarity),
+        vendorId:registeredVendorMatch.vendor_id}: {})}:nameMatch;
+  // A hard conflict requires the directory to prove that the tax code belongs
+  // to a different registered supplier. An unregistered spelling stays reviewable.
   const clearVendorConflict=(registeredStatus==='MISMATCH'&&registeredVendorMatch?.method==='TAX_CODE_CONFLICT'
-    &&taxCodeConfidence>=confidenceThresholds.knownTaxCode&&hasEvidence('taxCode'))
-    ||(nameMatch.status==='MISMATCH'&&vendorConfidence>=confidenceThresholds.vendor&&hasEvidence('vendor'));
+    &&taxCodeConfidence>=confidenceThresholds.knownTaxCode&&hasEvidence('taxCode'));
   const vendorTaxThreshold=['MATCH','MISMATCH'].includes(registeredStatus)
     ?confidenceThresholds.knownTaxCode:confidenceThresholds.taxCode;
-  if(!vendorVerified) {
+  if(!vendorAccepted) {
     if(clearVendorConflict) addIssue('vendor','RED','Tên nhà cung cấp hoặc MST mâu thuẫn rõ với form/danh mục đã xác minh.');
     else {
       if(registeredStatus==='UNAVAILABLE') addIssue('vendor','YELLOW','Không xác minh được danh mục nhà cung cấp; cần Quản lý kiểm tra tên và MST trên PDF.');
@@ -186,11 +195,12 @@ function assess(request, analysis, registeredVendorMatch = null) {
       :messages.join(' ');
   return {
     code,reason,question:code==='U2'?`Quản lý cần kiểm tra: ${messages.join(' ')}`:'',
-    fieldIssues:issues,effectiveInvoiceKind:invoiceKind,newVendorCandidate,
+    fieldIssues:issues,effectiveInvoiceKind:invoiceKind,newVendorCandidate,vendorAliasUpdateCandidate,
     matching:{invoiceKind:kindClear?'MATCH':'DEFAULTED_TO_VAT',
       vendor:vendorMatch,buyerCompany:buyerMatch,invoiceNumber:invoiceNumberMatch?'MATCH':'MISMATCH',
       totalAmount:total.value===submittedAmount?'MATCH':'MISMATCH'},
-    checks:{vendorVerified,knownVendor,newVendorCandidate,totalsConsistent,buyerMode}
+    checks:{vendorVerified,vendorAccepted,knownVendor,newVendorCandidate,vendorAliasUpdateCandidate,
+      vendorIdentityMethod:vendorMatch.method||'UNVERIFIED',totalsConsistent,buyerMode}
   };
 }
 

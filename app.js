@@ -106,11 +106,17 @@ async function refreshVendorReviewNotes(run=epoch) {
     if(run!==epoch||profile?.role!=='cfo') return;
     vendorReviewNotes=Array.isArray(result)?result:[];
     message.textContent=vendorReviewNotes.length
-      ?`${vendorReviewNotes.length} hồ sơ nhà cung cấp mới cần CFO xem xét.`
-      :'Chưa có nhà cung cấp mới chờ xem xét.';
+      ?`${vendorReviewNotes.length} ghi chú danh mục nhà cung cấp cần CFO xem xét.`
+      :'Chưa có ghi chú danh mục nhà cung cấp chờ xem xét.';
     list.innerHTML=vendorReviewNotes.map(note=>{
       const name=note.evidence?.vendor||{},tax=note.evidence?.taxCode||{};
-      return `<article class="vendor-record vendor-candidate"><div><strong>${esc(note.vendor_name)}</strong><small>MST: ${esc(note.tax_code)} · số hóa đơn: ${esc(note.evidence?.invoiceNumber?.value||'Chưa đọc được')}</small><small>Tên NCC ${Math.round((Number(name.confidence)||0)*100)}% · ${esc(name.evidence||'Không có trích dẫn')}; MST ${Math.round((Number(tax.confidence)||0)*100)}% · ${esc(tax.evidence||'Không có trích dẫn')}</small></div><div class="vendor-candidate-actions"><button type="button" class="secondary-button clay-button" data-vendor-note-open="${esc(note.request_id)}">Mở hồ sơ và hóa đơn PDF</button><button type="button" class="text-button" data-vendor-note-fill="${esc(note.request_id)}">Điền vào form nhà cung cấp</button><button type="button" class="text-button" data-vendor-note-resolve="${esc(note.request_id)}">Đã xem xét ghi chú</button></div></article>`;
+      const aliasUpdate=note.evidence?.reviewType==='ALIAS_UPDATE';
+      const noteLabel=aliasUpdate?'Bí danh OCR chưa có trong danh mục':'Nhà cung cấp mới chưa có trong danh mục';
+      const fillLabel=aliasUpdate?'Điền vào form bí danh':'Điền vào form nhà cung cấp';
+      const similarity=Number(note.evidence?.nameSimilarity);
+      const similarityText=aliasUpdate&&Number.isFinite(similarity)
+        ?`<small>Tên OCR tương đồng ${Math.round(similarity*100)}% với nhà cung cấp đã xác minh.</small>`:'';
+      return `<article class="vendor-record vendor-candidate"><div><strong>${esc(noteLabel)}: ${esc(note.vendor_name)}</strong><small>MST: ${esc(note.tax_code)} · số hóa đơn: ${esc(note.evidence?.invoiceNumber?.value||'Chưa đọc được')}</small><small>Tên NCC ${Math.round((Number(name.confidence)||0)*100)}% · ${esc(name.evidence||'Không có trích dẫn')}; MST ${Math.round((Number(tax.confidence)||0)*100)}% · ${esc(tax.evidence||'Không có trích dẫn')}</small>${similarityText}</div><div class="vendor-candidate-actions"><button type="button" class="secondary-button clay-button" data-vendor-note-open="${esc(note.request_id)}">Mở hồ sơ và hóa đơn PDF</button><button type="button" class="text-button" data-vendor-note-fill="${esc(note.request_id)}">${esc(fillLabel)}</button><button type="button" class="text-button" data-vendor-note-resolve="${esc(note.request_id)}">Đã xem xét ghi chú</button></div></article>`;
     }).join('');
     list.querySelectorAll('[data-vendor-note-open]').forEach(button=>button.onclick=async()=>{
       const note=vendorReviewNotes.find(item=>item.request_id===button.dataset.vendorNoteOpen);
@@ -135,6 +141,15 @@ async function refreshVendorReviewNotes(run=epoch) {
     list.querySelectorAll('[data-vendor-note-fill]').forEach(button=>button.onclick=()=>{
       const note=vendorReviewNotes.find(item=>item.request_id===button.dataset.vendorNoteFill);
       if(!note) return;
+      if(note.evidence?.reviewType==='ALIAS_UPDATE') {
+        $('vendorAliasTarget').value=note.evidence.vendorId||'';
+        $('vendorAliasName').value=note.vendor_name;
+        $('vendorAliasVerified').checked=false;
+        $('vendorAliasForm').scrollIntoView({behavior:'smooth'});
+        $('vendorAliasName').focus({preventScroll:true});
+        notify('Đã điền bí danh OCR. Đối chiếu hóa đơn/MST rồi xác nhận để lưu bí danh.');
+        return;
+      }
       $('vendorLegalName').value=note.vendor_name;
       $('vendorTaxCode').value=note.tax_code;
       $('vendors-card').scrollIntoView({behavior:'smooth'});

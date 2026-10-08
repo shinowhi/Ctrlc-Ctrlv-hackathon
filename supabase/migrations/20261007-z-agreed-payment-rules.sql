@@ -28,11 +28,12 @@ create or replace function public.can_read_request(p_id uuid)
 returns boolean language sql stable security definer set search_path = '' as $$
   select exists(select 1 from public.requests r where r.id=p_id and (
     r.owner_id=auth.uid() or public.my_role()='treasurer'
-    or (public.my_role()='cfo' and (
-      r.status='CFO_REVIEW' or (r.status='READY_FOR_APPROVAL' and r.amount>20000000)
-      or (r.status='APPROVED' and r.escalated_at is not null)
-      or exists(select 1 from public.vendor_review_notes n where n.request_id=r.id and n.reviewed_at is null)
-    ))
+      or (public.my_role()='cfo' and (
+        r.status='CFO_REVIEW' or (r.status='READY_FOR_APPROVAL' and r.amount>20000000)
+        or (r.status='APPROVED' and r.escalated_at is not null)
+        or (r.status in ('READY_FOR_APPROVAL','CFO_REVIEW','APPROVED')
+          and exists(select 1 from public.vendor_review_notes n where n.request_id=r.id and n.reviewed_at is null))
+      ))
   ));
 $$;
 
@@ -41,21 +42,25 @@ returns table(request_id uuid,vendor_name text,tax_code text,evidence jsonb,crea
 language plpgsql stable security definer set search_path = '' as $$
 begin
   if auth.uid() is null or public.my_role() is distinct from 'cfo' then
-    raise exception 'Chỉ Giám đốc Tài chính được xem ghi chú nhà cung cấp mới.';
+    raise exception 'Chỉ Giám đốc Tài chính được xem ghi chú cập nhật danh mục nhà cung cấp.';
   end if;
   return query select n.request_id,n.vendor_name,n.tax_code,n.evidence,n.created_at
-    from public.vendor_review_notes n where n.reviewed_at is null order by n.created_at desc;
+    from public.vendor_review_notes n join public.requests r on r.id=n.request_id
+    where n.reviewed_at is null and r.status in ('READY_FOR_APPROVAL','CFO_REVIEW','APPROVED')
+    order by n.created_at desc;
 end $$;
 
 create or replace function public.vendor_review_note_resolve(p_request_id uuid)
 returns void language plpgsql security definer set search_path = '' as $$
 begin
   if auth.uid() is null or public.my_role() is distinct from 'cfo' then
-    raise exception 'Chỉ Giám đốc Tài chính được cập nhật ghi chú nhà cung cấp mới.';
+    raise exception 'Chỉ Giám đốc Tài chính được cập nhật ghi chú danh mục nhà cung cấp.';
   end if;
-  update public.vendor_review_notes set reviewed_at=now(),reviewed_by=auth.uid()
-    where request_id=p_request_id and reviewed_at is null;
-  if not found then raise exception 'Ghi chú không tồn tại hoặc đã được xử lý.'; end if;
+  update public.vendor_review_notes n set reviewed_at=now(),reviewed_by=auth.uid()
+    from public.requests r
+    where n.request_id=p_request_id and r.id=n.request_id
+      and r.status in ('READY_FOR_APPROVAL','CFO_REVIEW','APPROVED') and n.reviewed_at is null;
+  if not found then raise exception 'Ghi chú không tồn tại, đã xử lý hoặc hồ sơ còn chờ Quản lý.'; end if;
 end $$;
 
 drop policy if exists evidence_read on storage.objects;
@@ -147,8 +152,35 @@ begin
   return r;
 end $$;
 
--- An exact OCR/form name is only a known supplier match when that name is in
--- the verified directory; otherwise it is a candidate for the CFO notes.
+-- Name similarity is calculated from meaningful words after removing company
+-- legal forms, so the API and database apply the same 80% alias threshold.
+create or replace function public.vendor_name_similarity(p_left text,p_right text)
+returns numeric language plpgsql immutable parallel safe set search_path = '' as $$
+declare
+  left_text text;
+  right_text text;
+  left_tokens text[];
+  right_tokens text[];
+  shared_count integer;
+  legal_words text[]:=array['cong','ty','tnhh','mot','thanh','vien','mtv','co','phan','cp','tap','doan','ho','kinh','doanh','nghiep','company','limited','ltd','inc','corp','corporation','llc','jsc'];
+  accent_source text:='àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ';
+  accent_target text:='aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiiiooooooooooooooooouuuuuuuuuuuyyyyyd';
+begin
+  left_text:=regexp_replace(translate(lower(normalize(trim(coalesce(p_left,'')),NFKC)),accent_source,accent_target),'[^a-z0-9]+',' ','g');
+  right_text:=regexp_replace(translate(lower(normalize(trim(coalesce(p_right,'')),NFKC)),accent_source,accent_target),'[^a-z0-9]+',' ','g');
+  select coalesce(array_agg(distinct word order by word),array[]::text[]) into left_tokens
+    from regexp_split_to_table(left_text,'[[:space:]]+') as parts(word)
+    where word<>'' and word<>all(legal_words);
+  select coalesce(array_agg(distinct word order by word),array[]::text[]) into right_tokens
+    from regexp_split_to_table(right_text,'[[:space:]]+') as parts(word)
+    where word<>'' and word<>all(legal_words);
+  if cardinality(left_tokens)=0 or cardinality(right_tokens)=0 then return 0; end if;
+  select count(*) into shared_count from unnest(left_tokens) as token where token=any(right_tokens);
+  return (2.0*shared_count)/(cardinality(left_tokens)+cardinality(right_tokens));
+end $$;
+
+-- A verified tax code identifies the supplier. A close but unregistered seller
+-- name can pass as an alias candidate; CFO updates the directory later.
 create or replace function public.resolve_vendor_name_match_with_confidence(
   p_form_name text,p_invoice_name text,p_invoice_tax_code text,p_invoice_name_confidence numeric
 )
@@ -161,7 +193,10 @@ declare
   invoice_vendor_id uuid;
   tax_vendor_id uuid;
   registered_tax_code text;
+  form_similarity numeric:=0;
+  invoice_similarity numeric:=0;
   invoice_name_is_clear boolean:=coalesce(p_invoice_name_confidence,0)>=0.80;
+  invoice_name_is_usable boolean:=coalesce(p_invoice_name_confidence,0)>=0.70;
 begin
   if auth.role() is distinct from 'service_role' then raise exception 'Chỉ AI backend được phân giải tên nhà cung cấp.'; end if;
   if form_name='' then return jsonb_build_object('status','NO_MATCH'); end if;
@@ -169,15 +204,38 @@ begin
   if invoice_name<>'' then select a.vendor_id into invoice_vendor_id from public.vendor_aliases a where a.normalized_name=invoice_name; end if;
   if invoice_tax_code is not null then select v.id into tax_vendor_id from public.vendor_directory v where v.tax_code_key=invoice_tax_code; end if;
   if tax_vendor_id is not null then
-    if form_vendor_id is distinct from tax_vendor_id then return jsonb_build_object('status','MISMATCH','method','TAX_CODE_CONFLICT'); end if;
-    if invoice_vendor_id is not null and invoice_vendor_id is distinct from tax_vendor_id and invoice_name_is_clear then
-      return jsonb_build_object('status','MISMATCH','method','TAX_CODE_CONFLICT');
+    if form_vendor_id is not null and form_vendor_id is distinct from tax_vendor_id then
+      return jsonb_build_object('status','MISMATCH','method','TAX_CODE_CONFLICT','vendor_id',tax_vendor_id);
     end if;
-    if invoice_name<>'' and invoice_vendor_id is null and invoice_name<>form_name and invoice_name_is_clear then
-      return jsonb_build_object('status','MISMATCH','method','TAX_CODE_NAME_UNVERIFIED');
+    if invoice_vendor_id is not null and invoice_vendor_id is distinct from tax_vendor_id then
+      if invoice_name_is_clear then
+        return jsonb_build_object('status','MISMATCH','method','TAX_CODE_CONFLICT','vendor_id',tax_vendor_id);
+      end if;
+      return jsonb_build_object('status','MISMATCH','method','TAX_CODE_NAME_UNVERIFIED','vendor_id',tax_vendor_id);
     end if;
-    if invoice_vendor_id=tax_vendor_id then return jsonb_build_object('status','MATCH','method','VERIFIED_ALIAS'); end if;
-    return jsonb_build_object('status','MATCH','method','VERIFIED_TAX_CODE');
+
+    select coalesce(max(public.vendor_name_similarity(form_name,n.name)),0),
+      coalesce(max(public.vendor_name_similarity(invoice_name,n.name)),0)
+      into form_similarity,invoice_similarity
+      from (
+        select v.legal_name as name from public.vendor_directory v where v.id=tax_vendor_id
+        union all
+        select a.alias_name as name from public.vendor_aliases a where a.vendor_id=tax_vendor_id
+      ) n;
+    if form_vendor_id is null and form_similarity<0.80 then
+      return jsonb_build_object('status','MISMATCH','method','TAX_CODE_NAME_UNVERIFIED',
+        'vendor_id',tax_vendor_id,'name_similarity',form_similarity);
+    end if;
+    if invoice_vendor_id=tax_vendor_id then
+      return jsonb_build_object('status','MATCH','method','VERIFIED_ALIAS','vendor_id',tax_vendor_id,
+        'name_similarity',invoice_similarity);
+    end if;
+    if invoice_vendor_id is null and invoice_name_is_usable and invoice_similarity>=0.80 then
+      return jsonb_build_object('status','MATCH','method','VERIFIED_TAX_CODE_ALIAS_CANDIDATE',
+        'vendor_id',tax_vendor_id,'name_similarity',invoice_similarity);
+    end if;
+    return jsonb_build_object('status','MISMATCH','method','TAX_CODE_NAME_UNVERIFIED',
+      'vendor_id',tax_vendor_id,'name_similarity',invoice_similarity);
   end if;
   if invoice_name='' then return jsonb_build_object('status','NO_MATCH'); end if;
   if form_name=invoice_name then
@@ -230,7 +288,10 @@ declare
   discount_conf numeric;
   vendor_match jsonb;
   known_vendor boolean;
+  vendor_alias_update_candidate boolean;
   new_vendor boolean;
+  vendor_note_candidate boolean;
+  vendor_note_type text;
   vendor_clear boolean;
   vendor_conflict boolean;
   number_clear boolean;
@@ -293,16 +354,21 @@ begin
     and vendor_match->>'method'='VERIFIED_ALIAS'
     and vendor_value<>'' and trim(coalesce(f->'vendor'->>'evidence',''))<>'' and vendor_conf>=0.70
     and tax_value<>'' and trim(coalesce(f->'taxCode'->>'evidence',''))<>'' and tax_conf>=0.85;
+  vendor_alias_update_candidate:=vendor_match->>'status'='MATCH'
+    and vendor_match->>'method'='VERIFIED_TAX_CODE_ALIAS_CANDIDATE'
+    and coalesce(nullif(vendor_match->>'name_similarity','')::numeric,0)>=0.80
+    and coalesce(nullif(vendor_match->>'vendor_id',''),'')<>''
+    and vendor_value<>'' and trim(coalesce(f->'vendor'->>'evidence',''))<>'' and vendor_conf>=0.70
+    and tax_value<>'' and trim(coalesce(f->'taxCode'->>'evidence',''))<>'' and tax_conf>=0.85;
   new_vendor:=vendor_match->>'status'='NO_MATCH'
     and public.normalize_party_name(vendor_value)=public.normalize_party_name(r.payload->>'vendor')
     and vendor_value<>'' and trim(coalesce(f->'vendor'->>'evidence',''))<>'' and vendor_conf>=0.80
     and tax_value<>'' and trim(coalesce(f->'taxCode'->>'evidence',''))<>'' and tax_conf>=0.80;
-  vendor_clear:=coalesce(known_vendor,false) or coalesce(new_vendor,false);
-  vendor_conflict:=coalesce((vendor_match->>'status'='MISMATCH' and vendor_match->>'method'='TAX_CODE_CONFLICT' and tax_conf>=0.85
-      and trim(coalesce(f->'taxCode'->>'evidence',''))<>'')
-    or (exists(select 1 from jsonb_array_elements(coalesce(p_analysis->'assessment'->'fieldIssues','[]'::jsonb)) as issue(item)
-        where issue.item->>'field'='vendor' and issue.item->>'severity'='RED')
-      and vendor_conf>=0.80 and trim(coalesce(f->'vendor'->>'evidence',''))<>''),false);
+  vendor_note_candidate:=coalesce(new_vendor,false) or coalesce(vendor_alias_update_candidate,false);
+  vendor_note_type:=case when vendor_alias_update_candidate then 'ALIAS_UPDATE' else 'NEW_VENDOR' end;
+  vendor_clear:=coalesce(known_vendor,false) or coalesce(vendor_alias_update_candidate,false) or coalesce(new_vendor,false);
+  vendor_conflict:=vendor_match->>'status'='MISMATCH' and vendor_match->>'method'='TAX_CODE_CONFLICT'
+    and tax_conf>=0.85 and trim(coalesce(f->'taxCode'->>'evidence',''))<>'';
 
   invoice_no:=trim(coalesce(f->'invoiceNumber'->>'value',''));
   invoice_no_conf:=coalesce(nullif(f->'invoiceNumber'->>'confidence','')::numeric,0);
@@ -363,7 +429,7 @@ begin
   if invoice_kind='VAT' and (not vat_clear or not totals_consistent) then issue_count:=issue_count+1; end if;
   if not discount_clear then issue_count:=issue_count+1; end if;
 
-  assessment_code:=case when exact_duplicate or buyer_conflict or vendor_conflict or assessment_code='REJECTED' then 'REJECTED'
+  assessment_code:=case when exact_duplicate or buyer_conflict or vendor_conflict then 'REJECTED'
     when issue_count>0 or assessment_code='U2' then 'U2'
     when r.amount>20000000 or assessment_code='U3' then 'U3' else 'CLEAR' end;
   target:=case assessment_code when 'REJECTED' then 'REJECTED' when 'U2' then 'TREASURER_REVIEW'
@@ -385,12 +451,16 @@ begin
       'invoice_kind',invoice_kind,'vendor_identity_method',coalesce(vendor_match->>'method','UNVERIFIED'),
       'new_vendor_candidate',new_vendor,'budget_checked',false,'policy_checked',false,'ai',p_analysis),
     version=version+1,updated_at=now() where id=p_id returning * into r;
-  if new_vendor then
+  if vendor_note_candidate then
     insert into public.vendor_review_notes(request_id,vendor_name,tax_code,invoice_path,evidence)
       values(r.id,vendor_value,tax_value,r.invoice_path,jsonb_build_object(
+        'reviewType',vendor_note_type,'vendorId',vendor_match->>'vendor_id',
+        'nameSimilarity',vendor_match->'name_similarity',
         'vendor',f->'vendor','taxCode',f->'taxCode','invoiceNumber',f->'invoiceNumber'))
       on conflict(request_id) do update set vendor_name=excluded.vendor_name,tax_code=excluded.tax_code,
-        invoice_path=excluded.invoice_path,evidence=excluded.evidence,created_at=now();
+        invoice_path=excluded.invoice_path,evidence=excluded.evidence,created_at=now(),reviewed_at=null,reviewed_by=null;
+  else
+    delete from public.vendor_review_notes where request_id=r.id and reviewed_at is null;
   end if;
   return r;
 end $$;
