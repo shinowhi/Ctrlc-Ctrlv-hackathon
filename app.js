@@ -256,24 +256,29 @@ function renderAiAnalysis(ai,request=null) {
   const effectiveKind=kindIsClear?rawKind:'VAT';
   const lines=Object.entries(aiFieldLabels).map(([key,label])=>{
     const field=ai.fields[key]||{}, raw=field.value;
+    const managerIdentifier=request?.checks?.manager_verified_identifiers?.[key];
+    const hasManagerIdentifier=typeof managerIdentifier?.value==='string'&&managerIdentifier.value.trim()!=='';
+    const displayRaw=hasManagerIdentifier?managerIdentifier.value:raw;
     if(key==='amountDue'&&(!Number.isSafeInteger(raw)||raw<=0)) return '';
-    const displayRaw=key==='discountAmount'&&Number.isSafeInteger(raw)?Math.abs(raw):raw;
-    if(key==='discountAmount'&&(!Number.isSafeInteger(displayRaw)||displayRaw<=0)) return '';
-    const readableMoney=Number.isSafeInteger(displayRaw)&&(displayRaw>0||(key==='vatAmount'&&displayRaw===0&&Number(field.confidence)>0));
+    const displayMoney=key==='discountAmount'&&Number.isSafeInteger(raw)?Math.abs(raw):raw;
+    if(key==='discountAmount'&&(!Number.isSafeInteger(displayMoney)||displayMoney<=0)) return '';
+    const readableMoney=Number.isSafeInteger(displayMoney)&&(displayMoney>0||(key==='vatAmount'&&displayMoney===0&&Number(field.confidence)>0));
     const invoiceKindValue=key==='invoiceKind'?kindIsClear?{SALES:'Hóa đơn bán hàng',VAT:'Hóa đơn VAT'}[rawKind]:'Chưa phân loại chắc · áp dụng rule VAT':'';
     const notComparedVat=key==='vatAmount'&&effectiveKind==='SALES'&&raw===0;
     const submittedInvoiceNumber=String(request?.payload?.invoiceNumber??'').trim();
-    const invoiceNumberMatches=key==='invoiceNumber'&&/^\d+$/.test(normalized(raw))&&/^\d+$/.test(normalized(submittedInvoiceNumber))&&normalizeInvoiceNumber(raw)===normalizeInvoiceNumber(submittedInvoiceNumber);
-    const invoiceNumberFormatDiffers=invoiceNumberMatches&&normalized(raw)!==normalized(submittedInvoiceNumber);
-    const value=key==='invoiceKind'?invoiceKindValue:aiMoneyFields.has(key)?(notComparedVat?'Không dùng để đối chiếu':readableMoney?money(displayRaw):'Chưa đọc được'):invoiceNumberFormatDiffers?submittedInvoiceNumber:String(raw||'Chưa đọc được');
-    const numberNote=invoiceNumberFormatDiffers?` · Khớp form sau khi chuẩn hóa số 0 đầu (Azure đọc “${esc(raw)}”)`:'';
+    const invoiceNumberMatches=key==='invoiceNumber'&&/^\d+$/.test(normalized(displayRaw))&&/^\d+$/.test(normalized(submittedInvoiceNumber))&&normalizeInvoiceNumber(displayRaw)===normalizeInvoiceNumber(submittedInvoiceNumber);
+    const invoiceNumberFormatDiffers=invoiceNumberMatches&&normalized(displayRaw)!==normalized(submittedInvoiceNumber);
+    const value=key==='invoiceKind'?invoiceKindValue:aiMoneyFields.has(key)?(notComparedVat?'Không dùng để đối chiếu':readableMoney?money(displayMoney):'Chưa đọc được'):invoiceNumberFormatDiffers?submittedInvoiceNumber:String(displayRaw||'Chưa đọc được');
+    const numberNote=invoiceNumberFormatDiffers?` · Khớp form sau khi chuẩn hóa số 0 đầu (đọc “${esc(displayRaw)}”)`:'';
     const vendorMatch=ai.assessment?.matching?.vendor;
     const aliasNote=key==='vendor'&&vendorMatch?.verifiedAlias?' · Khớp bí danh đã xác minh':key==='vendor'&&vendorMatch?.verifiedTaxCode?' · MST khớp danh mục đã xác minh':'';
     const informational=['invoiceDate','amountDue'].includes(key);
     const managerVerified=request?.checks?.manager_verified===true;
+    const identifierField=key==='taxCode'||key==='invoiceNumber';
+    const managerVerifiedField=managerVerified&&!identifierField;
     const rereadNote=field.reread?` · OpenAI đọc lại: ${Number.isSafeInteger(field.reread.value)?money(field.reread.value):'không đọc được'} (${Math.round((Number(field.reread.confidence)||0)*100)}%)${field.reread.evidence?` · ${esc(field.reread.evidence)}`:''}`:'';
     const fallbackReadNote=field.fallbackRead?` · Lượt đọc toàn hóa đơn: ${Number.isSafeInteger(field.fallbackRead.value)?money(field.fallbackRead.value):'không đọc được'} (${Math.round((Number(field.fallbackRead.confidence)||0)*100)}%)${field.fallbackRead.evidence?` · ${esc(field.fallbackRead.evidence)}`:''}`:'';
-    const confidenceNote=informational?'':managerVerified?`<small>Quản lý đã xác minh giá trị này${field.evidence?` · Bằng chứng: ${esc(field.evidence)}`:''}</small>`:`<small>Độ tin cậy ${Math.round((Number(field.confidence)||0)*100)}%${numberNote}${aliasNote}${field.evidence?` · Bằng chứng: ${esc(field.evidence)}`:''}${rereadNote}${fallbackReadNote}</small>`;
+    const confidenceNote=informational?'':hasManagerIdentifier?`<small>Quản lý đã xác nhận giá trị này trực tiếp từ PDF${managerIdentifier.verified_by?` · Tài khoản xác nhận: ${esc(String(managerIdentifier.verified_by))}`:''}${managerIdentifier.verified_at?` · ${esc(time(managerIdentifier.verified_at))}`:''} · AI đọc ban đầu: ${esc(String(raw||'Chưa đọc được'))} (${Math.round((Number(field.confidence)||0)*100)}%)${field.evidence?` · Bằng chứng OCR: ${esc(field.evidence)}`:''}</small>`:managerVerifiedField?`<small>Quản lý đã xác minh giá trị này${field.evidence?` · Bằng chứng: ${esc(field.evidence)}`:''}</small>`:managerVerified&&identifierField?`<small>Hồ sơ đã được quản lý duyệt, nhưng chưa lưu xác nhận riêng cho định danh này. OCR ${Math.round((Number(field.confidence)||0)*100)}%${field.evidence?` · Bằng chứng: ${esc(field.evidence)}`:''}</small>`:`<small>Độ tin cậy ${Math.round((Number(field.confidence)||0)*100)}%${numberNote}${aliasNote}${field.evidence?` · Bằng chứng: ${esc(field.evidence)}`:''}${rereadNote}${fallbackReadNote}</small>`;
     return `<div class="invoice-field${informational?' informational':''}"><div class="invoice-field-main"><strong>${label}</strong><span>${esc(value)}</span></div>${confidenceNote}</div>`;
   }).join('');
   const kindNote=effectiveKind==='VAT'&&!kindIsClear?' Loại hóa đơn chưa đủ chắc; đã áp dụng quy tắc VAT.':'';
@@ -346,6 +351,33 @@ function buildReviewAnnotations(request,ai) {
     }
   }
   return annotations;
+}
+const identifierConfirmationFields={
+  taxCode:{label:'Mã số thuế nhà cung cấp',minimum:5,maximum:30,pattern:'^[A-Za-z0-9][A-Za-z0-9 ./-]{3,29}$'},
+  invoiceNumber:{label:'Số hóa đơn',minimum:1,maximum:100}
+};
+function needsIdentifierConfirmation(key,request,ai,annotations) {
+  const field=ai?.fields?.[key]||{};
+  const assessmentIssue=Array.isArray(ai?.assessment?.fieldIssues)
+    &&ai.assessment.fieldIssues.some(issue=>issue?.field===key);
+  const invoiceNumberMismatch=key==='invoiceNumber'
+    &&normalizeInvoiceNumber(field.value)!==normalizeInvoiceNumber(request?.payload?.invoiceNumber);
+  return Boolean(annotations?.[key])||assessmentIssue||invoiceNumberMismatch
+    ||!String(field.value??'').trim()
+    ||!Number.isFinite(Number(field.confidence))
+    ||Number(field.confidence)<aiConfidenceThresholds[key]
+    ||!String(field.evidence||'').trim();
+}
+function renderIdentifierConfirmations(request,ai,annotations) {
+  const required=Object.keys(identifierConfirmationFields).filter(key=>needsIdentifierConfirmation(key,request,ai,annotations));
+  if(!required.length) return '';
+  const fields=required.map(key=>{
+    const field=ai?.fields?.[key]||{},definition=identifierConfirmationFields[key];
+    const value=String(field.value??'');
+    const confidence=Math.round((Number(field.confidence)||0)*100);
+    return `<div class="identifier-confirmation" data-identifier-confirmation="${key}"><label class="field" for="verified-${key}">${definition.label} theo hóa đơn<input id="verified-${key}" type="text" maxlength="${definition.maximum}" value="${esc(value)}" data-verified-identifier="${key}" autocomplete="off" aria-describedby="verified-${key}-help"></label><small id="verified-${key}-help" class="identifier-source">AI đọc: ${esc(value||'Chưa đọc được')} · ${confidence}%${field.evidence?` · Bằng chứng: ${esc(field.evidence)}`:''}</small><button class="secondary-button verify-identifier-button" type="button" data-verify-identifier="${key}" aria-pressed="false">Xác nhận giá trị trên PDF</button></div>`;
+  }).join('');
+  return `<section class="identifier-verification"><h4>Đối chiếu thông tin dùng phát hiện hóa đơn trùng</h4><p>Đọc đúng giá trị in trên PDF. Nếu AI đọc sai, sửa ô bên dưới rồi bấm xác nhận. Giá trị này sẽ được lưu kèm người xác nhận và dùng để so MST + số hóa đơn với hồ sơ đã duyệt. Nếu không đọc rõ trên PDF, để hồ sơ ở hàng quản lý.</p><div class="identifier-confirmation-list">${fields}</div></section>`;
 }
 function renderSubmittedForm(request,annotations) {
   const missing=new Set(request?.checks?.form_missing_fields||[]);
@@ -502,7 +534,7 @@ async function openRequest(id,fromVendorNote=false) {
   const reviewerMessage=profile.role==='cfo'
     ?r.checks?.manager_verified?'<p class="review-clear-note">Quản lý tài chính đã kiểm tra các điểm cần xác minh; dữ kiện dưới đây đã được xác nhận trước khi chuyển CFO.</p><p class="muted">Giám đốc duyệt hồ sơ vượt thẩm quyền hoặc được chuyển lên do tổng duyệt trong ngày. Lý do được lưu vào nhật ký.</p>':'<p class="muted">AI đã đánh giá hóa đơn clear. Hồ sơ vượt thẩm quyền hoặc được quản lý chuyển lên đang chờ CFO; lý do duyệt được lưu vào nhật ký.</p>'
     :manualChecks
-      ?`<p class="muted">Hồ sơ có điểm cần xác minh. Quản lý tài chính kiểm tra hóa đơn và form trước; nếu được xác nhận nhưng vượt 20 triệu/hồ sơ hoặc tổng 100 triệu/ngày, hệ thống chuyển Giám đốc cấp quyền.</p><div class="review-checks">${Object.entries(checkLabels).map(([k,v])=>`<label class="plain-check"><input type="checkbox" name="${k}">${v}</label>`).join('')}</div>`
+      ?`<p class="muted">Hồ sơ có điểm cần xác minh. Quản lý tài chính kiểm tra hóa đơn và form trước; nếu được xác nhận nhưng vượt 20 triệu/hồ sơ hoặc tổng 100 triệu/ngày, hệ thống chuyển Giám đốc cấp quyền.</p>${renderIdentifierConfirmations(r,ai,annotations)}<div class="review-checks">${Object.entries(checkLabels).map(([k,v])=>`<label class="plain-check"><input type="checkbox" name="${k}">${v}</label>`).join('')}</div>`
       :'<p class="muted">AI đã đánh giá hóa đơn đạt điều kiện. Quản lý không cần kiểm tra lại từng hồ sơ; hãy xem tổng danh sách và số dư hạn mức ngày rồi duyệt riêng hoặc duyệt cả danh sách.</p>';
   const reviewForm=mayReview?`<form id="reviewForm" class="review-form">${reviewerMessage}<label class="field">${profile.role==='cfo'?'Lý do duyệt':'Ghi chú kiểm tra / nội dung cần bổ sung'}<textarea id="reviewReason" maxlength="2000" rows="3" placeholder="${profile.role==='cfo'?'Bắt buộc khi Giám đốc duyệt':'Bắt buộc khi yêu cầu bổ sung hoặc từ chối'}"></textarea></label><div class="decision-actions"><button class="action-secondary" type="button" data-action="clarify">Yêu cầu bổ sung</button><button class="action-secondary" type="button" data-action="reject">Từ chối</button><button class="action-primary" type="button" data-action="approve">${profile.role==='cfo'?'Duyệt và ghi lý do':manualChecks?'Xác nhận đã kiểm tra và xử lý':'Duyệt hóa đơn'}</button></div></form>`:'';
   const bannerClass={APPROVED:'ready',READY_FOR_APPROVAL:'ready',REJECTED:'reject',CFO_REVIEW:'cfo-wait',NEEDS_INFO:'missing',TREASURER_REVIEW:'review'}[r.status]||'review';
@@ -519,6 +551,29 @@ async function openRequest(id,fromVendorNote=false) {
     const confirmButton=$('decisionResult').querySelector('[data-action="approve"]');
     if(confirmButton) confirmButton.textContent='Đã kiểm tra · xin CFO duyệt';
   }
+  $('decisionResult').querySelectorAll('[data-verify-identifier]').forEach(button=>{
+    const key=button.dataset.verifyIdentifier;
+    const input=$(`verified-${key}`);
+    if(!input) return;
+    input.addEventListener('input',()=>{
+      button.dataset.confirmed='false';
+      button.setAttribute('aria-pressed','false');
+      button.classList.remove('is-confirmed');
+      button.textContent='Xác nhận giá trị trên PDF';
+    });
+    button.onclick=()=>{
+      const value=input.value.trim(),definition=identifierConfirmationFields[key];
+      if(value.length<definition.minimum||value.length>definition.maximum
+        ||(definition.pattern&&!new RegExp(definition.pattern).test(value))) {
+        notify(`${definition.label} không đúng định dạng hoặc độ dài. Hãy đối chiếu lại PDF.`,true); return;
+      }
+      button.dataset.confirmed='true';
+      button.setAttribute('aria-pressed','true');
+      button.classList.add('is-confirmed');
+      button.textContent='Đã xác nhận theo PDF';
+    };
+  });
+  $('reviewForm')?.addEventListener('submit',event=>event.preventDefault());
   const viewerToken=pdfViewToken;
   api.signedUrl(r.invoice_path).then(url=>{
     if(epoch!==run||selected?.id!==id) return;
@@ -541,7 +596,7 @@ async function openRequest(id,fromVendorNote=false) {
     $('auditList').innerHTML=audit.map(a=>`<div class="audit-item"><span class="audit-dot purple"></span><div><strong>${esc(roles[a.actor_role]||a.actor_role)} · ${esc(statuses[a.new_status]||a.new_status)}</strong><p>${esc(a.reason)}</p><small>${esc(time(a.created_at))} · phiên bản ${a.version}</small></div></div>`).join('');
   } catch(e) {if(epoch===run&&selected?.id===id) $('auditList').textContent='Không tải được nhật ký: '+e.message;}
 }
-function setBusy(value) {busy=value; $('submitButton').disabled=value; $('logoutButton').disabled=value; document.querySelectorAll('[data-action],[data-batch-action],[data-approve-id]').forEach(b=>b.disabled=value); renderApprovalTools();}
+function setBusy(value) {busy=value; $('submitButton').disabled=value; $('logoutButton').disabled=value; document.querySelectorAll('[data-action],[data-batch-action],[data-approve-id],[data-verify-identifier],[data-verified-identifier]').forEach(b=>b.disabled=value); renderApprovalTools();}
 async function submitApprovalBatch(items,reason='') {
   if(busy||!items?.length) return;
   if(!dailySummary) {notify('Chưa tải được số tiền đã duyệt hôm nay. Hãy làm mới danh sách trước khi duyệt.',true);return;}
@@ -582,6 +637,23 @@ async function review(r,action) {
     await submitApprovalBatch([r],reason); return;
   }
   const checks={}; document.querySelectorAll('#reviewForm input[type=checkbox]').forEach(c=>checks[c.name]=c.checked);
+  if(action==='approve'&&profile.role==='treasurer'&&r.status==='TREASURER_REVIEW') {
+    const verifiedIdentifiers={};
+    for(const [key,definition] of Object.entries(identifierConfirmationFields)) {
+      const input=$(`verified-${key}`),button=document.querySelector(`#decisionResult [data-verify-identifier="${key}"]`);
+      if(!input||!button) continue;
+      const value=input.value.trim();
+      if(button.dataset.confirmed!=='true') {
+        notify(`Hãy đối chiếu và xác nhận ${definition.label} từ PDF trước khi duyệt.`,true); return;
+      }
+      if(value.length<definition.minimum||value.length>definition.maximum
+        ||(definition.pattern&&!new RegExp(definition.pattern).test(value))) {
+        notify(`${definition.label} không đúng định dạng hoặc độ dài.`,true); return;
+      }
+      verifiedIdentifiers[key]={value,confirmed:true};
+    }
+    if(Object.keys(verifiedIdentifiers).length) checks.verified_identifiers=verifiedIdentifiers;
+  }
   if(action==='approve'&&profile.role==='treasurer'&&r.status==='TREASURER_REVIEW') {
     const result=FinRefRules.assess(r.amount,{pdf:checks.invoice,fieldsMatch:checks.fields_match,totalsConsistent:checks.total_includes_vat,confidenceSufficient:true});
     if(result==='U1') {notify('Hồ sơ còn thiếu trường bắt buộc hoặc PDF; chưa thể xác nhận duyệt.',true);return;}

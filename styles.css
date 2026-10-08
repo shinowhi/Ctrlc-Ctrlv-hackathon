@@ -330,6 +330,17 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .review-clear-note {margin:0;padding:12px;border-radius:11px;background:#eef7f2;color:#35624a;font-size:12px;line-height:1.5}
 .review-form {padding:18px;border:1px solid #dce3ee;border-radius:16px;background:#fbfcfe}
 .review-form .muted {margin-top:0}
+.identifier-verification {margin:14px 0;padding:14px;border:1px solid #e6c767;border-radius:12px;background:#fffaf0}
+.identifier-verification h4 {margin:0 0 6px;color:#755710;font-size:13px}
+.identifier-verification>p {margin:0 0 12px;color:#675a3d;font-size:11px;line-height:1.5}
+.identifier-confirmation-list {display:grid;gap:10px}
+.identifier-confirmation {display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:5px 12px;padding:10px;border:1px solid #eee0b8;border-radius:10px;background:#fff}
+.identifier-confirmation .field {grid-column:1;min-width:0;margin:0}
+.identifier-confirmation .field input {margin-top:5px}
+.identifier-source {grid-column:1;align-self:start;color:#778397;font-size:10px;line-height:1.45;overflow-wrap:anywhere}
+.verify-identifier-button {grid-column:2;grid-row:1 / span 2;min-width:180px;min-height:38px}
+.verify-identifier-button.is-confirmed {border-color:#81c7aa;background:#edf9f3;color:#227753}
+@media(max-width:650px){.identifier-confirmation{grid-template-columns:1fr}.identifier-confirmation .field,.identifier-source,.verify-identifier-button{grid-column:1;grid-row:auto}.verify-identifier-button{width:100%}}
 @media(max-width:1050px){.reviewer-layout{grid-template-columns:1fr}.pdf-viewer-wrap{max-height:72vh}}
 @media(max-width:650px){.submitted-form-panel,.invoice-review-panel{padding:13px}.pdf-viewer-wrap{padding:7px;min-height:220px}.pdf-toolbar{flex-wrap:wrap}.review-pane-heading h3{font-size:16px}}
 
