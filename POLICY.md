@@ -13,7 +13,7 @@
 ## Quy tắc phân tích hóa đơn
 
 - Loại hóa đơn là `SALES` hoặc `VAT`. Nếu confidence phân loại dưới 90% hoặc không đọc rõ, mặc định áp dụng rule VAT và không gắn cờ riêng vì phân loại.
-- Sales cần tổng thanh toán confidence ≥82%. VAT cần tiền trước thuế ≥90%, VAT khác 0 ≥90%, và tổng cuối cùng ≥90%. VAT = 0 là ngoại lệ: confidence ≥70% cùng bằng chứng thể hiện số 0 trên PDF; trường trống/không đọc được không được hiểu là 0.
+- Sales cần tổng thanh toán confidence ≥81%. VAT cần tiền trước thuế ≥90%, VAT khác 0 ≥90%, và tổng cuối cùng ≥90%. VAT = 0 là ngoại lệ: confidence ≥70% cùng bằng chứng thể hiện số 0 trên PDF; trường trống/không đọc được không được hiểu là 0.
 - Nếu có chiết khấu, confidence cần ≥85%. Phép tính VAT là tiền trước thuế − chiết khấu + VAT, giả định chiết khấu trước thuế. Nếu tổng tính không khớp tổng PDF hoặc form, chuyển vàng cho Quản lý.
 - Tổng tiền dưới ngưỡng confidence được đọc lại riêng trường tổng tiền bằng OpenAI nếu có cấu hình. Nếu lần đọc lại bất đồng với Azure hoặc vẫn dưới ngưỡng, chuyển Quản lý kèm bằng chứng của hai lần đọc.
 - Nhà cung cấp đã có trong danh mục cần MST confidence ≥85% và tên OCR khớp tên/bí danh đã xác minh với confidence ≥70%. Nhà cung cấp mới cần tên khớp form và confidence của cả tên/MST ≥80%; PDF, tên, MST và bằng chứng được ghi trong mục chỉ CFO xem. Hệ thống không tự thêm NCC mới vào danh mục.

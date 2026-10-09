@@ -6,16 +6,20 @@ const request = () => ({
   amount: 5000,
   payload: {
     requesterType: 'employee', requester: 'Nguyễn Minh An', department: 'Marketing',
+    buyerMode: 'ORGANIZATION',
     buyerCompany: 'Công ty Mua Hàng', vendor: 'Công ty Sao Mai',
     invoiceNumber: '123', invoiceDate: '2026-10-04'
   }
 });
 
+const field = (value, confidence = 0.99, evidence = 'Đọc rõ trên hóa đơn') => ({ value, confidence, evidence });
+const assessWithVerifiedVendor = (requestData, analysis) => assess(requestData, analysis, { status: 'MATCH', method: 'VERIFIED_ALIAS' });
+
 const extraction = () => {
-  const field = value => ({ value, confidence: 0.99, evidence: 'Đọc rõ trên hóa đơn' });
   return { fields: {
     invoiceKind: field('VAT'),
-    buyerName: field('  CÔNG TY   MUA HÀNG '), vendor: field('  CÔNG TY SAO MAI '),
+    buyerPersonName: { value: '', confidence: 0, evidence: '' },
+    buyerOrganizationName: field('  CÔNG TY   MUA HÀNG '), vendor: field('  CÔNG TY SAO MAI '),
     taxCode: field('0312500505'),
     invoiceNumber: field('００１２３'), invoiceDate: field('2026-10-04'),
     amountBeforeTax: field(4000), vatAmount: field(1000), discountAmount: { value: 0, confidence: 0, evidence: '' }, totalAmount: field(5000)
@@ -23,92 +27,109 @@ const extraction = () => {
 };
 
 test('buyer company is matched separately from the employee requester', () => {
-  const assessment = assess(request(), extraction());
+  const assessment = assessWithVerifiedVendor(request(), extraction());
   assert.equal(assessment.code, 'CLEAR');
-  assert.equal(assessment.matching.buyerCompany.status, 'MATCH');
+  assert.equal(assessment.matching.buyerIdentity.status, 'MATCH');
   assert.equal(assessment.matching.vendor.status, 'MATCH');
   assert.equal(assessment.matching.invoiceNumber, 'MATCH');
 });
 
-test('accent-insensitive company name is only a possible match and remains U1', () => {
+test('accent-only buyer-name differences stay in manager review', () => {
   const result = extraction();
-  result.fields.buyerName.value = 'Cong ty Mua Hang';
-  const assessment = assess(request(), result);
-  assert.equal(assessment.code, 'U1');
-  assert.equal(assessment.matching.buyerCompany.status, 'POSSIBLE_MATCH');
-  assert.match(assessment.reason, /gần khớp/i);
+  result.fields.buyerOrganizationName.value = 'Cong ty Mua Hang';
+  const assessment = assessWithVerifiedVendor(request(), result);
+  assert.equal(assessment.code, 'U2');
+  assert.equal(assessment.matching.buyerIdentity.status, 'POSSIBLE_MATCH');
+  assert.match(assessment.reason, /chưa khớp chắc chắn/i);
 });
 
 test('a different company buyer remains a definite mismatch', () => {
   const result = extraction();
-  result.fields.buyerName.value = 'Công ty Khác';
-  const assessment = assess(request(), result);
-  assert.equal(assessment.code, 'U1');
-  assert.equal(assessment.matching.buyerCompany.status, 'MISMATCH');
-  assert.match(assessment.reason, /không khớp/i);
+  result.fields.buyerOrganizationName.value = 'Công ty Khác';
+  const assessment = assessWithVerifiedVendor(request(), result);
+  assert.equal(assessment.code, 'REJECTED');
+  assert.equal(assessment.matching.buyerIdentity.status, 'MISMATCH');
+  assert.match(assessment.reason, /mâu thuẫn rõ/i);
 });
 
 test('buyer and vendor confidence at 80 percent meets the lower threshold', () => {
   const result = extraction();
-  result.fields.buyerName.confidence = 0.8;
+  result.fields.buyerOrganizationName.confidence = 0.8;
   result.fields.vendor.confidence = 0.8;
 
-  const assessment = assess(request(), result);
+  const assessment = assessWithVerifiedVendor(request(), result);
   assert.equal(assessment.code, 'CLEAR');
   assert.doesNotMatch(assessment.reason, /độ tin cậy khi đọc (tên người mua|nhà cung cấp)/i);
 });
 
 test('buyer and vendor confidence below 80 percent remains flagged', () => {
   const result = extraction();
-  result.fields.buyerName.confidence = 0.79;
+  result.fields.buyerOrganizationName.confidence = 0.79;
   result.fields.vendor.confidence = 0.79;
 
-  const assessment = assess(request(), result);
-  assert.equal(assessment.code, 'U1');
-  assert.match(assessment.reason, /độ tin cậy khi đọc tên người mua.*dưới 80%/i);
-  assert.match(assessment.reason, /độ tin cậy khi đọc nhà cung cấp.*dưới 80%/i);
+  const assessment = assessWithVerifiedVendor(request(), result);
+  assert.equal(assessment.code, 'U2');
+  assert.match(assessment.reason, /chưa đọc tên doanh nghiệp\/đơn vị người mua đủ chắc.*80%/i);
 });
 
-test('an absent buyer name is exempt only when the separate classification meets 85 percent with evidence', () => {
+test('person mode compares only the personal name and sends a company-only invoice to management', () => {
   const result = extraction();
-  result.fields.buyerName = { value: '', confidence: 0, evidence: '' };
-  result.fields.buyerRequirement = {
-    value: 'NOT_REQUIRED', confidence: 0.85,
-    evidence: 'Trang 1: mục người mua để trống trên hóa đơn bán lẻ.'
-  };
-
-  const assessment = assess(request(), result);
-  assert.equal(assessment.code, 'CLEAR');
-  assert.equal(assessment.matching.buyerCompany.status, 'NOT_REQUIRED');
-  assert.equal(assessment.checks.formFieldsMatch, true);
+  result.fields.buyerPersonName = { value: '', confidence: 0.99, evidence: 'Mục họ tên người mua để trống.' };
+  result.fields.buyerOrganizationName = { value: 'Công ty Mua Hàng', confidence: 0.99, evidence: 'Tên đơn vị: Công ty Mua Hàng' };
+  const assessment = assessWithVerifiedVendor({ ...request(), payload: { ...request().payload, buyerMode: 'PERSON', buyerCompany: 'Nguyễn Minh An' } }, result);
+  assert.equal(assessment.code, 'U2');
+  assert.equal(assessment.matching.buyerIdentity.status, 'UNVERIFIED');
+  assert.ok(assessment.fieldIssues.some(issue => issue.field === 'buyerPersonName' && issue.severity === 'YELLOW'));
 });
 
-test('an absent buyer name stays flagged for uncertain, low-confidence, or unsupported exemption classifications', () => {
-  for (const buyerRequirement of [
-    { value: 'NOT_REQUIRED', confidence: 0.849, evidence: 'Mục người mua để trống.' },
-    { value: 'NOT_REQUIRED', confidence: 0.95, evidence: '' },
-    { value: 'UNKNOWN', confidence: 0.99, evidence: 'Không rõ quy định người mua.' }
-  ]) {
-    const result = extraction();
-    result.fields.buyerName = { value: '', confidence: 0, evidence: '' };
-    result.fields.buyerRequirement = buyerRequirement;
+test('organization mode matches the organization even when a personal name is also printed', () => {
+  const result = extraction();
+  result.fields.buyerPersonName = field('ĐẶNG THỊ THÙY LINH');
+  result.fields.buyerOrganizationName = field('HỘ KINH DOANH L.A GREEN');
+  const assessment = assessWithVerifiedVendor({ ...request(), payload: { ...request().payload, buyerCompany: 'HỘ KINH DOANH L.A GREEN' } }, result);
+  assert.equal(assessment.code, 'CLEAR');
+  assert.equal(assessment.matching.buyerIdentity.status, 'MATCH');
+});
 
-    const assessment = assess(request(), result);
-    assert.equal(assessment.code, 'U1');
-    assert.notEqual(assessment.matching.buyerCompany.status, 'NOT_REQUIRED');
+test('no-name mode passes only when both name fields are positively evidenced as blank', () => {
+  const result = extraction();
+  result.fields.buyerPersonName = { value: '', confidence: 0.99, evidence: 'Mục họ tên người mua để trống trên trang 1.' };
+  result.fields.buyerOrganizationName = { value: '', confidence: 0.99, evidence: 'Mục tên đơn vị để trống trên trang 1.' };
+  const assessment = assessWithVerifiedVendor({ ...request(), payload: { ...request().payload, buyerMode: 'NO_NAME', buyerCompany: '' } }, result);
+  assert.equal(assessment.code, 'CLEAR');
+  assert.equal(assessment.matching.buyerIdentity.status, 'NOT_REQUIRED');
+});
+
+test('no-name mode sends unreadable or unsupported blank fields to management', () => {
+  const result = extraction();
+  result.fields.buyerPersonName = { value: '', confidence: 0, evidence: '' };
+  result.fields.buyerOrganizationName = { value: '', confidence: 0, evidence: '' };
+  const assessment = assessWithVerifiedVendor({ ...request(), payload: { ...request().payload, buyerMode: 'NO_NAME', buyerCompany: '' } }, result);
+  assert.equal(assessment.code, 'U2');
+  assert.equal(assessment.matching.buyerIdentity.status, 'UNVERIFIED');
+});
+
+test('no-name mode rejects a clearly read person or organization name', () => {
+  for (const key of ['buyerPersonName', 'buyerOrganizationName']) {
+    const result = extraction();
+    result.fields[key] = field('Tên người mua rõ trên hóa đơn');
+    result.buyerRereadStatus = 'COMPLETED';
+    const assessment = assessWithVerifiedVendor({ ...request(), payload: { ...request().payload, buyerMode: 'NO_NAME', buyerCompany: '' } }, result);
+    assert.equal(assessment.code, 'REJECTED');
+    assert.ok(assessment.fieldIssues.some(issue => issue.field === key && issue.severity === 'RED'));
   }
 });
 
-test('a non-empty buyer name must still match even if the classifier says it is not required', () => {
+test('no-name mode sends an OCR name to management when focused verification is unavailable', () => {
   const result = extraction();
-  result.fields.buyerName.value = 'Công ty khác';
-  result.fields.buyerRequirement = {
-    value: 'NOT_REQUIRED', confidence: 0.99, evidence: 'Trang 1: hóa đơn bán lẻ.'
-  };
-
-  const assessment = assess(request(), result);
-  assert.equal(assessment.code, 'U1');
-  assert.equal(assessment.matching.buyerCompany.status, 'MISMATCH');
+  result.fields.buyerPersonName = field('Tên người mua rõ trên hóa đơn');
+  result.fields.buyerOrganizationName = { value: '', confidence: 0.99, evidence: 'Mục tên đơn vị để trống.' };
+  result.buyerRereadStatus = 'UNAVAILABLE';
+  const assessment = assessWithVerifiedVendor({ ...request(), payload: { ...request().payload, buyerMode: 'NO_NAME', buyerCompany: '' } }, result);
+  assert.equal(assessment.code, 'U2');
+  assert.equal(assessment.matching.buyerIdentity.status, 'UNVERIFIED');
+  assert.ok(assessment.fieldIssues.some(issue => issue.field === 'buyerPersonName' && issue.severity === 'YELLOW'));
+  assert.ok(!assessment.fieldIssues.some(issue => issue.field === 'buyerPersonName' && issue.severity === 'RED'));
 });
 
 test('verified supplier aliases pass while a registered tax-code conflict is rejected', () => {
@@ -225,18 +246,13 @@ test('vendor directory lookup receives evidenced OCR aliases below the confidenc
   });
 });
 
-test('sales invoices do not require or compare the OCR buyer-name field', () => {
-  for (const buyerName of ['', 'A name that does not match the form']) {
-    const result = extraction();
-    result.fields.invoiceKind = { value: 'SALES', confidence: 0.99, evidence: 'HÓA ĐƠN BÁN HÀNG' };
-    result.fields.buyerName = { value: buyerName, confidence: buyerName ? 0.99 : 0, evidence: buyerName || '' };
-    result.fields.buyerRequirement = { value: 'UNKNOWN', confidence: 0, evidence: '' };
-
-    const assessment = assess(request(), result);
-    assert.equal(assessment.code, 'CLEAR');
-    assert.equal(assessment.matching.buyerCompany.status, 'NOT_REQUIRED');
-    assert.equal(assessment.checks.buyerNameRequirement, 'NOT_REQUIRED');
-  }
+test('sales invoices use the same selected buyer-name field as VAT invoices', () => {
+  const result = extraction();
+  result.fields.invoiceKind = { value: 'SALES', confidence: 0.99, evidence: 'HÓA ĐƠN BÁN HÀNG' };
+  result.fields.buyerOrganizationName = { value: 'Công ty Mua Hàng', confidence: 0.99, evidence: 'Tên đơn vị: Công ty Mua Hàng' };
+  const assessment = assessWithVerifiedVendor(request(), result);
+  assert.equal(assessment.code, 'CLEAR');
+  assert.equal(assessment.matching.buyerIdentity.status, 'MATCH');
 });
 
 test('a verified tax code and similar seller name can verify an unregistered alias below 80 percent OCR confidence', () => {
@@ -275,12 +291,21 @@ test('invoice date stays out of approval assessment even when missing or low con
   const result = extraction();
   result.fields.invoiceDate = { value: '', confidence: 0, evidence: '' };
 
-  const assessment = assess(request(), result);
+  const assessment = assessWithVerifiedVendor(request(), result);
   assert.equal(assessment.code, 'CLEAR');
   assert.equal(assessment.matching.invoiceDate, undefined);
-  assert.equal(assessment.checks.formFieldsMatch, true);
+  assert.equal(assessment.checks.totalsConsistent, true);
   assert.doesNotMatch(assessment.reason, /ngày hóa đơn/i);
 
   result.fields.invoiceDate = { value: '2026-09-23', confidence: 0, evidence: 'Ngày trên PDF' };
-  assert.equal(assess(request(), result).code, 'CLEAR');
+  assert.equal(assessWithVerifiedVendor(request(), result).code, 'CLEAR');
+});
+
+test('a buyer mismatch stays yellow when the selective verification read is unavailable', () => {
+  const result = extraction();
+  result.fields.buyerOrganizationName.value = 'Công ty Khác';
+  result.buyerRereadStatus = 'UNAVAILABLE';
+  const assessment = assessWithVerifiedVendor(request(), result);
+  assert.equal(assessment.code, 'U2');
+  assert.ok(assessment.fieldIssues.some(issue => issue.field === 'buyerOrganizationName' && issue.severity === 'YELLOW'));
 });

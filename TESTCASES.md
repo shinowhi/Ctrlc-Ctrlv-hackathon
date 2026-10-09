@@ -5,7 +5,7 @@
 - Hóa đơn đầu vào: PDF có chữ chọn/copy hoặc PDF scan dạng ảnh. Chỉ hóa đơn là file đính kèm bắt buộc; tối đa 10 MB.
 - Các trường form người nộp đều tùy chọn trước khi gửi; thiếu dữ liệu sau khi gửi phải vào `NEEDS_INFO` (U1), đánh dấu tím và trả người nộp. PDF vẫn bắt buộc. `buyerCompany` được bỏ trống khi người nộp chọn “Hóa đơn không ghi tên người mua”.
 - So khớp chính xác sau Unicode NFKC, chữ thường và gộp khoảng trắng. Mã số hóa đơn thuần bỏ số 0 đầu; mã có chữ giữ số 0, dấu `/`, `-`, `.`. Khác biệt dấu ở tên nhà cung cấp/người mua cần Quản lý xác nhận.
-- Sales cần confidence tổng thanh toán ≥82%; VAT cần tiền trước thuế, VAT khác 0 và tổng cuối cùng ≥90%; VAT=0 cần ≥70% cùng bằng chứng thể hiện 0. Chiết khấu nếu có cần ≥85%; tính VAT theo tiền trước thuế − chiết khấu + VAT, giả định chiết khấu trước thuế.
+- Sales cần confidence tổng thanh toán ≥81%; VAT cần tiền trước thuế, VAT khác 0 và tổng cuối cùng ≥90%; VAT=0 cần ≥70% cùng bằng chứng thể hiện 0. Chiết khấu nếu có cần ≥85%; tính VAT theo tiền trước thuế − chiết khấu + VAT, giả định chiết khấu trước thuế.
 - Tổng thanh toán trên form phải là tổng cuối cùng trên hóa đơn. Sai lệch tiền/số hóa đơn và confidence quyết định thấp chuyển vàng cho Quản lý; chỉ mâu thuẫn rõ ở người mua/NCC mới tự từ chối, trùng cả MST và số hóa đơn với hồ sơ đã duyệt cũng bị từ chối trực tiếp.
 - Nhà cung cấp đã xác minh cần MST ≥85% và tên khớp bí danh đã xác minh ≥70%; nhà cung cấp mới cần tên khớp form và cả tên/MST ≥80%, lưu PDF/tên/MST trong mục ghi chú chỉ CFO xem nhưng không tự thêm vào danh mục.
 - Hóa đơn không phân loại đủ chắc mặc định theo rule VAT mà không gắn cờ riêng. Confidence ngày hóa đơn và tiền còn phải trả chỉ để tham khảo, không tạo ghi chú/cờ.

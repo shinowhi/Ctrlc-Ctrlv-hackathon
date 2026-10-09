@@ -32,6 +32,9 @@ async function fixture(){
   await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261005-vendor-invoice-aliases.sql'),'utf8'));
   await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261006-buyer-exemption-and-tax-code-identity.sql'),'utf8'));
   await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261007-sales-buyer-and-vendor-alias-resolution.sql'),'utf8'));
+  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261008-production-forward-sync.sql'),'utf8'));
+  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261008-z-sales-total-confidence-81.sql'),'utf8'));
+  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261009-structured-buyer-names.sql'),'utf8'));
   await db.query('insert into profiles values ($1,$2,$3),($4,$5,$6),($7,$8,$9)',
     [applicant,'Applicant','applicant',treasurer,'Treasurer','treasurer',cfo,'CFO','cfo']);
   const as=async(user,sql,args=[])=>{
@@ -41,10 +44,11 @@ async function fixture(){
   };
   const invoice=async(amount,status='READY_FOR_APPROVAL',approvedAt=null,overrides={})=>{
     const id=crypto.randomUUID();
-    const payload={requester:'Requester '+id,requesterType:'employee',department:'Finance',buyerCompany:'Buyer Company '+id,
-      vendor:'Vendor '+id,invoiceNumber:'INV-'+id,invoiceDate:'2026-10-02',amount,...overrides.payload};
-    await db.query('insert into requests(id,owner_id,payload,amount,invoice_path,status,approved_at) values($1,$2,$3,$4,$5,$6,$7)',
-      [id,applicant,payload,amount,'private/'+id+'.pdf',status,approvedAt]);
+    const payload={requester:'Requester '+id,requesterType:'employee',department:'Finance',buyerMode:'ORGANIZATION',buyerCompany:'Buyer Company '+id,
+      budgetCode:'OPS-01',purpose:'Invoice test',vendor:'CÔNG TY TNHH ĐIỆN TỬ BẢO ANH',invoiceNumber:'INV-'+id,invoiceDate:'2026-10-02',amount,...overrides.payload};
+    const checks={manager_verified_identifiers:{taxCode:{value:'0312500505'},invoiceNumber:{value:payload.invoiceNumber}}};
+    await db.query('insert into requests(id,owner_id,payload,amount,invoice_path,status,approved_at,checks) values($1,$2,$3,$4,$5,$6,$7,$8)',
+      [id,applicant,payload,amount,'private/'+id+'.pdf',status,approvedAt,checks]);
     return {id,version:1,amount,payload};
   };
   return {db,as,invoice};
@@ -76,10 +80,11 @@ test('AI eligibility leaves an invoice pending and routes amounts above 20 milli
       const field=(value)=>({value,confidence:.99,evidence:'Đọc được trên hóa đơn mẫu'});
       const analysis={fields:{
         invoiceKind:field('VAT'),
-        buyerName:field(request.payload.buyerCompany),vendor:field(request.payload.vendor),
+        buyerOrganizationName:field(request.payload.buyerCompany),vendor:field(request.payload.vendor),
+        taxCode:field('0312500505'),
         invoiceNumber:field('INV-'+request.id),invoiceDate:field('2026-10-02'),
         amountBeforeTax:field(beforeTax),vatAmount:field(vat),totalAmount:field(amount)
-      },assessment:{reason:'Đạt kiểm tra hóa đơn'}};
+      },assessment:{code:'CLEAR',reason:'Đạt kiểm tra hóa đơn'}};
       await db.query("select set_config('request.jwt.claim.role','service_role',false)");
       await db.exec('set role service_role');
       try{await db.query('select record_invoice_analysis($1,$2,$3::jsonb)',[request.id,request.version,analysis]);}
@@ -103,10 +108,11 @@ test('buyer/vendor confidence at 80 percent is eligible with an unconfident disp
     const field=(value,confidence=.99)=>({value,confidence,evidence:'Đọc được trên hóa đơn mẫu'});
     const analysis={fields:{
       invoiceKind:field('VAT'),
-      buyerName:field(request.payload.buyerCompany,.8),vendor:field(request.payload.vendor,.8),
+      buyerOrganizationName:field(request.payload.buyerCompany,.8),vendor:field(request.payload.vendor,.8),
+      taxCode:field('0312500505'),
       invoiceNumber:field('INV-'+request.id),invoiceDate:{value:'',confidence:0,evidence:''},
       amountBeforeTax:field(4000000),vatAmount:field(1000000),totalAmount:field(5000000)
-    },assessment:{reason:'Các trường còn lại đạt kiểm tra'}};
+    },assessment:{code:'CLEAR',reason:'Các trường còn lại đạt kiểm tra'}};
     await db.query("select set_config('request.jwt.claim.role','service_role',false)");
     await db.exec('set role service_role');
     try{await db.query('select record_invoice_analysis($1,$2,$3::jsonb)',[request.id,request.version,analysis]);}
@@ -167,16 +173,16 @@ test('a verified supplier alias is accepted in AI eligibility only when a known 
       const field=(value,confidence=.99)=>({value,confidence,evidence:'Đọc rõ trên hóa đơn mẫu'});
       const analysis={fields:{
         invoiceKind:field('VAT'),
-        buyerName:field(request.payload.buyerCompany),vendor:field('BAO ANH ELECTRONICS'),taxCode:field(taxCode,taxCodeConfidence),
+        buyerOrganizationName:field(request.payload.buyerCompany),vendor:field('BAO ANH ELECTRONICS'),taxCode:field(taxCode,taxCodeConfidence),
         invoiceNumber:field(request.payload.invoiceNumber),amountBeforeTax:field(4000000),vatAmount:field(1000000),totalAmount:field(5000000)
-      },assessment:{reason:'Đối chiếu tên nhà cung cấp'}};
+      },assessment:{code:'CLEAR',reason:'Đối chiếu tên nhà cung cấp'}};
       await db.query("select set_config('request.jwt.claim.role','service_role',false)");
       await db.exec('set role service_role');
       try{await db.query('select record_invoice_analysis($1,$2,$3::jsonb)',[request.id,request.version,analysis]);}
       finally{await db.exec('reset role');}
       return (await db.query('select status,checks from requests where id=$1',[request.id])).rows[0];
     };
-    const matched=await makeAnalysis('0312500505',.80);
+    const matched=await makeAnalysis('0312500505',.85);
     assert.equal(matched.status,'READY_FOR_APPROVAL');
     assert.equal(matched.checks.invoice_fields_match,true);
     const differentTaxCode=await makeAnalysis('9999999999',.80);
@@ -185,50 +191,18 @@ test('a verified supplier alias is accepted in AI eligibility only when a known 
   }finally{await db.close();}
 });
 
-test('an empty buyer field passes only with a NOT_REQUIRED classification at 85 percent and evidence',async()=>{
+test('no-name buyer mode passes only when both name fields are evidenced blank at 80 percent',async()=>{
   const {db,invoice}=await fixture();
   try{
     const makeAnalysis=async(confidence,evidence='Trang 1: mục tên người mua để trống trên hóa đơn bán lẻ.')=>{
-      const request=await invoice(5000000,'TREASURER_REVIEW');
+      const request=await invoice(5000000,'TREASURER_REVIEW',null,{payload:{buyerMode:'NO_NAME',buyerCompany:'',vendor:'CÔNG TY TNHH ĐIỆN TỬ BẢO ANH'}});
       const field=(value,score=.99,proof='Đọc rõ trên hóa đơn')=>({value,confidence:score,evidence:proof});
       const analysis={fields:{
-        invoiceKind:field('VAT'),buyerName:field('',0,''),
-        buyerRequirement:field('NOT_REQUIRED',confidence,evidence),
-        vendor:field(request.payload.vendor),invoiceNumber:field(request.payload.invoiceNumber),
+        invoiceKind:field('VAT'),buyerPersonName:field('',confidence,evidence),
+        buyerOrganizationName:field('',confidence,evidence),
+        vendor:field(request.payload.vendor),taxCode:field('0312500505'),invoiceNumber:field(request.payload.invoiceNumber),
         amountBeforeTax:field(4000000),vatAmount:field(1000000),totalAmount:field(5000000)
-      },assessment:{reason:'Đạt các kiểm tra hóa đơn'}};
-      await db.query("select set_config('request.jwt.claim.role','service_role',false)");
-      await db.exec('set role service_role');
-      try{await db.query('select record_invoice_analysis($1,$2,$3::jsonb)',[request.id,request.version,analysis]);}
-      finally{await db.exec('reset role');}
-      return (await db.query('select status,checks from requests where id=$1',[request.id])).rows[0];
-    };
-    const eligible=await makeAnalysis(.85);
-    assert.equal(eligible.status,'READY_FOR_APPROVAL');
-    assert.equal(eligible.checks.buyer_name_requirement,'NOT_REQUIRED');
-    assert.equal(eligible.checks.invoice_fields_match,true);
-
-    const belowThreshold=await makeAnalysis(.849);
-    assert.equal(belowThreshold.status,'TREASURER_REVIEW');
-    const missingEvidence=await makeAnalysis(.99,'');
-    assert.equal(missingEvidence.status,'TREASURER_REVIEW');
-  }finally{await db.close();}
-});
-
-test('a registered tax code independently verifies a low-confidence supplier name at 80 percent',async()=>{
-  const {db,invoice}=await fixture();
-  try{
-    const makeAnalysis=async(taxConfidence,taxEvidence='Mã số thuế: 0312500505')=>{
-      const legalName='CÔNG TY TNHH ĐIỆN TỬ BẢO ANH';
-      const request=await invoice(5000000,'TREASURER_REVIEW',null,{payload:{vendor:legalName}});
-      const field=(value,confidence=.99,evidence='Đọc rõ trên hóa đơn')=>({value,confidence,evidence});
-      const analysis={fields:{
-        invoiceKind:field('VAT'),buyerName:field(request.payload.buyerCompany),
-        vendor:field('BAO ANH ELEC',.70,'Tên nhà cung cấp bị mờ'),
-        taxCode:field('0312500505',taxConfidence,taxEvidence),
-        invoiceNumber:field(request.payload.invoiceNumber),amountBeforeTax:field(4000000),
-        vatAmount:field(1000000),totalAmount:field(5000000)
-      },assessment:{reason:'MST xác nhận nhà cung cấp trong danh mục'}};
+      },assessment:{code:'CLEAR',reason:'Đạt các kiểm tra hóa đơn'}};
       await db.query("select set_config('request.jwt.claim.role','service_role',false)");
       await db.exec('set role service_role');
       try{await db.query('select record_invoice_analysis($1,$2,$3::jsonb)',[request.id,request.version,analysis]);}
@@ -237,9 +211,81 @@ test('a registered tax code independently verifies a low-confidence supplier nam
     };
     const eligible=await makeAnalysis(.80);
     assert.equal(eligible.status,'READY_FOR_APPROVAL');
-    assert.equal(eligible.checks.vendor_identity_method,'VERIFIED_TAX_CODE');
+    assert.equal(eligible.checks.invoice_fields_match,true);
 
     const belowThreshold=await makeAnalysis(.799);
+    assert.equal(belowThreshold.status,'TREASURER_REVIEW');
+    const missingEvidence=await makeAnalysis(.99,'');
+    assert.equal(missingEvidence.status,'TREASURER_REVIEW');
+  }finally{await db.close();}
+});
+
+test('person mode does not accept a company-only buyer field and keeps the request in manager review',async()=>{
+  const {db,invoice}=await fixture();
+  try{
+    const request=await invoice(5000000,'TREASURER_REVIEW',null,{payload:{buyerMode:'PERSON',buyerCompany:'Nguyễn Minh An',vendor:'CÔNG TY TNHH ĐIỆN TỬ BẢO ANH'}});
+    const field=(value,confidence=.99,evidence='Đọc rõ trên hóa đơn')=>({value,confidence,evidence});
+    const analysis={fields:{invoiceKind:field('VAT'),buyerPersonName:field('',0,''),
+      buyerOrganizationName:field('CÔNG TY MUA HÀNG'),vendor:field(request.payload.vendor),taxCode:field('0312500505'),
+      invoiceNumber:field(request.payload.invoiceNumber),amountBeforeTax:field(4000000),vatAmount:field(1000000),totalAmount:field(5000000)},
+      assessment:{code:'U2',reason:'Không đọc được tên cá nhân người mua.',fieldIssues:[
+        {field:'buyerPersonName',severity:'YELLOW',message:'Không đọc được tên cá nhân người mua.'}
+      ]}};
+    await db.query("select set_config('request.jwt.claim.role','service_role',false)");
+    await db.exec('set role service_role');
+    try{await db.query('select record_invoice_analysis($1,$2,$3::jsonb)',[request.id,request.version,analysis]);}
+    finally{await db.exec('reset role');}
+    const result=(await db.query('select status,checks from requests where id=$1',[request.id])).rows[0];
+    assert.equal(result.status,'TREASURER_REVIEW');
+    assert.equal(result.checks.invoice_fields_match,false);
+  }finally{await db.close();}
+});
+
+test('no-name mode rejects a clearly printed personal buyer name with evidence',async()=>{
+  const {db,invoice}=await fixture();
+  try{
+    const request=await invoice(5000000,'TREASURER_REVIEW',null,{payload:{buyerMode:'NO_NAME',buyerCompany:'',vendor:'CÔNG TY TNHH ĐIỆN TỬ BẢO ANH'}});
+    const field=(value,confidence=.99,evidence='Đọc rõ trên hóa đơn')=>({value,confidence,evidence});
+    const analysis={fields:{invoiceKind:field('VAT'),buyerPersonName:field('Nguyễn Minh An'),
+      buyerOrganizationName:field('',.99,'Mục tên đơn vị để trống'),vendor:field(request.payload.vendor),taxCode:field('0312500505'),
+      invoiceNumber:field(request.payload.invoiceNumber),amountBeforeTax:field(4000000),vatAmount:field(1000000),totalAmount:field(5000000)},
+      assessment:{code:'REJECTED',reason:'Hóa đơn có tên người mua dù đã chọn không ghi tên.',fieldIssues:[
+        {field:'buyerPersonName',severity:'RED',message:'Có tên người mua rõ trên hóa đơn.'}
+      ]}};
+    await db.query("select set_config('request.jwt.claim.role','service_role',false)");
+    await db.exec('set role service_role');
+    try{await db.query('select record_invoice_analysis($1,$2,$3::jsonb)',[request.id,request.version,analysis]);}
+    finally{await db.exec('reset role');}
+    const result=(await db.query('select status from requests where id=$1',[request.id])).rows[0];
+    assert.equal(result.status,'REJECTED');
+  }finally{await db.close();}
+});
+
+test('a verified tax code and a similar supplier name meet the 85 percent tax threshold',async()=>{
+  const {db,invoice}=await fixture();
+  try{
+    const makeAnalysis=async(taxConfidence,taxEvidence='Mã số thuế: 0312500505')=>{
+      const legalName='CÔNG TY TNHH ĐIỆN TỬ BẢO ANH';
+      const request=await invoice(5000000,'TREASURER_REVIEW',null,{payload:{vendor:legalName}});
+      const field=(value,confidence=.99,evidence='Đọc rõ trên hóa đơn')=>({value,confidence,evidence});
+      const analysis={fields:{
+        invoiceKind:field('VAT'),buyerOrganizationName:field(request.payload.buyerCompany),
+        vendor:field('BAO ANH ELECTRONICS CO',.70,'Tên nhà cung cấp bị mờ'),
+        taxCode:field('0312500505',taxConfidence,taxEvidence),
+        invoiceNumber:field(request.payload.invoiceNumber),amountBeforeTax:field(4000000),
+        vatAmount:field(1000000),totalAmount:field(5000000)
+      },assessment:{code:'CLEAR',reason:'MST xác nhận nhà cung cấp trong danh mục'}};
+      await db.query("select set_config('request.jwt.claim.role','service_role',false)");
+      await db.exec('set role service_role');
+      try{await db.query('select record_invoice_analysis($1,$2,$3::jsonb)',[request.id,request.version,analysis]);}
+      finally{await db.exec('reset role');}
+      return (await db.query('select status,checks from requests where id=$1',[request.id])).rows[0];
+    };
+    const eligible=await makeAnalysis(.85);
+    assert.equal(eligible.status,'READY_FOR_APPROVAL');
+    assert.equal(eligible.checks.vendor_identity_method,'VERIFIED_TAX_CODE_ALIAS_CANDIDATE');
+
+    const belowThreshold=await makeAnalysis(.849);
     assert.equal(belowThreshold.status,'TREASURER_REVIEW');
     const missingEvidence=await makeAnalysis(.99,'');
     assert.equal(missingEvidence.status,'TREASURER_REVIEW');
@@ -253,7 +299,7 @@ test('a confident unregistered seller name still conflicts with a valid register
     const request=await invoice(5000000,'TREASURER_REVIEW',null,{payload:{vendor:legalName}});
     const field=(value,confidence=.99,evidence='Đọc rõ trên hóa đơn mẫu')=>({value,confidence,evidence});
     const analysis={fields:{
-      invoiceKind:field('VAT'),buyerName:field(request.payload.buyerCompany),
+      invoiceKind:field('VAT'),buyerOrganizationName:field(request.payload.buyerCompany),
       vendor:field('CÔNG TY KHÁC',.95,'CÔNG TY KHÁC'),taxCode:field('0312500505',.99,'MST: 0312500505'),
       invoiceNumber:field(request.payload.invoiceNumber),amountBeforeTax:field(4000000),vatAmount:field(1000000),totalAmount:field(5000000)
     },assessment:{reason:'Tên người bán mâu thuẫn với MST đã xác minh'}};
@@ -272,15 +318,16 @@ test('an exact verified supplier alias can identify a seller despite weak OCR co
   try{
     const legalName='HỘ KINH DOANH L.A GREEN';
     const request=await invoice(98000,'TREASURER_REVIEW',null,{payload:{
-      buyerCompany:'Bán cho người tiêu dùng',vendor:legalName,invoiceNumber:'12904'
+      buyerMode:'NO_NAME',buyerCompany:'',vendor:legalName,invoiceNumber:'12904'
     }});
     const field=(value,confidence=.99,evidence='Đọc rõ trên hóa đơn')=>({value,confidence,evidence});
     const analysis={fields:{
-      invoiceKind:field('SALES'),buyerName:field('',0,''),buyerRequirement:field('UNKNOWN',0,''),
-      vendor:field('HỌ KINH DOANH L.A GREEN',.65,'HỌ KINH DOANH L.A GREEN'),
-      taxCode:field('068195010279',.75,'0 68 19 5 01 0 2 79'),
+      invoiceKind:field('SALES'),buyerPersonName:field('',.99,'Mục tên cá nhân để trống'),
+      buyerOrganizationName:field('',.99,'Mục tên đơn vị để trống'),
+      vendor:field('HỌ KINH DOANH L.A GREEN',.70,'HỌ KINH DOANH L.A GREEN'),
+      taxCode:field('068195010279',.85,'0 68 19 5 01 0 2 79'),
       invoiceNumber:field('12904'),totalAmount:field(98000)
-    },assessment:{reason:'Đã khớp bí danh nhà cung cấp'}};
+    },assessment:{code:'CLEAR',reason:'Đã khớp bí danh nhà cung cấp'}};
     await db.query("select set_config('request.jwt.claim.role','service_role',false)");
     await db.exec('set role service_role');
     try{await db.query('select record_invoice_analysis($1,$2,$3::jsonb)',[request.id,request.version,analysis]);}
@@ -289,40 +336,40 @@ test('an exact verified supplier alias can identify a seller despite weak OCR co
     assert.equal(result.status,'READY_FOR_APPROVAL');
     assert.equal(result.checks.invoice_fields_match,true);
     assert.equal(result.checks.vendor_identity_method,'VERIFIED_ALIAS');
-    assert.equal(result.checks.buyer_name_requirement,'NOT_REQUIRED');
   }finally{await db.close();}
 });
 
-test('sales invoice buyer-name mismatch is excluded by the agreed product policy',async()=>{
+test('a selected buyer-name mismatch on a Sales invoice is rejected when the discrepancy is clear',async()=>{
   const {db,invoice}=await fixture();
   try{
     const request=await invoice(5000,'TREASURER_REVIEW');
     const field=(value,confidence=.99,evidence='Đọc rõ trên hóa đơn')=>({value,confidence,evidence});
-    const analysis={fields:{invoiceKind:field('SALES'),buyerName:field('Công ty khác'),
-      buyerRequirement:field('REQUIRED'),vendor:field(request.payload.vendor),
-      invoiceNumber:field(request.payload.invoiceNumber),totalAmount:field(5000)},assessment:{reason:'Các dữ kiện còn lại khớp'}};
+    const analysis={fields:{invoiceKind:field('SALES'),buyerOrganizationName:field('Công ty khác'),
+      buyerPersonName:field('',0,''),vendor:field(request.payload.vendor),
+      invoiceNumber:field(request.payload.invoiceNumber),totalAmount:field(5000)},assessment:{code:'REJECTED',reason:'Tên người mua mâu thuẫn rõ',fieldIssues:[
+        {field:'buyerOrganizationName',severity:'RED',message:'Tên người mua mâu thuẫn rõ'}
+      ]}};
     await db.query("select set_config('request.jwt.claim.role','service_role',false)");
     await db.exec('set role service_role');
     try{await db.query('select record_invoice_analysis($1,$2,$3::jsonb)',[request.id,request.version,analysis]);}
     finally{await db.exec('reset role');}
     const result=(await db.query('select status,checks from requests where id=$1',[request.id])).rows[0];
-    assert.equal(result.status,'READY_FOR_APPROVAL');
-    assert.equal(result.checks.invoice_fields_match,true);
-    assert.equal(result.checks.buyer_name_requirement,'NOT_REQUIRED');
+    assert.equal(result.status,'REJECTED');
+    assert.equal(result.checks.invoice_fields_match,false);
   }finally{await db.close();}
 });
 
 test('invoice analysis matches buyer company separately from employee requester and normalizes company names',async()=>{
   const {db,invoice}=await fixture();
   try{
-    const request=await invoice(5000000,'TREASURER_REVIEW',null,{payload:{buyerCompany:'Công ty Sao Mai',vendor:'Công ty Dịch vụ Sao Mai',invoiceNumber:'00123'}});
+    const request=await invoice(5000000,'TREASURER_REVIEW',null,{payload:{buyerCompany:'Công ty Sao Mai',vendor:'CÔNG TY TNHH ĐIỆN TỬ BẢO ANH',invoiceNumber:'00123'}});
     const field=value=>({value,confidence:.99,evidence:'Đọc rõ trên PDF'});
     const analysis={fields:{
       invoiceKind:field('VAT'),
-      buyerName:field('  CÔNG TY   SAO MAI  '),vendor:field('  CÔNG TY DỊCH VỤ SAO MAI '),
+      buyerOrganizationName:field('  CÔNG TY   SAO MAI  '),vendor:field(' BAO ANH ELECTRONICS '),taxCode:field('0312500505'),
       invoiceNumber:field('１２３'),invoiceDate:field('2026-10-02'),amountBeforeTax:field(4000000),
       vatAmount:field(1000000),totalAmount:field(5000000)
-    },assessment:{reason:'Các trường chuẩn hóa khớp form'}};
+    },assessment:{code:'CLEAR',reason:'Các trường chuẩn hóa khớp form'}};
     await db.query("select set_config('request.jwt.claim.role','service_role',false)");
     await db.exec('set role service_role');
     try{await db.query('select record_invoice_analysis($1,$2,$3::jsonb)',[request.id,request.version,analysis]);}
@@ -338,9 +385,9 @@ test('accent-insensitive company-name candidates remain in manager review; a def
   try{
     const request=await invoice(5000000,'TREASURER_REVIEW',null,{payload:{buyerCompany:'Công ty Sao Mai'}});
     const field=value=>({value,confidence:.99,evidence:'Đọc rõ trên PDF'});
-    const analysis={fields:{invoiceKind:field('VAT'),buyerName:field('Cong ty Sao Mai'),vendor:field(request.payload.vendor),
+    const analysis={fields:{invoiceKind:field('VAT'),buyerOrganizationName:field('Cong ty Sao Mai'),vendor:field(request.payload.vendor),taxCode:field('0312500505'),
       invoiceNumber:field(request.payload.invoiceNumber),invoiceDate:field(request.payload.invoiceDate),
-      amountBeforeTax:field(4000000),vatAmount:field(1000000),totalAmount:field(5000000)},assessment:{reason:'Tên người mua cần xác nhận'}};
+      amountBeforeTax:field(4000000),vatAmount:field(1000000),totalAmount:field(5000000)},assessment:{code:'U2',reason:'Tên người mua cần xác nhận'}};
     await db.query("select set_config('request.jwt.claim.role','service_role',false)");
     await db.exec('set role service_role');
     try{await db.query('select record_invoice_analysis($1,$2,$3::jsonb)',[request.id,request.version,analysis]);}
@@ -356,22 +403,27 @@ test('duplicate approval detection uses normalized supplier and invoice identifi
     const approvedAt=new Date().toISOString();
     await invoice(1000,'APPROVED',approvedAt,{payload:{vendor:'Công ty Sao Mai',invoiceNumber:'000123'}});
     const duplicate=await invoice(1000,'READY_FOR_APPROVAL',null,{payload:{vendor:'  CÔNG TY   SAO MAI ',invoiceNumber:'123'}});
-    await assert.rejects(as(treasurer,'select review_requests_batch($1::jsonb)',[
+    const result=(await as(treasurer,'select review_requests_batch($1::jsonb) result',[
       JSON.stringify([{id:duplicate.id,version:duplicate.version}])
-    ]),/trùng/i);
+    ])).rows[0].result;
+    assert.equal(result.status,'REJECTED');
+    assert.equal(result.duplicate_count,1);
+    assert.equal((await db.query('select status from requests where id=$1',[duplicate.id])).rows[0].status,'REJECTED');
   }finally{await db.close();}
 });
 
-test('new submissions require a company buyer name separate from the requester',async()=>{
+test('submissions missing the selected buyer name are returned to the applicant as U1',async()=>{
   const {db,as}=await fixture();
   try{
     const folder=applicant+'/'+crypto.randomUUID();
     await db.query('insert into storage.objects(name,bucket_id) values($1,$2)',[folder+'/invoice.pdf','evidence']);
-    const payload={requesterType:'employee',requester:'Nguyễn An',department:'Marketing',budgetCode:'MKT-2026',
+    const payload={requesterType:'employee',requester:'Nguyễn An',department:'Marketing',buyerMode:'ORGANIZATION',budgetCode:'MKT-2026',
       purpose:'In ấn',vendor:'Công ty Sao Mai',invoiceNumber:'INV-123',invoiceDate:'2026-10-04',amount:1000};
-    await assert.rejects(as(applicant,'select submit_request($1,$2,$3,$4,$5)',[
+    const incomplete=(await as(applicant,'select * from submit_request($1,$2,$3,$4,$5)',[
       crypto.randomUUID(),payload,folder+'/invoice.pdf',null,0
-    ]),/buyerCompany/i);
+    ])).rows[0];
+    assert.equal(incomplete.status,'NEEDS_INFO');
+    assert.ok(incomplete.checks.form_missing_fields.includes('buyerCompany'));
     payload.buyerCompany='Công ty Mua hàng';
     const created=(await as(applicant,'select * from submit_request($1,$2,$3,$4,$5)',[
       crypto.randomUUID(),payload,folder+'/invoice.pdf',null,0
@@ -429,7 +481,6 @@ test('CFO may approve a ready invoice over 20 million; stale versions abort the 
 test('verified tax code recognizes an unregistered seller-name alias at 80 percent similarity',async()=>{
   const {db,as,invoice}=await fixture();
   try{
-    await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261007-z-agreed-payment-rules.sql'),'utf8'));
     await db.query("select set_config('request.jwt.claim.role','service_role',false)");
     const exactBoundary=(await db.query('select public.vendor_name_similarity($1,$2) result',
       ['Công ty TNHH Sao Mai','Sao Mai Retail'])).rows[0].result;
@@ -478,7 +529,8 @@ test('verified tax code recognizes an unregistered seller-name alias at 80 perce
       purpose:'Office supplies',vendor:legalName,invoiceNumber:'12904',invoiceDate:'2026-10-02'
     }});
     const field=(value,confidence=0.99,evidence='Đọc rõ trên hóa đơn')=>({value,confidence,evidence});
-    const analysis={fields:{invoiceKind:field('SALES'),buyerName:field('',0,''),
+    const analysis={fields:{invoiceKind:field('SALES'),buyerPersonName:field('',.99,'Mục tên cá nhân để trống'),
+      buyerOrganizationName:field('',.99,'Mục tên đơn vị để trống'),
       vendor:field('HỌ KINH DOANH L.A GREEN SHOP',0.70,'HỌ KINH DOANH L.A GREEN SHOP'),
       taxCode:field('068195010279',0.85,'MST 068195010279'),invoiceNumber:field('12904'),totalAmount:field(98000)},
       assessment:{code:'CLEAR',reason:'Các trường đạt ngưỡng.',fieldIssues:[]}};
@@ -499,7 +551,6 @@ test('verified tax code recognizes an unregistered seller-name alias at 80 perce
 test('CFO alias notes stay hidden while a request is still in manager review',async()=>{
   const {db,as,invoice}=await fixture();
   try{
-    await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261007-z-agreed-payment-rules.sql'),'utf8'));
     const request=await invoice(5000,'TREASURER_REVIEW');
     await db.query('insert into vendor_review_notes(request_id,vendor_name,tax_code,invoice_path,evidence) values($1,$2,$3,$4,$5)',[
       request.id,'L.A Green Shop','068195010279','private/'+request.id+'.pdf',JSON.stringify({reviewType:'ALIAS_UPDATE',vendorId:'some-vendor'})
