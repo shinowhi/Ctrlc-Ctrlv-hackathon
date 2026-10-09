@@ -35,7 +35,7 @@ Existing assessment and database tests cover confidence, matching, and status be
 - Buyer modes are person, organization, or “Hóa đơn không ghi tên người mua”; the third is an assertion, and a clearly read buyer name contradicting it.
 - Vendor rules: known verified TIN ≥85% plus a registered alias name ≥70%; both new name and TIN ≥80%; partial cases go yellow unless a clear contradiction exists. A qualifying new vendor produces a CFO-only review note but is not added to the verified directory automatically.
 - An already approved duplicate is the same TIN and invoice number, normalized for comparison. OCR identifiers require confidence ≥80% plus evidence; a manager may instead explicitly verify a low-confidence/missing identifier from the PDF, and that exact value is stored for future duplicate checks. Amount or invoice-number confidence/match issues are yellow; other clear contradictions become REJECTED and remain stored.
-- Sales total ≥82%. VAT before-tax, nonzero VAT, and final total ≥90%; VAT=0 requires ≥70% plus PDF evidence explicitly showing zero. Discount, when present, requires ≥85%; when timing is unclear assume pre-tax. If computed total differs from invoice/form amount, send yellow to manager.
+- Sales total ≥81%. VAT before-tax, nonzero VAT, and final total ≥90%; VAT=0 requires ≥70% plus PDF evidence explicitly showing zero. Discount, when present, requires ≥85%; when timing is unclear assume pre-tax. If computed total differs from invoice/form amount, send yellow to manager.
 - Low/missing informational invoice date and amount-due do not add notes or change status.
 
 ## Open questions
