@@ -4,11 +4,12 @@
 
 ## Vai trò và trạng thái
 
-1. AI trích xuất hóa đơn và đối chiếu với form. Người nộp chọn trên hóa đơn có tên cá nhân, tên đơn vị hay “Hóa đơn không ghi tên người mua”. Hai lựa chọn có tên được so với trường tương ứng trên form. Nếu chọn không ghi tên nhưng AI đọc thấy tên rõ thì đây là mâu thuẫn.
-2. Các trường thông tin trên form người nộp đều không bắt buộc lúc gửi; PDF vẫn bắt buộc. Thiếu trường sau khi gửi sẽ vào `NEEDS_INFO` (U1), được tô tím và trả lại người nộp. `buyerCompany` không bắt buộc khi đã chọn `NO_NAME`.
-3. Nếu dữ kiện hóa đơn không chắc, sai số tiền/số hóa đơn hoặc có chi tiết cần xác minh, hồ sơ vào `TREASURER_REVIEW` (U2, vàng). Mâu thuẫn rõ ở tên người mua hoặc nhà cung cấp bị từ chối trực tiếp và vẫn lưu `REJECTED`. Quản lý xác nhận các điểm vàng; nếu hồ sơ sau xác minh vượt thẩm quyền, chuyển lên Giám đốc.
-4. `READY_FOR_APPROVAL` có nghĩa AI đã đánh giá các trường cần thiết đạt ngưỡng, đủ điều kiện để người có thẩm quyền duyệt. Hóa đơn vượt ngưỡng hồ sơ nhưng AI clear vào `CFO_REVIEW` (U3, xanh dương); hóa đơn chờ CFO sau khi Quản lý xác minh cũng ở màu xanh dương.
-5. `CFO_REVIEW` là hàng chờ của Giám đốc Tài chính. Hàng này nhận hóa đơn trên 20 triệu đã đạt kiểm tra, hóa đơn quản lý chuyển lên do tổng ngày vượt hạn mức, và ngoại lệ khác được chuyển cấp. Hồ sơ U2 chỉ được chuyển CFO sau khi Quản lý xác minh; CFO nhận dữ kiện đã xác minh và không còn cờ vàng mở.
+1. AI trích xuất hóa đơn và đối chiếu với form theo hai ô độc lập: A là tên cá nhân, B là tên doanh nghiệp/đơn vị. Mỗi ô chỉ so với trường OCR cùng loại. Nếu cả A và B để trống, người nộp phải xác nhận “Hóa đơn không ghi tên người mua”.
+2. Các trường thông tin trên form người nộp đều không bắt buộc lúc gửi; PDF vẫn bắt buộc. Thiếu trường sau khi gửi sẽ vào `NEEDS_INFO` (U1), được tô tím và trả lại người nộp. Nếu AI đọc rõ tên thuộc ô A/B nhưng ô tương ứng bỏ trống, trả U1 để người nộp bổ sung. Nếu xác nhận không ghi tên nhưng AI đọc rõ tên thì đó là mâu thuẫn.
+3. Tên A/B được so riêng theo đúng loại tên. Tương đồng chuẩn hóa ≥90% thì không gắn cờ; >80% và <90% thì vàng cho Quản lý; ≤80% chỉ đỏ/`REJECTED` khi confidence và bằng chứng đạt ngưỡng, lượt đọc lại đã hoàn tất và hai lượt xác nhận mâu thuẫn. Nếu không đọc lại được hoặc hai lượt bất đồng thì luôn vàng. Khi so B, bỏ cụm loại hình pháp lý thông dụng khỏi đầu tên, gồm cả dạng viết tắt như `CTY TNHH MTV`, để tính tương đồng trên tên riêng.
+4. Nếu dữ kiện hóa đơn không chắc, sai số tiền/số hóa đơn hoặc có chi tiết cần xác minh, hồ sơ vào `TREASURER_REVIEW` (U2, vàng). Mâu thuẫn rõ ở tên người mua hoặc nhà cung cấp bị từ chối trực tiếp và vẫn lưu `REJECTED`. Quản lý xác nhận các điểm vàng; nếu hồ sơ sau xác minh vượt thẩm quyền, chuyển lên Giám đốc.
+5. `READY_FOR_APPROVAL` có nghĩa AI đã đánh giá các trường cần thiết đạt ngưỡng, đủ điều kiện để người có thẩm quyền duyệt. Hóa đơn vượt ngưỡng hồ sơ nhưng AI clear vào `CFO_REVIEW` (U3, xanh dương); hóa đơn chờ CFO sau khi Quản lý xác minh cũng ở màu xanh dương.
+6. `CFO_REVIEW` là hàng chờ của Giám đốc Tài chính. Hàng này nhận hóa đơn trên 20 triệu đã đạt kiểm tra, hóa đơn quản lý chuyển lên do tổng ngày vượt hạn mức, và ngoại lệ khác được chuyển cấp. Hồ sơ U2 chỉ được chuyển CFO sau khi Quản lý xác minh; CFO nhận dữ kiện đã xác minh và không còn cờ vàng mở.
 
 ## Quy tắc phân tích hóa đơn
 
@@ -21,22 +22,22 @@
 
 ## Hàng chờ và cách duyệt
 
-6. Hàng chờ là danh sách động của mọi hóa đơn đủ điều kiện nhưng chưa được duyệt tại thời điểm xem. Hệ thống không gom theo ngày lập hóa đơn hay tạo đợt cố định.
-7. Hàng của Quản lý tự gom mọi hóa đơn `READY_FOR_APPROVAL` có tổng thanh toán không quá **20.000.000 ₫/hóa đơn**, bất kể ngày gửi. Quản lý có nút duyệt từng hóa đơn và nút duyệt tất cả hóa đơn đang chờ.
-8. Quản lý có thể duyệt từng hóa đơn hoặc cả danh sách khi tổng đã duyệt trong ngày cộng số tiền được duyệt không vượt **100.000.000 ₫**. Nếu duyệt tất cả làm vượt mức này, toàn bộ danh sách vừa yêu cầu được chuyển `CFO_REVIEW`; quản lý vẫn có thể duyệt từng hóa đơn để dùng phần ngân sách còn lại.
-9. Hàng của Giám đốc có giao diện danh sách tương tự, gồm hóa đơn trên 20 triệu đủ điều kiện và các hồ sơ quản lý đã chuyển cấp. Giám đốc có thể duyệt riêng hoặc duyệt toàn bộ hàng chờ.
-10. Giám đốc bắt buộc ghi lý do cho quyết định duyệt. Nếu tổng sau quyết định vượt 100 triệu/ngày, lý do đó ghi nhận việc chấp thuận ngoại lệ; khoản đã duyệt vẫn được cộng vào tổng ngày.
-11. Duyệt hàng loạt là nguyên tử: nếu một hồ sơ đã đổi trạng thái/phiên bản hoặc không thuộc thẩm quyền, không hóa đơn nào trong yêu cầu đó được duyệt một phần. Máy chủ luôn tính lại hạn mức trước khi ghi quyết định.
+7. Hàng chờ là danh sách động của mọi hóa đơn đủ điều kiện nhưng chưa được duyệt tại thời điểm xem. Hệ thống không gom theo ngày lập hóa đơn hay tạo đợt cố định.
+8. Hàng của Quản lý tự gom mọi hóa đơn `READY_FOR_APPROVAL` có tổng thanh toán không quá **20.000.000 ₫/hóa đơn**, bất kể ngày gửi. Quản lý có nút duyệt từng hóa đơn và nút duyệt tất cả hóa đơn đang chờ.
+9. Quản lý có thể duyệt từng hóa đơn hoặc cả danh sách khi tổng đã duyệt trong ngày cộng số tiền được duyệt không vượt **100.000.000 ₫**. Nếu duyệt tất cả làm vượt mức này, toàn bộ danh sách vừa yêu cầu được chuyển `CFO_REVIEW`; quản lý vẫn có thể duyệt từng hóa đơn để dùng phần ngân sách còn lại.
+10. Hàng của Giám đốc có giao diện danh sách tương tự, gồm hóa đơn trên 20 triệu đủ điều kiện và các hồ sơ quản lý đã chuyển cấp. Giám đốc có thể duyệt riêng hoặc duyệt toàn bộ hàng chờ.
+11. Giám đốc bắt buộc ghi lý do cho quyết định duyệt. Nếu tổng sau quyết định vượt 100 triệu/ngày, lý do đó ghi nhận việc chấp thuận ngoại lệ; khoản đã duyệt vẫn được cộng vào tổng ngày.
+12. Duyệt hàng loạt là nguyên tử: nếu một hồ sơ đã đổi trạng thái/phiên bản hoặc không thuộc thẩm quyền, không hóa đơn nào trong yêu cầu đó được duyệt một phần. Máy chủ luôn tính lại hạn mức trước khi ghi quyết định.
 
 ## Hạn mức ngày
 
-12. **100.000.000 ₫ là hạn mức chung của toàn công ty**, cộng mọi hóa đơn đã được duyệt, tất cả phòng ban và mã ngân sách; không phải hạn mức riêng từng danh mục.
-13. Ngày được tính theo múi giờ `Asia/Bangkok`, từ 00:00 đến trước 00:00 ngày tiếp theo. Danh sách chờ không được chia theo ngày; chỉ tổng đã duyệt mới được tính theo ngày.
-14. Giao diện tài chính hiển thị tổng đã duyệt hôm nay, số dư hạn mức, tổng tiền hàng chờ và dự kiến sau khi duyệt. Hệ thống tuần tự hóa thao tác duyệt để hai lượt đồng thời không cùng dùng một phần ngân sách.
+13. **100.000.000 ₫ là hạn mức chung của toàn công ty**, cộng mọi hóa đơn đã được duyệt, tất cả phòng ban và mã ngân sách; không phải hạn mức riêng từng danh mục.
+14. Ngày được tính theo múi giờ `Asia/Bangkok`, từ 00:00 đến trước 00:00 ngày tiếp theo. Danh sách chờ không được chia theo ngày; chỉ tổng đã duyệt mới được tính theo ngày.
+15. Giao diện tài chính hiển thị tổng đã duyệt hôm nay, số dư hạn mức, tổng tiền hàng chờ và dự kiến sau khi duyệt. Hệ thống tuần tự hóa thao tác duyệt để hai lượt đồng thời không cùng dùng một phần ngân sách.
 
 ## Ranh giới kiểm tra
 
-15. Chuẩn hóa số hóa đơn bằng Unicode NFKC, chữ thường và khoảng trắng; chỉ bỏ số 0 đầu khi toàn bộ số hóa đơn là chữ số. Giữ nguyên dấu phân cách và số 0 trong mã chữ-số. Hồ sơ đã duyệt trùng đồng thời MST nhà cung cấp và số hóa đơn chuẩn hóa sẽ bị từ chối trực tiếp.
-16. Tên nhà cung cấp và tên công ty mua được chuẩn hóa bằng Unicode NFKC, chữ thường và khoảng trắng. Bí danh nhà cung cấp chỉ được dùng để tự đối chiếu sau khi quản lý xác minh trong danh mục.
-17. Duyệt không thay thế việc kiểm tra ngân sách kế toán theo mã, chính sách chi tiêu, mã số thuế công ty, danh sách nhà cung cấp được duyệt, PO hoặc lịch sử thanh toán; các nguồn dữ liệu này chưa được kết nối.
-18. AI không xác nhận tính xác thực của hóa đơn, nguồn phát hành hoặc chữ ký số. Ngoại lệ hạn mức do Giám đốc chịu trách nhiệm ghi lý do trong nhật ký.
+16. Chuẩn hóa số hóa đơn bằng Unicode NFKC, chữ thường và khoảng trắng; chỉ bỏ số 0 đầu khi toàn bộ số hóa đơn là chữ số. Giữ nguyên dấu phân cách và số 0 trong mã chữ-số. Hồ sơ đã duyệt trùng đồng thời MST nhà cung cấp và số hóa đơn chuẩn hóa sẽ bị từ chối trực tiếp.
+17. Tên nhà cung cấp và tên công ty mua được chuẩn hóa bằng Unicode NFKC, chữ thường và khoảng trắng. Bí danh nhà cung cấp chỉ được dùng để tự đối chiếu sau khi quản lý xác minh trong danh mục; tên người mua A/B theo ngưỡng tương đồng ở quy tắc 3.
+18. Duyệt không thay thế việc kiểm tra ngân sách kế toán theo mã, chính sách chi tiêu, mã số thuế công ty, danh sách nhà cung cấp được duyệt, PO hoặc lịch sử thanh toán; các nguồn dữ liệu này chưa được kết nối.
+19. AI không xác nhận tính xác thực của hóa đơn, nguồn phát hành hoặc chữ ký số. Ngoại lệ hạn mức do Giám đốc chịu trách nhiệm ghi lý do trong nhật ký.
