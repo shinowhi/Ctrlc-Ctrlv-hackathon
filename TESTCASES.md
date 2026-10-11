@@ -3,8 +3,8 @@
 ## Phạm vi
 
 - Hóa đơn đầu vào: PDF có chữ chọn/copy hoặc PDF scan dạng ảnh. Chỉ hóa đơn là file đính kèm bắt buộc; tối đa 10 MB.
-- Các trường form người nộp đều tùy chọn trước khi gửi; thiếu dữ liệu sau khi gửi phải vào `NEEDS_INFO` (U1), đánh dấu tím và trả người nộp. PDF vẫn bắt buộc. `buyerCompany` được bỏ trống khi người nộp chọn “Hóa đơn không ghi tên người mua”.
-- So khớp chính xác sau Unicode NFKC, chữ thường và gộp khoảng trắng. Mã số hóa đơn thuần bỏ số 0 đầu; mã có chữ giữ số 0, dấu `/`, `-`, `.`. Khác biệt dấu ở tên nhà cung cấp/người mua cần Quản lý xác nhận.
+- Các trường form người nộp đều tùy chọn trước khi gửi; thiếu dữ liệu sau khi gửi phải vào `NEEDS_INFO` (U1), đánh dấu tím và trả người nộp. PDF vẫn bắt buộc. A là tên cá nhân, B là tên doanh nghiệp/đơn vị; nếu cả hai để trống, người nộp xác nhận “Hóa đơn không ghi tên người mua”.
+- So sánh tên A/B sau chuẩn hóa chữ thường, dấu câu, dấu tiếng Việt và khoảng trắng bằng tỷ lệ sửa ký tự trên phần tên riêng (B bỏ cụm loại hình pháp lý thông dụng ở đầu, gồm `CTY TNHH MTV`): ≥90% không cờ; >80% và <90% vàng; ≤80% đỏ chỉ khi confidence/bằng chứng đạt chuẩn và lượt đọc lại đã hoàn tất xác nhận mâu thuẫn. Lượt đọc lại không khả dụng hoặc mâu thuẫn thì vàng. Khác biệt dấu ở tên nhà cung cấp cần Quản lý xác nhận. Mã số hóa đơn thuần bỏ số 0 đầu; mã có chữ giữ số 0, dấu `/`, `-`, `.`.
 - Sales cần confidence tổng thanh toán ≥81%; VAT cần tiền trước thuế, VAT khác 0 và tổng cuối cùng ≥90%; VAT=0 cần ≥70% cùng bằng chứng thể hiện 0. Chiết khấu nếu có cần ≥85%; tính VAT theo tiền trước thuế − chiết khấu + VAT, giả định chiết khấu trước thuế.
 - Tổng thanh toán trên form phải là tổng cuối cùng trên hóa đơn. Sai lệch tiền/số hóa đơn và confidence quyết định thấp chuyển vàng cho Quản lý; chỉ mâu thuẫn rõ ở người mua/NCC mới tự từ chối, trùng cả MST và số hóa đơn với hồ sơ đã duyệt cũng bị từ chối trực tiếp.
 - Nhà cung cấp đã xác minh cần MST ≥85% và tên khớp bí danh đã xác minh ≥70%; nhà cung cấp mới cần tên khớp form và cả tên/MST ≥80%, lưu PDF/tên/MST trong mục ghi chú chỉ CFO xem nhưng không tự thêm vào danh mục.
@@ -39,10 +39,10 @@ node --test tests/*.test.cjs
 | SC-10 | Giám đốc duyệt danh sách làm tổng ngày vượt 100 triệu | Bắt buộc có lý do; các hóa đơn được duyệt và vẫn cộng vào tổng toàn công ty trong ngày. |
 | SC-11 | Một phần tử trong lệnh duyệt tất cả có phiên bản cũ, sai vai trò hoặc không đủ điều kiện | Toàn bộ lệnh thất bại; không hóa đơn nào được duyệt một phần. Tải lại danh sách để dùng phiên bản mới. |
 | SC-12 | Hai yêu cầu duyệt gần như đồng thời khi tổng ngày sát 100 triệu | RPC tuần tự hóa quyết định; không thể có hai lượt cùng dùng một số dư cũ. |
-| SC-13 | Người đề nghị là nhân viên A, công ty mua trên form và hóa đơn cùng là Công ty B; tên hóa đơn khác hoa/thường hoặc khoảng trắng | Buyer khớp `buyerCompany`, không so với nhân viên; tên và mã được chuẩn hóa nhất quán ở API, giao diện và database. |
+| SC-13 | Điền A và/hoặc B; AI đọc đúng loại tên tương ứng, khác hoa/thường hoặc khoảng trắng | So từng ô với đúng trường OCR. Ô tương ứng khớp thì không gắn cờ; không so tên người mua với tên người đề nghị. |
 | SC-14 | Tên công ty chỉ khác dấu tiếng Việt hoặc là tên viết tắt chưa khai báo | Hồ sơ ở `TREASURER_REVIEW` với chú thích cần xác nhận; không tự động coi là khớp. |
 | SC-15 | Số hóa đơn `00123` và `123`; sau đó thử `INV-00123` và `INV-123` | Hai mã số thuần khớp theo quy tắc bỏ số 0 đầu; hai mã chữ-số không tự khớp vì số 0 có thể có ý nghĩa. |
-| SC-16 | Gửi form thiếu một hay nhiều trường (kèm PDF), rồi bổ sung; thử lựa chọn `NO_NAME` | Lượt đầu lưu `NEEDS_INFO` (U1), trường thiếu màu tím và trả người nộp. Khi bổ sung đủ thì phân tích hóa đơn. Chỉ `NO_NAME` cho phép bỏ tên người mua; nếu AI đọc thấy tên rõ thì là mâu thuẫn. |
+| SC-16 | Gửi form thiếu một hay nhiều trường (kèm PDF), rồi bổ sung; thử bỏ trống A/B và xác nhận không ghi tên | Lượt đầu lưu `NEEDS_INFO` (U1), trường thiếu màu tím và trả người nộp. Nếu AI đọc rõ tên ở ô A/B đang bỏ trống, U1 yêu cầu bổ sung ô đó. Nếu đã xác nhận không ghi tên mà AI đọc rõ tên thì REJECTED; nếu AI chưa chắc thì vàng cho Quản lý. |
 | SC-17 | Hóa đơn bán hàng 12903 ghi 1.655.000 trước chiết khấu, chiết khấu 477.000, tổng cuối cùng 1.178.000; form khai 1.178.000 | Không bắt buộc cộng tiền trước thuế với VAT; chỉ đối chiếu tổng cuối cùng. Nếu loại hóa đơn/tổng đều đọc chắc và các trường bắt buộc khác khớp, hồ sơ có thể đạt `READY_FOR_APPROVAL`. |
 | SC-18 | Hóa đơn VAT đọc chắc nhưng tiền trước thuế − chiết khấu + VAT không bằng tổng cuối cùng; hoặc chiết khấu confidence <85% | Hồ sơ vào `TREASURER_REVIEW`; dùng giả định chiết khấu trước thuế và giao Quản lý xác minh nếu tổng tính không khớp. |
 

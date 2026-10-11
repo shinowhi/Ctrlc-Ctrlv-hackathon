@@ -3,12 +3,12 @@ const $ = id => document.getElementById(id);
 const api = new FinRefApi(window.FINREF_CONFIG || {});
 const money = n => new Intl.NumberFormat('vi-VN').format(n) + ' ₫';
 const esc = s => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const {normalizeInvoiceNumber,normalizePartyName,comparePartyName}=window.FinRefInvoiceMatching;
+const {normalizeInvoiceNumber,normalizePartyName,compareBuyerName}=window.FinRefInvoiceMatching;
 const normalized = normalizePartyName;
 const roles={applicant:'Người nộp đơn',treasurer:'Quản lý tài chính',cfo:'Giám đốc Tài chính'};
 const statuses={TREASURER_REVIEW:'Chờ quản lý tài chính xử lý',READY_FOR_APPROVAL:'Sẵn sàng duyệt',CFO_REVIEW:'Chờ Giám đốc Tài chính duyệt',NEEDS_INFO:'Cần bổ sung',APPROVED:'Đã duyệt',REJECTED:'Từ chối'};
 const checkLabels={invoice:'Đã xem hóa đơn PDF',fields_match:'Nhà cung cấp, người mua và số hóa đơn khớp form',total_includes_vat:'Tổng thanh toán trên form khớp tổng cuối cùng trên hóa đơn'};
-const fields=['requesterType','requester','department','buyerMode','buyerCompany','budgetCode','purpose','vendor','invoiceNumber','invoiceDate','amount'];
+const fields=['requesterType','requester','department','buyerPersonName','buyerOrganizationName','budgetCode','purpose','vendor','invoiceNumber','invoiceDate','amount'];
 const buyerNameFields=['buyerPersonName','buyerOrganizationName'];
 const aiFieldLabels={invoiceKind:'Loại hóa đơn',buyerPersonName:'Tên cá nhân người mua',buyerOrganizationName:'Tên doanh nghiệp/đơn vị người mua',buyerName:'Tên người mua OCR (hồ sơ cũ)',vendor:'Nhà cung cấp',taxCode:'Mã số thuế NCC',invoiceNumber:'Số hóa đơn',invoiceDate:'Ngày hóa đơn (tham khảo)',amountBeforeTax:'Tiền trước thuế',vatAmount:'VAT',discountAmount:'Chiết khấu',totalAmount:'Tổng thanh toán cuối cùng',amountDue:'Còn phải thanh toán (thông tin)'};
 const aiMoneyFields=new Set(['amountBeforeTax','vatAmount','discountAmount','totalAmount','amountDue']);
@@ -27,7 +27,7 @@ function showLogin() {
 function resetForm() {
   editing=null; $('paymentForm').reset(); $('requester').value=profile?.display_name || '';
   $('formTitle').textContent='Tạo đề nghị mới'; $('submitButton').textContent='Gửi đề nghị →';
-  updateBuyerModeUI();
+  updateBuyerNameUI();
   markMissingFormFields([]);
 }
 function markMissingFormFields(keys) {
@@ -37,22 +37,39 @@ function markMissingFormFields(keys) {
     if(input) input.removeAttribute('aria-invalid');
   });
   for(const key of keys||[]) {
-    if(key==='buyerCompany'&&$('buyerMode').value==='NO_NAME') continue;
     const input=$(key),wrapper=input?.closest('.field');
     if(!input||!wrapper) continue;
     wrapper.classList.add('field-missing');
     input.setAttribute('aria-invalid','true');
   }
 }
-function updateBuyerModeUI() {
-  const mode=$('buyerMode')?.value||'';
-  const field=$('buyerNameField');
-  const input=$('buyerCompany');
-  if(!field||!input) return;
-  field.classList.toggle('hidden',mode==='NO_NAME');
-  input.disabled=mode==='NO_NAME';
-  $('buyerNameHelp').textContent=mode==='PERSON'?'Nhập tên cá nhân người mua như trên hóa đơn.':mode==='ORGANIZATION'?'Nhập tên đơn vị/pháp nhân người mua như trên hóa đơn.':'Nhập đúng tên người mua đã chọn trên hóa đơn.';
-  if(mode==='NO_NAME') input.value='';
+function mapLegacyMissingBuyerFields(keys,payload={}) {
+  const legacyBuyerMode=String(payload.buyerMode||'').toUpperCase();
+  return (keys||[]).flatMap(key=>{
+    if(key==='buyerCompany') return legacyBuyerMode==='PERSON'?['buyerPersonName']
+      :legacyBuyerMode==='ORGANIZATION'?['buyerOrganizationName']
+        :['buyerPersonName','buyerOrganizationName'];
+    if(key==='buyerMode') return ['buyerNoNameConfirmed'];
+    return [key];
+  });
+}
+function updateBuyerNameUI() {
+  const person=$('buyerPersonName'),organization=$('buyerOrganizationName'),confirmation=$('buyerNoNameConfirmed');
+  if(!person||!organization||!confirmation) return;
+  const hasName=Boolean(person.value.trim()||organization.value.trim());
+  if(hasName) confirmation.checked=false;
+  confirmation.disabled=hasName;
+}
+function setRequestFormValues(payload={}) {
+  fields.forEach(key=>{
+    let value=payload[key];
+    if(key==='buyerPersonName'&&value==null&&String(payload.buyerMode||'').toUpperCase()==='PERSON') value=payload.buyerCompany;
+    if(key==='buyerOrganizationName'&&value==null&&String(payload.buyerMode||'').toUpperCase()==='ORGANIZATION') value=payload.buyerCompany;
+    $(key).value=value??'';
+  });
+  const legacyNoName=String(payload.buyerMode||'').toUpperCase()==='NO_NAME';
+  $('buyerNoNameConfirmed').checked=payload.buyerNoNameConfirmed===true||legacyNoName;
+  updateBuyerNameUI();
 }
 async function enter(p) {
   if(!roles[p.role]) throw new Error('Vai trò không hợp lệ.');
@@ -280,7 +297,8 @@ function renderAiAnalysis(ai,request=null) {
     const managerVerifiedField=managerVerified&&!identifierField;
     const rereadNote=field.reread?` · OpenAI đọc lại: ${Number.isSafeInteger(field.reread.value)?money(field.reread.value):'không đọc được'} (${Math.round((Number(field.reread.confidence)||0)*100)}%)${field.reread.evidence?` · ${esc(field.reread.evidence)}`:''}`:'';
     const fallbackReadNote=field.fallbackRead?` · Lượt đọc toàn hóa đơn: ${Number.isSafeInteger(field.fallbackRead.value)?money(field.fallbackRead.value):'không đọc được'} (${Math.round((Number(field.fallbackRead.confidence)||0)*100)}%)${field.fallbackRead.evidence?` · ${esc(field.fallbackRead.evidence)}`:''}`:'';
-    const buyerRereadNote=buyerNameFields.includes(key)&&ai.buyerRereadStatus==='COMPLETED'?' · Đã đọc lại có chọn lọc':buyerNameFields.includes(key)&&ai.buyerRereadStatus==='UNAVAILABLE'?' · Chưa đọc lại được; cần quản lý kiểm tra':'';
+    const buyerReread=field.buyerReread||{};
+    const buyerRereadNote=buyerNameFields.includes(key)&&field.rereadConflict?` · Hai lượt đọc mâu thuẫn: lượt 2 đọc “${esc(buyerReread.value||'để trống')}” (${Math.round((Number(buyerReread.confidence)||0)*100)}%)${buyerReread.evidence?` · ${esc(buyerReread.evidence)}`:''}`:buyerNameFields.includes(key)&&ai.buyerRereadStatus==='COMPLETED'?' · Đã đọc lại có chọn lọc':buyerNameFields.includes(key)&&ai.buyerRereadStatus==='UNAVAILABLE'?' · Chưa đọc lại được; cần quản lý kiểm tra':'';
     const confidenceNote=informational?'':hasManagerIdentifier?`<small>Quản lý đã xác nhận giá trị này trực tiếp từ PDF${managerIdentifier.verified_by?` · Tài khoản xác nhận: ${esc(String(managerIdentifier.verified_by))}`:''}${managerIdentifier.verified_at?` · ${esc(time(managerIdentifier.verified_at))}`:''} · AI đọc ban đầu: ${esc(String(raw||'Chưa đọc được'))} (${Math.round((Number(field.confidence)||0)*100)}%)${field.evidence?` · Bằng chứng OCR: ${esc(field.evidence)}`:''}</small>`:managerVerifiedField?`<small>Quản lý đã xác minh giá trị này${field.evidence?` · Bằng chứng: ${esc(field.evidence)}`:''}</small>`:managerVerified&&identifierField?`<small>Hồ sơ đã được quản lý duyệt, nhưng chưa lưu xác nhận riêng cho định danh này. OCR ${Math.round((Number(field.confidence)||0)*100)}%${field.evidence?` · Bằng chứng: ${esc(field.evidence)}`:''}</small>`:`<small>Độ tin cậy ${Math.round((Number(field.confidence)||0)*100)}%${numberNote}${aliasNote}${field.evidence?` · Bằng chứng: ${esc(field.evidence)}`:''}${rereadNote}${fallbackReadNote}${buyerRereadNote}</small>`;
     return `<div class="invoice-field${informational?' informational':''}"><div class="invoice-field-main"><strong>${label}</strong><span>${esc(value)}</span></div>${confidenceNote}</div>`;
   }).join('');
@@ -306,8 +324,9 @@ const formReviewFields=[
   {key:'requesterType',label:'Loại người đề nghị',read:value=>({employee:'Nhân viên',department:'Phòng ban'})[value]||'Chưa chọn'},
   {key:'requester',label:'Họ tên / phòng ban'},
   {key:'department',label:'Bộ phận'},
-  {key:'buyerMode',label:'Lựa chọn thông tin người mua',read:value=>({PERSON:'Tên cá nhân',ORGANIZATION:'Tên doanh nghiệp/đơn vị',NO_NAME:'Hóa đơn không ghi tên người mua'})[value]||'Chưa chọn'},
-  {key:'buyerCompany',label:'Tên người mua theo form',read:(value,request)=>request.payload?.buyerMode==='PERSON'?`Cá nhân: ${value||''}`:request.payload?.buyerMode==='ORGANIZATION'?`Đơn vị: ${value||''}`:'Không yêu cầu tên'},
+  {key:'buyerPersonName',label:'A · Tên cá nhân theo hóa đơn'},
+  {key:'buyerOrganizationName',label:'B · Tên doanh nghiệp/đơn vị theo hóa đơn'},
+  {key:'buyerNoNameConfirmed',label:'Xác nhận hóa đơn không ghi tên người mua',read:value=>value===true?'Đã xác nhận':'Không xác nhận'},
   {key:'purpose',label:'Mục đích chi'},
   {key:'vendor',label:'Nhà cung cấp',analysisKey:'vendor'},
   {key:'invoiceNumber',label:'Số hóa đơn',analysisKey:'invoiceNumber'},
@@ -337,22 +356,28 @@ function buildReviewAnnotations(request,ai) {
     for(const issue of fieldIssues) add(issue.field,issue.severity==='RED'?'red':'yellow',issue.message||'Quản lý cần đối chiếu trường này với hóa đơn.');
     return annotations;
   }
-  const buyerMode=String(request?.payload?.buyerMode||'').toUpperCase();
-  const selectedBuyerField=buyerMode==='PERSON'?'buyerPersonName':buyerMode==='ORGANIZATION'?'buyerOrganizationName':null;
-  if(buyerMode==='NO_NAME') {
-    const clearlyNamed=buyerNameFields.filter(key=>String(source[key]?.value||'').trim()
-      &&Number(source[key]?.confidence)>=aiConfidenceThresholds[key]&&String(source[key]?.evidence||'').trim());
-    for(const key of clearlyNamed) add(key,'red','Người nộp xác nhận hóa đơn không ghi tên người mua nhưng AI đọc thấy tên rõ trên chứng từ.');
-    if(!clearlyNamed.length) for(const key of buyerNameFields) {
-      const field=source[key]||{};
-      if(!Number.isFinite(Number(field.confidence))||Number(field.confidence)<aiConfidenceThresholds[key]||!String(field.evidence||'').trim())
-        add(key,'yellow','Chưa xác minh được mục tên này có để trống trên PDF; quản lý cần kiểm tra.');
-    }
-  } else if(selectedBuyerField) {
-    const field=source[selectedBuyerField]||{};
-    if(!String(field.value||'').trim()||!Number.isFinite(Number(field.confidence))||Number(field.confidence)<aiConfidenceThresholds[selectedBuyerField]||!String(field.evidence||'').trim())
-      add(selectedBuyerField,'yellow',`AI chưa đọc ${aiFieldLabels[selectedBuyerField]} đủ chắc (cần ≥80%).`);
-  } else add('buyerMode','yellow','Chưa xác định được lựa chọn đối chiếu tên người mua trên form.');
+  const payload=request?.payload||{};
+  const buyerForms={
+    buyerPersonName:String(payload.buyerPersonName??(String(payload.buyerMode||'').toUpperCase()==='PERSON'?payload.buyerCompany:'' )??'').trim(),
+    buyerOrganizationName:String(payload.buyerOrganizationName??(String(payload.buyerMode||'').toUpperCase()==='ORGANIZATION'?payload.buyerCompany:'' )??'').trim()
+  };
+  const noNameConfirmed=payload.buyerNoNameConfirmed===true||String(payload.buyerMode||'').toUpperCase()==='NO_NAME';
+  for(const key of buyerNameFields) {
+    const field=source[key]||{},readValue=String(field.value||'').trim();
+    const confident=Number.isFinite(Number(field.confidence))&&Number(field.confidence)>=aiConfidenceThresholds[key]&&Boolean(String(field.evidence||'').trim());
+    if(buyerForms[key]) {
+      if(!confident) add(key,'yellow',`AI chưa đọc ${aiFieldLabels[key]} đủ chắc (cần ≥80%).`);
+      else if(!readValue) add(key,'red','Form có tên nhưng AI đọc rõ khu vực tương ứng trên hóa đơn là để trống.');
+      else {
+        const match=compareBuyerName(readValue,buyerForms[key],key).status;
+        if(match==='MISMATCH') add(key,'red','Tên trên hóa đơn mâu thuẫn rõ với ô tương ứng đã khai trên form.');
+        else if(match!=='MATCH') add(key,'yellow','Tên ở ô tương ứng chưa khớp chắc chắn; quản lý cần đối chiếu PDF.');
+      }
+    } else if(noNameConfirmed) {
+      if(confident&&readValue) add(key,'red','Người nộp xác nhận hóa đơn không ghi tên người mua nhưng AI đọc thấy tên rõ trên chứng từ.');
+      else if(!confident) add(key,'yellow','Chưa xác minh được hóa đơn có để trống mục tên này; quản lý cần kiểm tra.');
+    } else if(!confident) add(key,'yellow',`AI chưa đọc rõ ${aiFieldLabels[key]} (cần ≥80%).`);
+  }
   const kind=String(ai?.assessment?.effectiveInvoiceKind||source.invoiceKind?.value||'VAT').toUpperCase()==='SALES'?'SALES':'VAT';
   for(const key of requiredInvoiceFields) {
     const field=source[key]||{};
@@ -393,13 +418,16 @@ function renderIdentifierConfirmations(request,ai,annotations) {
 function renderSubmittedForm(request,annotations) {
   const missing=new Set(request?.checks?.form_missing_fields||[]);
   const rows=formReviewFields.map(field=>{
-    const value=field.read?field.read(request.payload?.[field.key],request):request.payload?.[field.key];
-    const buyerField=request.payload?.buyerMode==='PERSON'?'buyerPersonName':request.payload?.buyerMode==='ORGANIZATION'?'buyerOrganizationName':null;
-    const annotation=field.key==='buyerCompany'&&buyerField?annotations[buyerField]
-      :field.key==='buyerMode'&&request.payload?.buyerMode==='NO_NAME'
-        ?buyerNameFields.map(key=>annotations[key]).filter(Boolean).reduce((combined,item)=>({state:combined.state==='red'||item.state==='red'?'red':'yellow',notes:[...combined.notes,...item.notes]}),null)
-        :field.analysisKey?annotations[field.analysisKey]:null;
-    const isMissing=missing.has(field.key)||(field.key==='buyerCompany'&&missing.has('buyerCompany'));
+    const payload=request.payload||{},legacyMode=String(payload.buyerMode||'').toUpperCase();
+    let rawValue=payload[field.key];
+    if(field.key==='buyerPersonName'&&rawValue==null&&legacyMode==='PERSON') rawValue=payload.buyerCompany;
+    if(field.key==='buyerOrganizationName'&&rawValue==null&&legacyMode==='ORGANIZATION') rawValue=payload.buyerCompany;
+    if(field.key==='buyerNoNameConfirmed') rawValue=payload.buyerNoNameConfirmed===true||legacyMode==='NO_NAME';
+    const value=field.key==='buyerNoNameConfirmed'?(rawValue?'Đã xác nhận':'Không xác nhận')
+      :field.read?field.read(rawValue,request):rawValue;
+    const legacyBuyerMissing=missing.has('buyerCompany')&&((field.key==='buyerPersonName'&&legacyMode==='PERSON')||(field.key==='buyerOrganizationName'&&legacyMode==='ORGANIZATION'));
+    const annotation=annotations[field.key]||(field.analysisKey?annotations[field.analysisKey]:null);
+    const isMissing=missing.has(field.key)||legacyBuyerMissing||(field.key==='buyerNoNameConfirmed'&&missing.has('buyerMode'));
     const state=isMissing?'purple':annotation?.state||'';
     const note=isMissing?'<small class="review-mark-note">Thiếu thông tin — cần người nộp bổ sung.</small>':annotation?`<small class="review-mark-note">${annotation.notes.map(esc).join(' ')}</small>`:field.reviewNote?`<small class="review-unchecked-note">${esc(field.reviewNote)}</small>`:'';
     return `<div class="review-form-field${state?` marked marked--${state}`:''}"><dt>${field.label}</dt><dd>${esc(value||'—')}</dd>${note}</div>`;
@@ -544,7 +572,7 @@ async function openRequest(id,fromVendorNote=false) {
   const visibleReason=withoutInvoiceDateAssessmentIssues(r.reason);
   const visibleQuestion=withoutInvoiceDateAssessmentIssues(ai?.assessment?.question);
   const annotations=buildReviewAnnotations(r,ai);
-  const metadata={ 'Người đề nghị':r.payload.requester,'Bộ phận':r.payload.department,'Công ty mua trên hóa đơn':r.payload.buyerCompany,'Mục đích':r.payload.purpose,'Nhà cung cấp':r.payload.vendor,'Số hóa đơn':r.payload.invoiceNumber,'Ngày hóa đơn':r.payload.invoiceDate,'Mã ngân sách':r.payload.budgetCode };
+  const metadata={ 'Người đề nghị':r.payload.requester,'Bộ phận':r.payload.department,'Tên cá nhân người mua':r.payload.buyerPersonName||(r.payload.buyerMode==='PERSON'?r.payload.buyerCompany:''),'Tên doanh nghiệp/đơn vị người mua':r.payload.buyerOrganizationName||(r.payload.buyerMode==='ORGANIZATION'?r.payload.buyerCompany:''),'Mục đích':r.payload.purpose,'Nhà cung cấp':r.payload.vendor,'Số hóa đơn':r.payload.invoiceNumber,'Ngày hóa đơn':r.payload.invoiceDate,'Mã ngân sách':r.payload.budgetCode };
   const reviewLayout=isReviewer?`<div class="reviewer-layout"><section class="submitted-form-panel"><div class="review-pane-heading"><span class="eyebrow">BÊN TRÁI · FORM NGƯỜI NỘP</span><h3>Thông tin đã gửi</h3><p class="muted">Các giá trị giữ nguyên như lúc nộp hồ sơ.</p></div><div class="review-legend"><span class="legend-yellow"><i></i>Vàng · AI chưa đọc chắc</span><span class="legend-red"><i></i>Đỏ · sai lệch đã rõ</span><small>Trường khớp và đủ rõ không đánh dấu.</small></div>${renderSubmittedForm(r,annotations)}</section><section class="invoice-review-panel"><div class="review-pane-heading"><span class="eyebrow">BÊN PHẢI · MINH CHỨNG</span><h3>Hóa đơn PDF</h3><p class="muted">Các khung màu chỉ vị trí cần kiểm tra trên hóa đơn.</p></div><div id="reviewPdfToolbar" class="pdf-toolbar hidden"><button id="reviewPdfPrevious" type="button" aria-label="Trang trước">‹</button><span id="reviewPdfPageLabel">Trang 1</span><button id="reviewPdfNext" type="button" aria-label="Trang sau">›</button><span class="pdf-toolbar-spacer"></span><button id="reviewPdfZoomOut" type="button" aria-label="Thu nhỏ">−</button><button id="reviewPdfZoomIn" type="button" aria-label="Phóng to">＋</button></div><p id="reviewPdfStatus" class="muted">Đang mở hóa đơn…</p><div id="reviewPdfWrap" class="pdf-viewer-wrap"><div id="reviewPdfStage" class="pdf-stage" tabindex="0" aria-label="Trang hóa đơn và các vùng cần kiểm tra"></div></div><div class="invoice-issues"><h4>Ghi chú cần kiểm tra</h4><div id="invoiceIssueList">${renderInvoiceNotes(annotations,ai)}</div></div></section></div>${renderAiAnalysis(ai,r)}`:`<div class="decision-meta">${Object.entries(metadata).map(([k,v])=>`<div class="meta-row"><span>${k}</span><strong>${esc(v)}</strong></div>`).join('')}</div>${renderAiAnalysis(ai,r)}<section class="invoice-preview"><h3>Hóa đơn PDF</h3><p id="invoicePreviewStatus" class="muted">Đang mở hóa đơn…</p><iframe id="invoicePreview" title="Hóa đơn PDF" class="hidden"></iframe></section>`;
   const reviewerMessage=profile.role==='cfo'
     ?r.checks?.manager_verified?'<p class="review-clear-note">Quản lý tài chính đã kiểm tra các điểm cần xác minh; dữ kiện dưới đây đã được xác nhận trước khi chuyển CFO.</p><p class="muted">Giám đốc duyệt hồ sơ vượt thẩm quyền hoặc được chuyển lên do tổng duyệt trong ngày. Lý do được lưu vào nhật ký.</p>':'<p class="muted">AI đã đánh giá hóa đơn clear. Hồ sơ vượt thẩm quyền hoặc được quản lý chuyển lên đang chờ CFO; lý do duyệt được lưu vào nhật ký.</p>'
@@ -599,9 +627,8 @@ async function openRequest(id,fromVendorNote=false) {
   });
   $('decisionResult').querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>review(r,b.dataset.action));
   if($('supplementButton')) $('supplementButton').onclick=()=>{
-    editing={id:r.id,version:r.version}; fields.forEach(k=>$(k).value=r.payload[k]??'');
-    updateBuyerModeUI();
-    markMissingFormFields(r.checks?.form_missing_fields||[]);
+    editing={id:r.id,version:r.version}; setRequestFormValues(r.payload||{});
+    markMissingFormFields(mapLegacyMissingBuyerFields(r.checks?.form_missing_fields||[],r.payload||{}));
     $('invoiceFile').value='';
     $('formTitle').textContent='Bổ sung PAY-'+r.id.slice(0,8); $('submitButton').textContent='Gửi lại để phân tích →';
     $('request-card').scrollIntoView({behavior:'smooth'}); notify('Tải lại hóa đơn PDF cho phiên bản bổ sung.');
@@ -720,7 +747,7 @@ $('paymentForm').onsubmit=async event=>{
   try {
     const invoice=$('invoiceFile').files[0];
     const invExt=validateFile(invoice,true);
-    const payload=Object.fromEntries(fields.map(k=>[k,$(k).value.trim()])); payload.amount=payload.amount===''?null:Number(payload.amount); payload.invoiceType='electronic';
+    const payload=Object.fromEntries(fields.map(k=>[k,$(k).value.trim()])); payload.buyerNoNameConfirmed=$('buyerNoNameConfirmed').checked; payload.amount=payload.amount===''?null:Number(payload.amount); payload.invoiceType='electronic';
     const folder=profile.id+'/'+crypto.randomUUID();
     const invoicePath=folder+'/invoice.'+invExt;
     notify('Đang tải hóa đơn và gửi hồ sơ…');
@@ -753,7 +780,9 @@ $('batchReason').oninput=renderRows;
 $('approveAllButton').onclick=approveAllQueue;
 $('cancelEdit').onclick=()=>{if(!busy)resetForm();};
 $('newRequest').onclick=()=>{if(!busy)resetForm();};
-$('buyerMode').onchange=updateBuyerModeUI;
+$('buyerPersonName').addEventListener('input',updateBuyerNameUI);
+$('buyerOrganizationName').addEventListener('input',updateBuyerNameUI);
+$('buyerNoNameConfirmed').addEventListener('change',updateBuyerNameUI);
 document.querySelectorAll('[data-scroll]').forEach(b=>b.addEventListener('click',()=>$(b.dataset.scroll).scrollIntoView({behavior:'smooth'})));
 $('verifyButton').onclick=()=>{
   const results=FinRefRules.verify();
