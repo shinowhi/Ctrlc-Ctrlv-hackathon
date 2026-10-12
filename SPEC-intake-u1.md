@@ -1,7 +1,7 @@
 # Spec: Applicant intake and U1
 
 ## Objective
-Allow applicants to submit an invoice PDF even if one or more form fields are blank. Validate missing form data after submission, persist the request as U1/NEEDS_INFO, mark missing fields purple, and allow the applicant to complete and resubmit it. The invoice PDF remains required to submit. Buyer form values are split into A (personal name) and B (business/entity name); both may be blank only when the applicant confirms “Hóa đơn không ghi tên người mua.”
+Allow applicants to submit an invoice PDF even if one or more form fields are blank. Validate missing form data after submission, persist the request as U1/NEEDS_INFO, mark missing fields purple, and allow the applicant to complete and resubmit it. The invoice PDF remains required to submit. A buyer-name value is not required when the applicant chooses “Hóa đơn không ghi tên người mua.”
 
 ## Tech stack
 Existing static HTML/JavaScript frontend, Node API, and Supabase PostgreSQL RPC/migrations. Do not add dependencies.
@@ -30,8 +30,7 @@ The existing Node test suite covers browser rules and database RPC behavior. Tes
 ## Success criteria
 - The form does not block submission for missing text/select/date/amount fields, but still blocks without a PDF.
 - On submit, required missing fields are stored and shown purple; the request returns to the applicant without running invoice assessment.
-- Required fields after submit are requester, requester type, department, budget code, purpose, vendor, invoice number, invoice date, and amount. If both buyer-name fields A and B are blank, the no-buyer-name confirmation is required. A/B may otherwise be filled independently.
-- During invoice assessment, if OCR clearly reads a personal or organization name whose matching A/B form field is blank, return U1 and mark that matching field purple so the applicant can add it. Uncertain OCR is yellow for manager review.
+- Required fields after submit are requester, requester type, department, buyer selection, budget code, purpose, vendor, invoice number, invoice date, and amount; buyer name is conditional on buyer selection.
 - Resubmission with missing fields stays in U1; a complete resubmission returns to manager/AI review.
 
 ## Open questions

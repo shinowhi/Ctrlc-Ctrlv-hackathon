@@ -89,9 +89,8 @@
               <label class="field">Loại người đề nghị<select id="requesterType"><option value="">Chọn nếu đã biết</option><option value="employee">Nhân viên</option><option value="department">Phòng ban</option></select></label>
               <label class="field">Họ tên / phòng ban<input id="requester" maxlength="1000"></label>
               <label class="field">Bộ phận<input id="department" maxlength="1000"></label>
-              <label class="field">A · Tên cá nhân theo hóa đơn (nếu có)<input id="buyerPersonName" maxlength="1000" autocomplete="name"></label>
-              <label class="field">B · Tên doanh nghiệp/đơn vị theo hóa đơn (nếu có)<input id="buyerOrganizationName" maxlength="1000" autocomplete="organization"></label>
-              <label class="field field-confirmation" id="buyerNoNameField"><input id="buyerNoNameConfirmed" type="checkbox"><span>Hóa đơn không ghi tên người mua<small>Chỉ xác nhận khi cả A và B đều để trống.</small></span></label>
+              <label class="field">Thông tin người mua<select id="buyerMode"><option value="">Chọn trường hợp trên hóa đơn</option><option value="PERSON">Tên cá nhân</option><option value="ORGANIZATION">Tên đơn vị</option><option value="NO_NAME">Hóa đơn không ghi tên người mua</option></select></label>
+              <label class="field" id="buyerNameField">Tên người mua<input id="buyerCompany" maxlength="1000" autocomplete="organization"><small id="buyerNameHelp">Nhập tên người mua cá nhân hoặc tên pháp nhân theo lựa chọn phía trên.</small></label>
               <label class="field">Mã ngân sách (chưa đối chiếu)<input id="budgetCode" maxlength="1000"></label>
               <label class="field">Mục đích chi<input id="purpose" maxlength="1000"></label>
               <label class="field">Nhà cung cấp<input id="vendor" maxlength="1000" list="vendorDirectoryOptions" autocomplete="organization"><datalist id="vendorDirectoryOptions"></datalist><small>Chọn tên đã có trong danh mục hoặc nhập tên theo hóa đơn.</small></label>
