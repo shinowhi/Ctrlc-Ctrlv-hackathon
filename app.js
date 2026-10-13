@@ -249,6 +249,17 @@ function renderRows() {
   for(const [id,status] of Object.entries({waitingCount:'TREASURER_REVIEW',cfoCount:'CFO_REVIEW',readyCount:'READY_FOR_APPROVAL',infoCount:'NEEDS_INFO'})) $(id).textContent=rows.filter(r=>r.status===status).length;
   renderApprovalTools();
 }
+function aiConfidenceLabel(field) {
+  const raw=field?.confidence;
+  const confidence=Number(raw);
+  return raw!==null&&raw!==undefined&&String(raw).trim()!==''
+    &&Number.isFinite(confidence)&&confidence>=0&&confidence<=1
+    ?`${Math.round(confidence*100)}%`:'không có dữ liệu';
+}
+function hasYellowAssessmentIssue(ai,key) {
+  return Array.isArray(ai?.assessment?.fieldIssues)
+    &&ai.assessment.fieldIssues.some(issue=>issue?.field===key&&issue?.severity==='YELLOW');
+}
 function renderAiAnalysis(ai,request=null) {
   if(!ai?.fields) return '';
   const rawKind=String(ai.fields.invoiceKind?.value||'').toUpperCase();
@@ -278,10 +289,12 @@ function renderAiAnalysis(ai,request=null) {
     const managerVerified=request?.checks?.manager_verified===true;
     const identifierField=key==='taxCode'||key==='invoiceNumber';
     const managerVerifiedField=managerVerified&&!identifierField;
+    const originalYellowConfidence=hasYellowAssessmentIssue(ai,key)
+      ?` · Confidence AI ban đầu khi bị đánh vàng: ${aiConfidenceLabel(field)}`:'';
     const rereadNote=field.reread?` · OpenAI đọc lại: ${Number.isSafeInteger(field.reread.value)?money(field.reread.value):'không đọc được'} (${Math.round((Number(field.reread.confidence)||0)*100)}%)${field.reread.evidence?` · ${esc(field.reread.evidence)}`:''}`:'';
     const fallbackReadNote=field.fallbackRead?` · Lượt đọc toàn hóa đơn: ${Number.isSafeInteger(field.fallbackRead.value)?money(field.fallbackRead.value):'không đọc được'} (${Math.round((Number(field.fallbackRead.confidence)||0)*100)}%)${field.fallbackRead.evidence?` · ${esc(field.fallbackRead.evidence)}`:''}`:'';
     const buyerRereadNote=buyerNameFields.includes(key)&&ai.buyerRereadStatus==='COMPLETED'?' · Đã đọc lại có chọn lọc':buyerNameFields.includes(key)&&ai.buyerRereadStatus==='UNAVAILABLE'?' · Chưa đọc lại được; cần quản lý kiểm tra':'';
-    const confidenceNote=informational?'':hasManagerIdentifier?`<small>Quản lý đã xác nhận giá trị này trực tiếp từ PDF${managerIdentifier.verified_by?` · Tài khoản xác nhận: ${esc(String(managerIdentifier.verified_by))}`:''}${managerIdentifier.verified_at?` · ${esc(time(managerIdentifier.verified_at))}`:''} · AI đọc ban đầu: ${esc(String(raw||'Chưa đọc được'))} (${Math.round((Number(field.confidence)||0)*100)}%)${field.evidence?` · Bằng chứng OCR: ${esc(field.evidence)}`:''}</small>`:managerVerifiedField?`<small>Quản lý đã xác minh giá trị này${field.evidence?` · Bằng chứng: ${esc(field.evidence)}`:''}</small>`:managerVerified&&identifierField?`<small>Hồ sơ đã được quản lý duyệt, nhưng chưa lưu xác nhận riêng cho định danh này. OCR ${Math.round((Number(field.confidence)||0)*100)}%${field.evidence?` · Bằng chứng: ${esc(field.evidence)}`:''}</small>`:`<small>Độ tin cậy ${Math.round((Number(field.confidence)||0)*100)}%${numberNote}${aliasNote}${field.evidence?` · Bằng chứng: ${esc(field.evidence)}`:''}${rereadNote}${fallbackReadNote}${buyerRereadNote}</small>`;
+    const confidenceNote=informational?'':hasManagerIdentifier?`<small>Quản lý đã xác nhận giá trị này trực tiếp từ PDF${managerIdentifier.verified_by?` · Tài khoản xác nhận: ${esc(String(managerIdentifier.verified_by))}`:''}${managerIdentifier.verified_at?` · ${esc(time(managerIdentifier.verified_at))}`:''} · AI đọc ban đầu: ${esc(String(raw||'Chưa đọc được'))} (${Math.round((Number(field.confidence)||0)*100)}%)${field.evidence?` · Bằng chứng OCR: ${esc(field.evidence)}`:''}</small>`:managerVerifiedField?`<small>Quản lý đã xác minh giá trị này${originalYellowConfidence}${field.evidence?` · Bằng chứng: ${esc(field.evidence)}`:''}</small>`:managerVerified&&identifierField?`<small>Hồ sơ đã được quản lý duyệt, nhưng chưa lưu xác nhận riêng cho định danh này. OCR ${Math.round((Number(field.confidence)||0)*100)}%${field.evidence?` · Bằng chứng: ${esc(field.evidence)}`:''}</small>`:`<small>Độ tin cậy ${Math.round((Number(field.confidence)||0)*100)}%${numberNote}${aliasNote}${field.evidence?` · Bằng chứng: ${esc(field.evidence)}`:''}${rereadNote}${fallbackReadNote}${buyerRereadNote}</small>`;
     return `<div class="invoice-field${informational?' informational':''}"><div class="invoice-field-main"><strong>${label}</strong><span>${esc(value)}</span></div>${confidenceNote}</div>`;
   }).join('');
   const kindNote=effectiveKind==='VAT'&&!kindIsClear?' Loại hóa đơn chưa đủ chắc; đã áp dụng quy tắc VAT.':'';
@@ -412,7 +425,8 @@ function renderInvoiceNotes(annotations,ai) {
   return `<ul class="invoice-issue-list">${items.map(item=>{
     const region=item.regions.find(candidate=>Number.isInteger(candidate.pageNumber)&&candidate.pageNumber>0);
     const value=reviewValue(item.key,ai?.fields?.[item.key]);
-    return `<li class="invoice-issue invoice-issue--${item.state}"><button type="button" class="invoice-issue-jump"${region?` data-pdf-page="${region.pageNumber}"`:''}><span class="review-mark-icon" aria-hidden="true"></span><strong>${esc(item.label)}</strong><span>${esc(value)}</span></button><small>${item.notes.map(esc).join(' ')}${region?'':` Chưa có tọa độ để khoanh vùng trên PDF.`}</small></li>`;
+    const confidenceNote=item.state==='yellow'?` Confidence AI: ${aiConfidenceLabel(ai?.fields?.[item.key])}.`:'';
+    return `<li class="invoice-issue invoice-issue--${item.state}"><button type="button" class="invoice-issue-jump"${region?` data-pdf-page="${region.pageNumber}"`:''}><span class="review-mark-icon" aria-hidden="true"></span><strong>${esc(item.label)}</strong><span>${esc(value)}</span></button><small>${item.notes.map(esc).join(' ')}${confidenceNote}${region?'':` Chưa có tọa độ để khoanh vùng trên PDF.`}</small></li>`;
   }).join('')}</ul>`;
 }
 // Older saved assessments may contain date flags; date is now display-only.
