@@ -6,7 +6,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;',
 const {normalizeInvoiceNumber,normalizePartyName,comparePartyName}=window.FinRefInvoiceMatching;
 const normalized = normalizePartyName;
 const roles={applicant:'Người nộp đơn',treasurer:'Quản lý tài chính',cfo:'Giám đốc Tài chính'};
-const statuses={TREASURER_REVIEW:'Chờ Quản lý Tài chính xác minh',READY_FOR_APPROVAL:'AI đánh giá đạt · chờ người duyệt',CFO_REVIEW:'Chờ Giám đốc Tài chính duyệt',NEEDS_INFO:'Người nộp cần bổ sung',APPROVED:'Đã duyệt · chưa chuyển tiền',REJECTED:'Đã từ chối'};
+const statuses={TREASURER_REVIEW:'Chờ Quản lý Tài chính xác minh',READY_FOR_APPROVAL:'AI đánh giá đạt · chờ người duyệt',CFO_REVIEW:'Chờ Giám đốc Tài chính duyệt',NEEDS_INFO:'Người nộp cần bổ sung',APPROVED:'Sẵn sàng duyệt',REJECTED:'Đã từ chối'};
 const checkLabels={invoice:'Đã xem hóa đơn PDF',fields_match:'Nhà cung cấp, người mua và số hóa đơn khớp form',total_includes_vat:'Tổng thanh toán trên form khớp tổng cuối cùng trên hóa đơn'};
 const fields=['requesterType','requester','department','buyerMode','buyerCompany','budgetCode','purpose','vendor','invoiceNumber','invoiceDate','amount'];
 const buyerNameFields=['buyerPersonName','buyerOrganizationName'];
