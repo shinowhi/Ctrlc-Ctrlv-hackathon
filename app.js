@@ -14,10 +14,59 @@ const aiFieldLabels={invoiceKind:'Loại hóa đơn',buyerPersonName:'Tên cá n
 const aiMoneyFields=new Set(['amountBeforeTax','vatAmount','discountAmount','totalAmount','amountDue']);
 const aiConfidenceThresholds={buyerName:0.80,buyerPersonName:0.80,buyerOrganizationName:0.80,vendor:0.80,taxCode:0.80,invoiceNumber:0.80,amountBeforeTax:0.90,vatAmount:0.90,discountAmount:0.85,totalAmountSales:0.81,totalAmountVat:0.90,zeroVat:0.70};
 let profile=null, rows=[], vendors=[], vendorReviewNotes=[], vendorDirectoryError='', selected=null, selectedFromVendorNote=false, editing=null, timer=null, loading=false, busy=false, vendorSaving=false, epoch=0, dailySummary=null;
+const CFO_VIEWED_STORAGE_PREFIX='finref-cfo-viewed:';
+let cfoViewedActorId=null,cfoViewedVersions=new Set(),approvalBatchPreflight=false;
+const cfoViewStateChannel=typeof BroadcastChannel==='function'?new BroadcastChannel('finref-cfo-view-state'):null;
+function cfoViewedStorageKey(actorId) { return CFO_VIEWED_STORAGE_PREFIX+actorId; }
+function cfoRequestVersionKey(request) { return `${request.id}:${String(request.version)}`; }
+function clearCfoViewedState({removeStored=true,broadcast=false,actorId=cfoViewedActorId}={}) {
+  if(actorId&&removeStored) { try { sessionStorage.removeItem(cfoViewedStorageKey(actorId)); } catch {} }
+  if(actorId&&broadcast) cfoViewStateChannel?.postMessage({type:'clear-user',actorId});
+  if(!actorId||actorId===cfoViewedActorId) { cfoViewedActorId=null; cfoViewedVersions=new Set(); }
+}
+function loadCfoViewedState(actorId) {
+  cfoViewedActorId=actorId||null; cfoViewedVersions=new Set();
+  if(!actorId) return;
+  try {
+    const values=JSON.parse(sessionStorage.getItem(cfoViewedStorageKey(actorId))||'[]');
+    if(Array.isArray(values)) cfoViewedVersions=new Set(values.filter(value=>typeof value==='string'));
+  } catch {}
+}
+function persistCfoViewedState() {
+  if(!cfoViewedActorId) return;
+  try { sessionStorage.setItem(cfoViewedStorageKey(cfoViewedActorId),JSON.stringify([...cfoViewedVersions])); } catch {}
+}
+function pruneCfoViewedState() {
+  if(profile?.role!=='cfo'||cfoViewedActorId!==profile.id) return;
+  const activeKeys=new Set(approvalQueue().map(cfoRequestVersionKey));
+  let changed=false;
+  for(const key of cfoViewedVersions) if(!activeKeys.has(key)) {cfoViewedVersions.delete(key);changed=true;}
+  if(changed) persistCfoViewedState();
+}
+function cfoHasViewed(request,actorId=profile?.id) {
+  return !!actorId&&actorId===cfoViewedActorId&&cfoViewedVersions.has(cfoRequestVersionKey(request));
+}
+function activeCfoViewSession(actorId,run) {
+  return profile?.role==='cfo'&&profile.id===actorId&&epoch===run&&api.session?.user?.id===actorId;
+}
+function markCfoPdfFirstPageDisplayed(requestId,version,actorId,run) {
+  if(!activeCfoViewSession(actorId,run)) return;
+  const request=rows.find(item=>item.id===requestId);
+  if(!request||request.version!==version||!approvalQueue().some(item=>item.id===requestId&&item.version===version)) return;
+  const key=cfoRequestVersionKey(request);
+  if(cfoViewedVersions.has(key)) return;
+  cfoViewedVersions.add(key); persistCfoViewedState(); renderRows();
+}
+cfoViewStateChannel?.addEventListener('message',event=>{
+  if(event.data?.type==='clear-user'&&event.data.actorId===cfoViewedActorId) {
+    clearCfoViewedState({removeStored:true,actorId:event.data.actorId});
+    if(profile?.role==='cfo') renderRows();
+  }
+});
 function notify(text,error=false,login=false) { const el=$(login?'loginMessage':'message'); el.textContent=text; el.classList.toggle('error',error); }
 function time(value) { return new Date(value).toLocaleString('vi-VN'); }
 function showLogin() {
-  epoch++; clearInterval(timer); clearPdfViewer(); profile=null; rows=[]; vendors=[]; vendorReviewNotes=[]; vendorDirectoryError=''; selected=null; selectedFromVendorNote=false; editing=null; dailySummary=null;
+  epoch++; clearInterval(timer); clearPdfViewer(); clearCfoViewedState({broadcast:true}); profile=null; rows=[]; vendors=[]; vendorReviewNotes=[]; vendorDirectoryError=''; selected=null; selectedFromVendorNote=false; editing=null; dailySummary=null; approvalBatchPreflight=false;
   $('appShell').classList.add('hidden'); $('loginScreen').classList.remove('hidden');
   $('queueBody').innerHTML=''; $('decisionResult').innerHTML=''; $('auditList').innerHTML='';
   $('approvalTools').classList.add('hidden');
@@ -28,14 +77,23 @@ const rolePageTitles={applicant:'Đề nghị của bạn',treasurer:'Không gia
 function setActiveNav(button) {
   document.querySelectorAll('.side-nav .nav-item').forEach(item=>item.classList.toggle('active',item===button));
 }
+function setApplicantQueueExpanded(expanded) {
+  $('queueContent').hidden=!expanded;
+  $('toggleApplicantQueue').setAttribute('aria-expanded',String(expanded));
+  $('toggleApplicantQueue').textContent=expanded?'Thu gọn hồ sơ':'Xem hồ sơ';
+}
+function syncApplicantCreateAction() {
+  $('applicantQuickAction').classList.toggle('hidden',profile?.role!=='applicant'||$('request-card').open);
+}
 function showOverviewView(target=null,navButton=null) {
   $('workspaceOverview').classList.remove('hidden');
   $('vendorDirectoryView').classList.add('hidden');
   $('pageTitle').textContent=rolePageTitles[profile?.role]||'';
   $('pageSubtitle').textContent='Hóa đơn PDF · Tổng thanh toán cuối cùng · Người có thẩm quyền duyệt cuối';
   setActiveNav(navButton||document.querySelector('[data-scroll="queue-card"]'));
+  if(target?.closest('#queue-card')&&profile?.role==='applicant') setApplicantQueueExpanded(true);
   const requestDisclosure=target?.closest('#request-card');
-  if(requestDisclosure) requestDisclosure.open=true;
+  if(requestDisclosure) {requestDisclosure.open=true;syncApplicantCreateAction();}
   if(target) requestAnimationFrame(()=>target.scrollIntoView({behavior:'smooth',block:'start'}));
 }
 function showVendorDirectoryView(target=null,navButton=$('vendorDirectoryNav')) {
@@ -81,14 +139,20 @@ function updateBuyerModeUI() {
 }
 async function enter(p) {
   if(!roles[p.role]) throw new Error('Vai trò không hợp lệ.');
-  profile=p; epoch++; dailySummary=null; $('loginScreen').classList.add('hidden'); $('appShell').classList.remove('hidden');
+  if(cfoViewedActorId&&(p.role!=='cfo'||p.id!==cfoViewedActorId)) clearCfoViewedState({broadcast:true});
+  profile=p; epoch++; dailySummary=null; approvalBatchPreflight=false;
+  if(p.role==='cfo') loadCfoViewedState(p.id); else if(cfoViewedActorId) clearCfoViewedState({broadcast:true});
+  $('loginScreen').classList.add('hidden'); $('appShell').classList.remove('hidden');
   document.body.className='online role-' + p.role;
   $('profileName').textContent=p.display_name; $('profileRole').textContent=roles[p.role]; $('roleLabel').textContent=roles[p.role];
   $('pageTitle').textContent=rolePageTitles[p.role];
   $('queueTitle').textContent=p.role==='applicant'?'Hồ sơ của tôi':p.role==='cfo'?'Hồ sơ CFO theo dõi và chờ duyệt':'Danh sách đề nghị thanh toán';
-  $('request-card').classList.toggle('hidden',p.role!=='applicant'); $('newRequest').classList.toggle('hidden',p.role!=='applicant');
+  $('request-card').classList.toggle('hidden',p.role!=='applicant');
   $('request-card').open=false;
+  $('toggleApplicantQueue').classList.toggle('hidden',p.role!=='applicant');
+  setApplicantQueueExpanded(p.role!=='applicant');
   $('applicantQuickAction').classList.toggle('hidden',p.role!=='applicant');
+  syncApplicantCreateAction();
   const canManageVendors=['treasurer','cfo'].includes(p.role);
   $('vendorDirectoryNav').classList.toggle('hidden',!canManageVendors); $('vendorShortcut').classList.toggle('hidden',!canManageVendors);
   $('vendorReviewNotesNav').classList.toggle('hidden',p.role!=='cfo'); $('vendorReviewNotesCard').classList.toggle('hidden',p.role!=='cfo');
@@ -97,12 +161,12 @@ async function enter(p) {
   clearInterval(timer); timer=setInterval(()=>{if(!document.hidden) refresh().catch(()=>{});},10000);
 }
 async function refresh() {
-  if(!profile||loading||busy) return;
+  if(!profile||loading||busy||approvalBatchPreflight) return;
   loading=true; const run=epoch;
   if(['treasurer','cfo'].includes(profile.role)) {dailySummary=null;renderApprovalTools();}
   try {
     const data=await api.list(profile.role); if(run!==epoch) return;
-    rows=data; renderRows(); $('syncStatus').textContent='Đang hiển thị '+data.length+' hồ sơ có quyền truy cập · cập nhật mỗi 10 giây';
+    rows=data; pruneCfoViewedState(); renderRows(); $('syncStatus').textContent='Đang hiển thị '+data.length+' hồ sơ có quyền truy cập · cập nhật mỗi 10 giây';
     await refreshVendorDirectory(run); if(run!==epoch) return;
     if(profile.role==='cfo') {await refreshVendorReviewNotes(run); if(run!==epoch) return;}
     await refreshDailyApprovalNotice(run); if(run!==epoch) return;
@@ -115,7 +179,7 @@ async function refresh() {
       if(!latest) {clearPdfViewer();selected=null;selectedFromVendorNote=false;$('decisionResult').textContent='Hồ sơ không còn trong danh sách.';$('auditList').textContent='';}
       else if(latest.version!==selected.version) { await openRequest(latest.id,selectedFromVendorNote); notify('Hồ sơ vừa được cập nhật. Hãy xem phiên bản mới trước khi xử lý.'); }
     }
-  } catch(e) {if(run===epoch) {notify('Không đồng bộ được: '+e.message,true); $('syncStatus').textContent='Mất kết nối — dữ liệu đang hiển thị có thể đã cũ.'; if(!api.session) showLogin();}} finally {loading=false;}
+  } catch(e) {if(run===epoch) {notify('Không đồng bộ được: '+e.message,true); $('syncStatus').textContent='Mất kết nối — dữ liệu đang hiển thị có thể đã cũ.'; if(!api.session) showLogin();}} finally {loading=false;if(run===epoch)renderApprovalTools();}
 }
 async function refreshVendorDirectory(run=epoch) {
   try {
@@ -249,11 +313,25 @@ function renderApprovalTools() {
   if(!reviewer) return;
   const items=approvalQueue();
   const amount=items.reduce((sum,r)=>sum+Number(r.amount||0),0);
+  const unseen=profile.role==='cfo'?items.filter(r=>!cfoHasViewed(r)):[];
+  const cfoSessionMatches=profile.role!=='cfo'||api.session?.user?.id===profile.id;
   const countText=`${items.length} hóa đơn · tổng ${money(amount)}`;
   $('approvalQueueCount').textContent=(profile.role==='treasurer'?'Quản lý':'Giám đốc')+' · '+countText;
   $('batchReasonField').classList.toggle('hidden',profile.role!=='cfo');
+  $('batchReason').disabled=busy||approvalBatchPreflight||profile.role!=='cfo';
+  document.querySelectorAll('#decisionResult [data-action]').forEach(button=>button.disabled=busy||approvalBatchPreflight);
+  const filter=$('statusFilter').value;
+  const visibleIds=new Set(rows.filter(r=>!filter||(filter==='APPROVAL_QUEUE'?items.some(item=>item.id===r.id):r.status===filter)).map(r=>r.id));
+  const hiddenUnseen=unseen.filter(r=>!visibleIds.has(r.id));
+  const showQueueButton=$('showApprovalQueueButton');
+  showQueueButton.classList.toggle('hidden',profile.role!=='cfo'||hiddenUnseen.length===0);
+  showQueueButton.textContent=`Mở hàng chờ CFO · ${hiddenUnseen.length} chưa xem bị ẩn`;
+  showQueueButton.setAttribute('aria-label',`Mở toàn bộ hàng chờ CFO; ${hiddenUnseen.length} hóa đơn chưa xem đang bị bộ lọc ẩn`);
+  const viewProgress=profile.role==='cfo'
+    ?items.length?` Trang đầu PDF đã hiển thị ở ${items.length-unseen.length}/${items.length} hóa đơn; còn ${unseen.length} chưa xem.`:' Hiện không có hóa đơn trong hàng chờ CFO.'
+    :'';
   if(!dailySummary) $('approvalSummaryText').textContent=profile.role==='cfo'
-    ?'Chưa tải được tổng đã duyệt trong ngày; bạn vẫn có thể gửi quyết định có lý do, hệ thống sẽ tự tính tổng khi lưu.'
+    ?'Chưa tải được tổng đã duyệt trong ngày; bạn vẫn có thể gửi quyết định có lý do, hệ thống sẽ tự tính tổng khi lưu.'+viewProgress
     :'Chưa tải được tổng đã duyệt trong ngày; làm mới danh sách trước khi duyệt.';
   else {
     const projected=dailySummary.total+amount;
@@ -261,11 +339,14 @@ function renderApprovalTools() {
     const consequence=profile.role==='treasurer'
       ?projected<=dailySummary.limit?` Duyệt cả danh sách sẽ còn ${money(dailySummary.limit-projected)}.`:` Duyệt cả danh sách sẽ vượt ${money(projected-dailySummary.limit)}; toàn bộ đợt sẽ chuyển lên Giám đốc.`
       :projected<=dailySummary.limit?` Sau đợt này dự kiến còn ${money(dailySummary.limit-projected)}.`:` Sau đợt này vượt hạn mức ${money(projected-dailySummary.limit)}; cần ghi lý do chấp thuận.`;
-    $('approvalSummaryText').textContent=budgetText+consequence;
+    $('approvalSummaryText').textContent=budgetText+consequence+viewProgress;
   }
+  if(!cfoSessionMatches) $('approvalSummaryText').textContent='Phiên đăng nhập không còn khớp tài khoản CFO. Hãy đăng nhập lại trước khi duyệt.';
   const button=$('approveAllButton');
-  button.textContent=`Duyệt tất cả (${items.length})`;
-  button.disabled=busy||(profile.role==='treasurer'&&!dailySummary)||items.length===0||(profile.role==='cfo'&&!$('batchReason').value.trim());
+  button.textContent=approvalBatchPreflight?'Đang kiểm tra hàng chờ…':`Duyệt toàn bộ hàng chờ (${items.length})`;
+  button.title=profile.role==='cfo'&&unseen.length?`Còn ${unseen.length} hóa đơn chưa mở PDF trang đầu.`:'';
+  button.disabled=busy||loading||approvalBatchPreflight||(profile.role==='treasurer'&&!dailySummary)||items.length===0
+    ||(profile.role==='cfo'&&(!cfoSessionMatches||!$('batchReason').value.trim()||unseen.length>0));
 }
 function workflowDetails(request,role=profile?.role) {
   const status=request?.status;
@@ -324,9 +405,11 @@ function renderRows() {
   $('queueBody').innerHTML=filtered.length ? filtered.map(r=>{
     const label=statuses[r.status]||esc(r.status);
     const context=workflowDetails(r);
-    const actions=actionable.has(r.id)?`<div class="queue-actions"><button class="queue-approve" type="button" data-approve-id="${r.id}" aria-label="Duyệt hồ sơ PAY-${esc(r.id.slice(0,8))}" ${busy||(profile.role==='treasurer'&&!dailySummary)||(profile.role==='cfo'&&!$('batchReason').value.trim())?'disabled':''}>Duyệt lẻ</button><button class="text-button" type="button" data-id="${r.id}" aria-label="Mở hồ sơ PAY-${esc(r.id.slice(0,8))}">Mở</button></div>`:`<button class="text-button" type="button" data-id="${r.id}" aria-label="Mở hồ sơ PAY-${esc(r.id.slice(0,8))}">Mở</button>`;
+    const viewState=profile?.role==='cfo'&&actionable.has(r.id)
+      ?`<span class="invoice-view-state ${cfoHasViewed(r)?'seen':'unseen'}">${cfoHasViewed(r)?'Đã hiển thị trang 1':'Chưa mở PDF'}</span>`:'';
+    const actions=actionable.has(r.id)?`<div class="queue-actions"><button class="queue-approve" type="button" data-approve-id="${r.id}" aria-label="Duyệt hồ sơ PAY-${esc(r.id.slice(0,8))}" ${busy||approvalBatchPreflight||(profile.role==='treasurer'&&!dailySummary)||(profile.role==='cfo'&&!$('batchReason').value.trim())?'disabled':''}>Duyệt lẻ</button><button class="text-button" type="button" data-id="${r.id}" aria-label="Mở hồ sơ PAY-${esc(r.id.slice(0,8))}">Mở</button></div>`:`<button class="text-button" type="button" data-id="${r.id}" aria-label="Mở hồ sơ PAY-${esc(r.id.slice(0,8))}">Mở</button>`;
     const stateClass={APPROVED:'ready',READY_FOR_APPROVAL:'ai-ready',REJECTED:'reject',CFO_REVIEW:'cfo-wait',NEEDS_INFO:'missing',TREASURER_REVIEW:'review'}[r.status]||'review';
-    return `<tr data-request-id="${esc(r.id)}"><td data-label="Mã hồ sơ"><strong>PAY-${esc(r.id.slice(0,8))}</strong><small>Tạo lúc ${esc(time(r.created_at))}</small></td><td data-label="Người đề nghị">${esc(r.payload.requester||'Chưa điền')}<small>${esc(r.payload.department||'')}</small></td><td data-label="Số tiền">${r.amount==null?'—':money(r.amount)}</td><td data-label="Trạng thái"><span class="status-tag ${stateClass}">${label}</span><div class="queue-status-meta"><span><strong>Lý do:</strong> ${esc(context.reason)}</span><span><strong>Người xử lý tiếp:</strong> ${esc(context.nextActor)}</span><span><strong>Bạn cần làm gì:</strong> ${esc(context.action)}</span><small>Cập nhật: ${esc(context.updatedAt)}</small></div></td><td data-label="Thao tác">${actions}</td></tr>`;
+    return `<tr data-request-id="${esc(r.id)}"><td data-label="Mã hồ sơ"><strong>PAY-${esc(r.id.slice(0,8))}</strong><small>Tạo lúc ${esc(time(r.created_at))}</small></td><td data-label="Người đề nghị">${esc(r.payload.requester||'Chưa điền')}<small>${esc(r.payload.department||'')}</small></td><td data-label="Số tiền">${r.amount==null?'—':money(r.amount)}</td><td data-label="Trạng thái"><span class="status-tag ${stateClass}">${label}</span>${viewState}<div class="queue-status-meta"><span><strong>Lý do:</strong> ${esc(context.reason)}</span><span><strong>Người xử lý tiếp:</strong> ${esc(context.nextActor)}</span><span><strong>Bạn cần làm gì:</strong> ${esc(context.action)}</span><small>Cập nhật: ${esc(context.updatedAt)}</small></div></td><td data-label="Thao tác">${actions}</td></tr>`;
   }).join('') : '<tr><td colspan="5" class="empty-table">Không có hóa đơn trong danh sách này.</td></tr>';
   for(const [id,status] of Object.entries({waitingCount:'TREASURER_REVIEW',cfoCount:'CFO_REVIEW',readyCount:'READY_FOR_APPROVAL',infoCount:'NEEDS_INFO'})) $(id).textContent=rows.filter(r=>r.status===status).length;
   renderApplicantQuickAction();
@@ -530,11 +613,21 @@ async function loadPdfJs() {
   }).catch(error=>{pdfjsPromise=null;throw error;});
   return pdfjsPromise;
 }
-async function renderReviewPdf(url,annotations,token) {
+async function renderReviewPdf(url,annotations,token,onFirstPageDisplayed=null) {
   const status=$('reviewPdfStatus'),stage=$('reviewPdfStage'),wrap=$('reviewPdfWrap'),toolbar=$('reviewPdfToolbar');
-  let documentProxy=null,renderTask=null,resizeObserver=null,disposed=false;
+  let documentProxy=null,renderTask=null,resizeObserver=null,stageVisibilityObserver=null,wrapVisibilityObserver=null,disposed=false;
+  let firstPageRenderReady=false,firstPageDisplayed=false,stageVisibleInWrap=false,wrapVisibleInViewport=false;
+  const hasVisibleArea=entry=>entry.isIntersecting&&entry.intersectionRect.width>=120&&entry.intersectionRect.height>=80;
+  const checkFirstPageVisibility=()=>{
+    if(!onFirstPageDisplayed||firstPageDisplayed||!firstPageRenderReady||!stageVisibleInWrap||!wrapVisibleInViewport
+      ||token!==pdfViewToken||disposed||document.visibilityState!=='visible'||!document.hasFocus()) return;
+    if(!stage.querySelector('canvas')) return;
+    firstPageDisplayed=true; onFirstPageDisplayed?.();
+  };
+  const handleDisplayChange=()=>checkFirstPageVisibility();
   const cleanup=()=>{
-    disposed=true; resizeObserver?.disconnect();
+    disposed=true; resizeObserver?.disconnect(); stageVisibilityObserver?.disconnect(); wrapVisibilityObserver?.disconnect();
+    document.removeEventListener('visibilitychange',handleDisplayChange); window.removeEventListener('focus',handleDisplayChange); window.removeEventListener('pageshow',handleDisplayChange);
     try { renderTask?.cancel(); } catch {}
     if(documentProxy) void documentProxy.destroy().catch(()=>{});
   };
@@ -542,7 +635,7 @@ async function renderReviewPdf(url,annotations,token) {
   try {
     const pdfjs=await loadPdfJs();
     if(token!==pdfViewToken||disposed) return;
-    const response=await fetch(url,{credentials:'omit'});
+    const response=await fetch(url,{credentials:'omit',cache:'no-store'});
     if(!response.ok) throw new Error('Không tải được nội dung PDF.');
     const bytes=new Uint8Array(await response.arrayBuffer());
     if(token!==pdfViewToken||disposed) return;
@@ -559,6 +652,7 @@ async function renderReviewPdf(url,annotations,token) {
     let pageNumber=1,zoom=1,resizeTimer=null,pageRenderVersion=0,ignoreInitialResize=true;
     const renderPage=async()=>{
       const thisRender=++pageRenderVersion;
+      firstPageRenderReady=false;
       if(token!==pdfViewToken||disposed) return;
       try { renderTask?.cancel(); } catch {}
       if(renderTask) { try { await renderTask.promise; } catch {} renderTask=null; }
@@ -608,6 +702,7 @@ async function renderReviewPdf(url,annotations,token) {
       }
       stage.append(svg); pageLabel.textContent=`Trang ${pageNumber} / ${documentProxy.numPages}`;
       back.disabled=pageNumber<=1; forward.disabled=pageNumber>=documentProxy.numPages;
+      firstPageRenderReady=pageNumber===1; checkFirstPageVisibility();
     };
     back.onclick=()=>{if(pageNumber>1){pageNumber--;renderPage().catch(showRenderError);}};
     forward.onclick=()=>{if(pageNumber<documentProxy.numPages){pageNumber++;renderPage().catch(showRenderError);}};
@@ -617,6 +712,16 @@ async function renderReviewPdf(url,annotations,token) {
       const next=Number(button.dataset.pdfPage); if(Number.isInteger(next)&&next>=1&&next<=documentProxy.numPages){pageNumber=next;renderPage().catch(showRenderError);stage.focus?.();}
     });
     function showRenderError(error) { if(token===pdfViewToken&&!disposed) {status.classList.remove('hidden');status.textContent=error.message||'Không hiển thị được trang PDF.';} }
+    if(onFirstPageDisplayed) {
+      stageVisibilityObserver=new IntersectionObserver(entries=>{
+        stageVisibleInWrap=entries.some(hasVisibleArea); checkFirstPageVisibility();
+      },{root:wrap,threshold:0});
+      wrapVisibilityObserver=new IntersectionObserver(entries=>{
+        wrapVisibleInViewport=entries.some(hasVisibleArea); checkFirstPageVisibility();
+      },{threshold:0});
+      stageVisibilityObserver.observe(stage); wrapVisibilityObserver.observe(wrap);
+      document.addEventListener('visibilitychange',handleDisplayChange); window.addEventListener('focus',handleDisplayChange); window.addEventListener('pageshow',handleDisplayChange);
+    }
     resizeObserver=new ResizeObserver(()=>{if(ignoreInitialResize){ignoreInitialResize=false;return;}clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>renderPage().catch(showRenderError),120);});
     resizeObserver.observe(wrap);
     await renderPage();
@@ -632,8 +737,9 @@ async function openRequest(id,fromVendorNote=false) {
     if(requestEpoch!==epoch||profile?.role!=='cfo') return;
   }
   if(!r) return;
-  clearPdfViewer(); selected=r; selectedFromVendorNote=fromVendorNote; const run=epoch;
+  clearPdfViewer(); selected=r; selectedFromVendorNote=fromVendorNote; const run=epoch,actorId=profile.id;
   const isReviewer=profile.role==='treasurer'||profile.role==='cfo';
+  const isCfoApprovalQueueItem=profile.role==='cfo'&&approvalQueue().some(item=>item.id===r.id&&item.version===r.version);
   const mayReview=(profile.role==='treasurer'&&(r.status==='TREASURER_REVIEW'||(r.status==='READY_FOR_APPROVAL'&&Number(r.amount)<=20000000)))||
     (profile.role==='cfo'&&(r.status==='CFO_REVIEW'||(r.status==='READY_FOR_APPROVAL'&&Number(r.amount)>20000000)));
   const manualChecks=profile.role==='treasurer'&&r.status==='TREASURER_REVIEW';
@@ -689,7 +795,9 @@ async function openRequest(id,fromVendorNote=false) {
   const viewerToken=pdfViewToken;
   api.signedUrl(r.invoice_path).then(url=>{
     if(epoch!==run||selected?.id!==id) return;
-    if(isReviewer) renderReviewPdf(url,annotations,viewerToken);
+    if(isReviewer) renderReviewPdf(url,annotations,viewerToken,isCfoApprovalQueueItem
+      ?()=>markCfoPdfFirstPageDisplayed(id,r.version,actorId,run)
+      :null);
     else {$('invoicePreview').src=url;$('invoicePreview').classList.remove('hidden');$('invoicePreviewStatus').classList.add('hidden');}
   }).catch(e=>{
     if(epoch===run&&selected?.id===id) { const status=$(isReviewer?'reviewPdfStatus':'invoicePreviewStatus'); status.textContent='Không mở được hóa đơn: '+e.message; status.classList.remove('hidden'); }
@@ -702,6 +810,7 @@ async function openRequest(id,fromVendorNote=false) {
     $('invoiceFile').value='';
     $('formTitle').textContent='Bổ sung PAY-'+r.id.slice(0,8); $('submitButton').textContent='Gửi lại để phân tích →';
     $('request-card').open=true;
+    syncApplicantCreateAction();
     $('request-card').scrollIntoView({behavior:'smooth'}); notify('Tải lại hóa đơn PDF cho phiên bản bổ sung.');
   };
   $('auditList').textContent='Đang tải nhật ký…';
@@ -710,10 +819,18 @@ async function openRequest(id,fromVendorNote=false) {
   } catch(e) {if(epoch===run&&selected?.id===id) $('auditList').textContent='Không tải được nhật ký: '+e.message;}
 }
 function setBusy(value) {busy=value; $('submitButton').disabled=value; $('logoutButton').disabled=value; document.querySelectorAll('[data-action],[data-batch-action],[data-approve-id],[data-verify-identifier],[data-verified-identifier]').forEach(b=>b.disabled=value); renderApprovalTools();}
-async function submitApprovalBatch(items,reason='') {
-  if(busy||!items?.length) return;
+async function submitApprovalBatch(items,reason='',{requireCfoQueueView=false,actorId=profile?.id,run=epoch}={}) {
+  if(busy||approvalBatchPreflight||!items?.length) return;
   if(profile.role==='treasurer'&&!dailySummary) {notify('Chưa tải được số tiền đã duyệt hôm nay. Hãy làm mới danh sách trước khi duyệt.',true);return;}
   if(profile.role==='cfo'&&!reason.trim()) {notify('Giám đốc cần ghi lý do cấp quyền trước khi duyệt.',true);return;}
+  if(requireCfoQueueView) {
+    const current=approvalQueue();
+    const exactSnapshot=current.length===items.length&&items.every(item=>current.some(latest=>latest.id===item.id&&latest.version===item.version));
+    if(!activeCfoViewSession(actorId,run)) {notify('Phiên CFO đã thay đổi. Hãy tải lại hàng chờ trước khi duyệt.',true);return;}
+    if(!exactSnapshot) {notify('Hàng chờ hoặc phiên bản hóa đơn vừa thay đổi. Hãy kiểm tra lại trước khi duyệt.',true);return;}
+    const unseen=items.filter(item=>!cfoHasViewed(item,actorId));
+    if(unseen.length) {notify(`Còn ${unseen.length} hóa đơn chưa mở PDF trang đầu. Hãy mở và xem trước khi duyệt tổng.`,true);renderRows();return;}
+  }
   setBusy(true);
   try {
     const result=await api.rpc('review_requests_batch',{p_requests:items.map(r=>({id:r.id,version:r.version})),p_reason:reason.trim()});
@@ -727,18 +844,45 @@ async function submitApprovalBatch(items,reason='') {
   } catch(error) {notify(error.message,true);} finally {setBusy(false);await refresh();}
 }
 function approveQueueItem(r) {
-  if(!r) return;
+  if(busy||approvalBatchPreflight||!r) return;
   const reason=profile.role==='cfo'?$('batchReason').value.trim():'';
   submitApprovalBatch([r],reason);
 }
-function approveAllQueue() {
-  const items=approvalQueue();
-  if(!items.length) return;
-  const reason=profile.role==='cfo'?$('batchReason').value.trim():'';
-  submitApprovalBatch(items,reason);
+async function approveAllQueue() {
+  if(!profile||busy||loading||approvalBatchPreflight) return;
+  const role=profile.role,actorId=profile.id,run=epoch;
+  if(!['treasurer','cfo'].includes(role)) return;
+  const reason=role==='cfo'?$('batchReason').value.trim():'';
+  if(role==='cfo'&&!reason) {notify('Giám đốc cần ghi lý do cấp quyền trước khi duyệt.',true);return;}
+  if(role==='treasurer'&&!dailySummary) {notify('Chưa tải được số tiền đã duyệt hôm nay. Hãy làm mới danh sách trước khi duyệt.',true);return;}
+  approvalBatchPreflight=true; renderRows();
+  try {
+    const latestRows=await api.list(role);
+    if(epoch!==run||profile?.id!==actorId) return;
+    if(api.session?.user?.id!==actorId) {
+      clearCfoViewedState({broadcast:true,actorId}); api.remember(null); showLogin();
+      notify('Phiên đăng nhập đã đổi tài khoản. Hãy đăng nhập lại.',true,true); return;
+    }
+    rows=latestRows; pruneCfoViewedState(); renderRows();
+    const items=approvalQueue();
+    if(!items.length) {notify('Hàng chờ vừa thay đổi; hiện không còn hồ sơ để duyệt.',true);return;}
+    if(role==='cfo') {
+      const unseen=items.filter(item=>!cfoHasViewed(item,actorId));
+      if(unseen.length) {
+        notify(`Hàng chờ vừa được cập nhật: còn ${unseen.length} hóa đơn chưa mở PDF trang đầu. Mở từng hồ sơ rồi thử lại.`,true);
+        return;
+      }
+    }
+    approvalBatchPreflight=false;
+    await submitApprovalBatch(items,reason,role==='cfo'?{requireCfoQueueView:true,actorId,run}:{});
+  } catch(error) {
+    if(epoch===run&&profile?.id===actorId) notify('Không thể kiểm tra hàng chờ mới nhất: '+error.message,true);
+  } finally {
+    if(epoch===run&&profile?.id===actorId) {approvalBatchPreflight=false;renderRows();}
+  }
 }
 async function review(r,action) {
-  if(busy) return;
+  if(busy||approvalBatchPreflight) return;
   const reason=$('reviewReason').value.trim();
   if(action!=='approve'&&!reason) {notify('Hãy ghi rõ lý do hoặc nội dung cần bổ sung.',true);return;}
   if(action==='approve'&&profile.role==='treasurer'&&!dailySummary) {notify('Chưa tải được tổng đã duyệt trong ngày. Hãy làm mới trước khi duyệt.',true);return;}
@@ -826,6 +970,7 @@ $('paymentForm').onsubmit=async event=>{
     const result=await api.rpc('submit_request',{p_id:editing?.id||crypto.randomUUID(),p_payload:payload,p_invoice_path:invoicePath,p_request_path:null,p_expected_version:editing?.version||0});
     resetForm();
     $('request-card').open=false;
+    syncApplicantCreateAction();
     if(result.status==='NEEDS_INFO') {
       notify('Hồ sơ được gửi nhưng còn thiếu thông tin. Các trường cần bổ sung được đánh dấu màu tím.');
       setBusy(false); await refresh(); await openRequest(result.id); return;
@@ -843,12 +988,19 @@ $('paymentForm').onsubmit=async event=>{
 $('loginForm').onsubmit=async event=>{
   event.preventDefault(); const button=event.submitter; button.disabled=true; notify('Đang đăng nhập…',false,true);
   try {const p=await api.login($('email').value.trim(),$('password').value); $('password').value=''; await enter(p); notify('',false,true);}
-  catch(e) {api.remember(null); notify('Đăng nhập thất bại: '+e.message,true,true);} finally {button.disabled=false;}
+  catch(e) {clearCfoViewedState({broadcast:true,actorId:api.session?.user?.id});api.remember(null); notify('Đăng nhập thất bại: '+e.message,true,true);} finally {button.disabled=false;}
 };
 $('logoutButton').onclick=async()=>{if(busy)return; const button=$('logoutButton');button.disabled=true; try {await api.logout();notify('',false,true);} catch {notify('Đã thoát trên thiết bị này; không liên lạc được máy chủ để thu hồi phiên.',true,true);} finally {showLogin();button.disabled=false;}};
 $('refreshButton').onclick=refresh;
 $('statusFilter').onchange=renderRows;
 $('batchReason').oninput=renderRows;
+$('showApprovalQueueButton').onclick=()=>{
+  if(profile?.role!=='cfo') return;
+  $('statusFilter').value='APPROVAL_QUEUE'; renderRows();
+  const firstUnseen=approvalQueue().find(item=>!cfoHasViewed(item));
+  const row=firstUnseen&&[...$('queueBody').querySelectorAll('tr[data-request-id]')].find(item=>item.dataset.requestId===firstUnseen.id);
+  row?.scrollIntoView({behavior:'smooth',block:'center'});
+};
 $('queueBody').addEventListener('click',event=>{
   const target=event.target;
   const approveButton=target.closest?.('[data-approve-id]');
@@ -860,10 +1012,14 @@ $('queueBody').addEventListener('click',event=>{
 });
 $('approveAllButton').onclick=approveAllQueue;
 $('cancelEdit').onclick=()=>{if(!busy)resetForm();};
-$('newRequest').onclick=()=>{if(!busy)resetForm();};
+$('toggleApplicantQueue').onclick=()=>{
+  if(profile?.role!=='applicant') return;
+  setApplicantQueueExpanded($('queueContent').hidden);
+};
+$('request-card').addEventListener('toggle',syncApplicantCreateAction);
 $('createRequestCta').onclick=()=>{
   if(busy||profile?.role!=='applicant') return;
-  resetForm(); showOverviewView($('request-card'),$('newRequest'));
+  resetForm(); showOverviewView($('request-card'));
 };
 $('buyerMode').onchange=updateBuyerModeUI;
 $('vendorDirectoryNav').onclick=()=>showVendorDirectoryView();
@@ -882,5 +1038,5 @@ if(!api.configured) {
   notify('Chưa kết nối Supabase. Làm theo HUONG-DAN-ONLINE.md để bật đăng nhập. Bạn vẫn có thể mở demo bên dưới.',false,true);
   $('loginForm').querySelector('button').disabled=true;
 } else if(api.session) {
-  api.profile().then(enter).catch(e=>{api.remember(null);showLogin();notify(e.message,true,true);});
+  api.profile().then(enter).catch(e=>{clearCfoViewedState({broadcast:true,actorId:api.session?.user?.id});api.remember(null);showLogin();notify(e.message,true,true);});
 }

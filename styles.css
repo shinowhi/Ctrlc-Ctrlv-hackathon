@@ -48,6 +48,7 @@ button { cursor: pointer; }
 #queueBody tr[data-request-id]:hover { background: rgba(234,239,246,.6); }
 .status-tag.reject { color: #bd4c59; background: #ffe1e5; }
 body.role-applicant #queue-card { margin-top: 18px; }
+body.role-applicant #request-card:not([open]) { display: none !important; }
 body.role-applicant #audit-card { display: none; }
 body.role-applicant .stats-grid .stat-card:nth-child(3) { display: none; }
 body.role-cfo #request-card { display: none !important; }
@@ -110,6 +111,10 @@ h2 { margin-top: 5px; font: 700 18px 'Space Grotesk', system-ui, sans-serif; let
 .workspace-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(310px, .75fr); gap: 18px; align-items: start; }
 .request-card, .decision-card, .policy-card, .queue-card, .audit-card { padding: 22px; }
 .card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; margin-bottom: 19px; }
+.queue-heading-actions { display: flex; align-items: center; gap: 12px; }
+.queue-heading-actions .field { min-width: 190px; margin: 0; }
+.queue-toggle-button { white-space: nowrap; }
+.queue-content[hidden] { display: none; }
 .secure-pill, .policy-version, .hash-pill, .live-badge { padding: 7px 10px; border-radius: 10px; color: #5f6f83; background: rgba(228,234,243,.72); box-shadow: var(--shadow-in); font-size: 10px; white-space: nowrap; }
 .live-badge { color: #2eb582; background: var(--mint); box-shadow: none; }
 .live-badge i { display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: #2eb582; }
@@ -186,6 +191,7 @@ h2 { margin-top: 5px; font: 700 18px 'Space Grotesk', system-ui, sans-serif; let
 .approval-tools { display: grid; grid-template-columns: minmax(0,1fr) minmax(230px,.7fr) auto; align-items: end; gap: 14px; margin: 0 0 16px; padding: 15px; border: 1px solid rgba(118,93,245,.15); border-radius: 16px; background: rgba(247,246,255,.85); }
 .approval-summary strong { display: block; color: var(--ink); font-size: 13px; }
 .approval-summary p { margin: 5px 0 0; line-height: 1.55; }
+.cfo-unseen-shortcut { margin-top: 8px; padding: 6px 9px; }
 .batch-approve-button { min-height: 42px; padding: 10px 16px; border: 0; border-radius: 11px; font-size: 11px; font-weight: 750; white-space: nowrap; }
 .batch-approve-button:disabled,.queue-approve:disabled { cursor: not-allowed; opacity: .48; }
 .queue-actions { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
@@ -198,6 +204,9 @@ td { padding: 12px 10px; border-top: 1px solid var(--line); color: #5d6b81; font
 td strong { display: block; color: #495972; font-size: 11px; }
 td small { display: block; margin-top: 3px; color: #a1aabb; font-size: 9px; }
 .status-tag { display: inline-flex; padding: 6px 8px; border-radius: 8px; font-size: 9px; font-weight: 700; }
+.invoice-view-state { display: inline-flex; max-width: 100%; margin-top: 6px; padding: 4px 7px; border-radius: 7px; font-size: 10px; font-weight: 700; }
+.invoice-view-state.unseen { color: #9a5c20; background: #fff0d8; }
+.invoice-view-state.seen { color: #26784f; background: #dff5e9; }
 .status-tag.ready { color: #2e936d; background: var(--mint); }
 .status-tag.escalate { color: #a467db; background: var(--lavender); }
 .status-tag.review { color: #bd7143; background: var(--peach); }
@@ -498,6 +507,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
   .online .stat-card {padding:12px;gap:8px}
   .online .stat-icon {display:none}
   .online .card-heading {flex-wrap:wrap}
+  .queue-heading-actions {width:100%;align-items:stretch;flex-direction:column}
+  .queue-heading-actions .field {min-width:0;width:100%}
   .online .two-col {grid-template-columns:1fr}
   .online .topbar h1 {font-size:30px}
   .applicant-quick-action {align-items:stretch;flex-direction:column;padding:14px}
