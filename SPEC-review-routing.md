@@ -33,7 +33,8 @@ Existing browser and PGlite-backed tests cover queue transitions and policies. T
 - Low-confidence decision fields and amount/invoice-number mismatches: yellow, TREASURER_REVIEW.
 - Only clear contradictions automatically become red/REJECTED; preserve PDF and audit event.
 - AI-clear requests display green. Clear over-budget requests go to CFO; workflow badge is blue while waiting.
-- A manager resolves yellow cases first. Manager-confirmed values are shown to CFO without unresolved yellow warnings. A manager-cleared over-budget case proceeds to CFO.
+- CFO can view requests over 20,000,000 VND while they remain in `TREASURER_REVIEW`, but cannot approve or change them. The manager resolves yellow cases first; manager-confirmed values are shown to CFO without unresolved yellow warnings after the request moves to `CFO_REVIEW`.
+- If the daily summary is unavailable, CFO can still submit an approval with a required reason; the database computes the current total during the approval transaction. Manager approvals remain blocked until the summary loads.
 - When the manager must resolve a low-confidence, missing, or flagged supplier TIN/invoice number, show the AI value, confidence, and evidence beside an editable field; the manager confirms the exact value read from the PDF. Store each confirmed identifier separately with actor and timestamp.
 - Enforce identifier confirmation on single and batch approvals, including legacy queue items; a confidence/evidence/field-issue failure cannot bypass the manager check through CFO or batch approval.
 - Duplicate checks compare normalized TIN plus invoice number using either AI values with confidence ≥80% and evidence, or the stored manager-confirmed values. A general `manager_verified` flag does not validate a low-confidence OCR value.

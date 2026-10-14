@@ -46,7 +46,11 @@ create function public.can_read_request(p_id uuid) returns boolean language sql 
 set search_path = '' as $$
   select exists (select 1 from public.requests r where r.id = p_id and (
     r.owner_id = auth.uid() or public.my_role() = 'treasurer'
-    or (public.my_role() = 'cfo' and (r.escalated_at is not null or r.amount > 20000000))
+    or (public.my_role() = 'cfo' and (
+      r.status='CFO_REVIEW'
+      or (r.status in ('READY_FOR_APPROVAL','TREASURER_REVIEW') and r.amount>20000000)
+      or (r.status='APPROVED' and r.escalated_at is not null)
+    ))
   ));
 $$;
 
