@@ -6,7 +6,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;',
 const {normalizeInvoiceNumber,normalizePartyName,comparePartyName}=window.FinRefInvoiceMatching;
 const normalized = normalizePartyName;
 const roles={applicant:'Người nộp đơn',treasurer:'Quản lý tài chính',cfo:'Giám đốc Tài chính'};
-const statuses={TREASURER_REVIEW:'Chờ quản lý tài chính xử lý',READY_FOR_APPROVAL:'Sẵn sàng duyệt',CFO_REVIEW:'Chờ Giám đốc Tài chính duyệt',NEEDS_INFO:'Cần bổ sung',APPROVED:'Đã duyệt',REJECTED:'Từ chối'};
+const statuses={TREASURER_REVIEW:'Chờ Quản lý Tài chính xác minh',READY_FOR_APPROVAL:'AI đánh giá đạt · chờ người duyệt',CFO_REVIEW:'Chờ Giám đốc Tài chính duyệt',NEEDS_INFO:'Người nộp cần bổ sung',APPROVED:'Đã duyệt · chưa chuyển tiền',REJECTED:'Đã từ chối'};
 const checkLabels={invoice:'Đã xem hóa đơn PDF',fields_match:'Nhà cung cấp, người mua và số hóa đơn khớp form',total_includes_vat:'Tổng thanh toán trên form khớp tổng cuối cùng trên hóa đơn'};
 const fields=['requesterType','requester','department','buyerMode','buyerCompany','budgetCode','purpose','vendor','invoiceNumber','invoiceDate','amount'];
 const buyerNameFields=['buyerPersonName','buyerOrganizationName'];
@@ -23,6 +23,29 @@ function showLogin() {
   $('approvalTools').classList.add('hidden');
   $('dailyLimitNotice').classList.add('hidden'); $('dailyLimitNotice').textContent='';
   $('paymentForm').reset(); $('vendorReviewNotesList').innerHTML=''; $('vendorReviewNotesMessage').textContent=''; document.body.className='';
+}
+const rolePageTitles={applicant:'Đề nghị của bạn',treasurer:'Không gian quản lý tài chính',cfo:'Duyệt cấp quyền · Giám đốc Tài chính'};
+function setActiveNav(button) {
+  document.querySelectorAll('.side-nav .nav-item').forEach(item=>item.classList.toggle('active',item===button));
+}
+function showOverviewView(target=null,navButton=null) {
+  $('workspaceOverview').classList.remove('hidden');
+  $('vendorDirectoryView').classList.add('hidden');
+  $('pageTitle').textContent=rolePageTitles[profile?.role]||'';
+  $('pageSubtitle').textContent='Hóa đơn PDF · Tổng thanh toán cuối cùng · Người có thẩm quyền duyệt cuối';
+  setActiveNav(navButton||document.querySelector('[data-scroll="queue-card"]'));
+  if(target) requestAnimationFrame(()=>target.scrollIntoView({behavior:'smooth',block:'start'}));
+}
+function showVendorDirectoryView(target=null,navButton=$('vendorDirectoryNav')) {
+  if(!['treasurer','cfo'].includes(profile?.role)) return;
+  $('workspaceOverview').classList.add('hidden');
+  $('vendorDirectoryView').classList.remove('hidden');
+  $('pageTitle').textContent='Danh mục nhà cung cấp';
+  $('pageSubtitle').textContent=profile.role==='cfo'
+    ?'Tra cứu danh mục và xem các đề xuất cần Giám đốc Tài chính rà soát.'
+    :'Tra cứu, thêm nhà cung cấp và cập nhật bí danh đã đối chiếu.';
+  setActiveNav(navButton);
+  if(target) requestAnimationFrame(()=>target.scrollIntoView({behavior:'smooth',block:'start'}));
 }
 function resetForm() {
   editing=null; $('paymentForm').reset(); $('requester').value=profile?.display_name || '';
@@ -59,12 +82,14 @@ async function enter(p) {
   profile=p; epoch++; dailySummary=null; $('loginScreen').classList.add('hidden'); $('appShell').classList.remove('hidden');
   document.body.className='online role-' + p.role;
   $('profileName').textContent=p.display_name; $('profileRole').textContent=roles[p.role]; $('roleLabel').textContent=roles[p.role];
-  $('pageTitle').textContent={applicant:'Đề nghị của bạn',treasurer:'Không gian quản lý tài chính',cfo:'Duyệt cấp quyền · Giám đốc Tài chính'}[p.role];
+  $('pageTitle').textContent=rolePageTitles[p.role];
   $('queueTitle').textContent=p.role==='applicant'?'Hồ sơ của tôi':p.role==='cfo'?'Danh sách chờ Giám đốc duyệt':'Danh sách đề nghị thanh toán';
   $('request-card').classList.toggle('hidden',p.role!=='applicant'); $('newRequest').classList.toggle('hidden',p.role!=='applicant');
+  $('applicantQuickAction').classList.toggle('hidden',p.role!=='applicant');
   const canManageVendors=['treasurer','cfo'].includes(p.role);
-  $('vendorDirectoryNav').classList.toggle('hidden',!canManageVendors); $('vendors-card').classList.toggle('hidden',!canManageVendors);
+  $('vendorDirectoryNav').classList.toggle('hidden',!canManageVendors); $('vendorShortcut').classList.toggle('hidden',!canManageVendors);
   $('vendorReviewNotesNav').classList.toggle('hidden',p.role!=='cfo'); $('vendorReviewNotesCard').classList.toggle('hidden',p.role!=='cfo');
+  showOverviewView(null,document.querySelector('[data-scroll="queue-card"]'));
   $('statusFilter').value=p.role==='applicant'?'':'APPROVAL_QUEUE'; $('batchReason').value=''; resetForm(); await refresh();
   clearInterval(timer); timer=setInterval(()=>{if(!document.hidden) refresh().catch(()=>{});},10000);
 }
@@ -122,6 +147,7 @@ async function refreshVendorReviewNotes(run=epoch) {
     list.querySelectorAll('[data-vendor-note-open]').forEach(button=>button.onclick=async()=>{
       const note=vendorReviewNotes.find(item=>item.request_id===button.dataset.vendorNoteOpen);
       if(!note) return;
+      showOverviewView($('decisionCard'),document.querySelector('[data-scroll="queue-card"]'));
       await openRequest(note.request_id,true);
     });
     list.querySelectorAll('[data-vendor-note-resolve]').forEach(button=>button.onclick=async()=>{
@@ -146,14 +172,14 @@ async function refreshVendorReviewNotes(run=epoch) {
         $('vendorAliasTarget').value=note.evidence.vendorId||'';
         $('vendorAliasName').value=note.vendor_name;
         $('vendorAliasVerified').checked=false;
-        $('vendorAliasForm').scrollIntoView({behavior:'smooth'});
+        showVendorDirectoryView($('vendorAliasForm'),$('vendorReviewNotesNav'));
         $('vendorAliasName').focus({preventScroll:true});
         notify('Đã điền bí danh OCR. Đối chiếu hóa đơn/MST rồi xác nhận để lưu bí danh.');
         return;
       }
       $('vendorLegalName').value=note.vendor_name;
       $('vendorTaxCode').value=note.tax_code;
-      $('vendors-card').scrollIntoView({behavior:'smooth'});
+      showVendorDirectoryView($('vendorCreateForm'),$('vendorReviewNotesNav'));
       $('vendorLegalName').focus({preventScroll:true});
       notify('Đã điền tên và MST để CFO tự xác minh rồi quyết định thêm vào danh mục.');
     });
@@ -234,19 +260,71 @@ function renderApprovalTools() {
   button.textContent=`Duyệt tất cả (${items.length})`;
   button.disabled=busy||!dailySummary||items.length===0||(profile.role==='cfo'&&!$('batchReason').value.trim());
 }
+function workflowDetails(request,role=profile?.role) {
+  const status=request?.status;
+  const reason=withoutInvoiceDateAssessmentIssues(request?.reason)
+    ||({
+      TREASURER_REVIEW:'AI đã đánh dấu dữ kiện cần Quản lý Tài chính đối chiếu với PDF.',
+      READY_FOR_APPROVAL:'AI đã đánh giá hóa đơn đạt điều kiện; đang chờ quyết định của người có thẩm quyền.',
+      CFO_REVIEW:'Hồ sơ đang chờ Giám đốc Tài chính xem xét.',
+      NEEDS_INFO:'Hồ sơ còn thiếu thông tin cần người nộp bổ sung.',
+      APPROVED:'Người có thẩm quyền đã duyệt khoản phải trả; hệ thống chưa chuyển tiền.',
+      REJECTED:'Hồ sơ đã bị từ chối.'
+    }[status]||'Chưa có lý do cập nhật.');
+  let nextActor='Chưa xác định';
+  if(status==='NEEDS_INFO') nextActor='Người nộp';
+  else if(status==='TREASURER_REVIEW') nextActor='Quản lý Tài chính';
+  else if(status==='READY_FOR_APPROVAL') nextActor=Number(request?.amount)>20000000
+    ?'Giám đốc Tài chính'
+    :'Quản lý Tài chính (CFO nếu vượt hạn mức ngày)';
+  else if(status==='CFO_REVIEW') nextActor='Giám đốc Tài chính';
+  else if(['APPROVED','REJECTED'].includes(status)) nextActor='Không còn bước xử lý';
+  let action=status==='APPROVED'?'Khoản phải trả đã được duyệt; chưa có xác nhận chuyển tiền.'
+    :status==='REJECTED'?'Hồ sơ đã kết thúc do bị từ chối.'
+      :'Bạn chưa cần làm gì ở hồ sơ này.';
+  if(role==='applicant') {
+    if(status==='NEEDS_INFO') action='Bạn cần bổ sung thông tin và gửi lại hồ sơ.';
+    else if(['TREASURER_REVIEW','READY_FOR_APPROVAL','CFO_REVIEW'].includes(status)) action='Bạn chưa cần làm gì — hồ sơ đang chờ bên xử lý.';
+    else if(status==='APPROVED') action='Khoản phải trả đã được duyệt; chưa có xác nhận chuyển tiền.';
+    else if(status==='REJECTED') action='Hồ sơ đã kết thúc do bị từ chối.';
+  } else if(role==='treasurer') {
+    if(status==='TREASURER_REVIEW') action='Bạn cần đối chiếu PDF và form, rồi chọn cách xử lý.';
+    else if(status==='READY_FOR_APPROVAL'&&Number(request?.amount)<=20000000) action='Bạn có thể duyệt; nếu đợt vượt hạn mức ngày, hệ thống sẽ chuyển CFO.';
+    else if(status==='NEEDS_INFO') action='Hồ sơ đang chờ người nộp bổ sung.';
+    else if(status==='CFO_REVIEW'||Number(request?.amount)>20000000) action='Hồ sơ đang chờ Giám đốc Tài chính xử lý.';
+  } else if(role==='cfo') {
+    if(status==='CFO_REVIEW'||(status==='READY_FOR_APPROVAL'&&Number(request?.amount)>20000000)) action='Bạn cần xem xét hồ sơ; khi duyệt phải ghi lý do.';
+    else if(status==='NEEDS_INFO') action='Hồ sơ đang chờ người nộp bổ sung.';
+    else if(status==='TREASURER_REVIEW'||status==='READY_FOR_APPROVAL') action='Hồ sơ đang chờ Quản lý Tài chính xử lý.';
+  }
+  return {reason,nextActor,action,updatedAt:time(request?.updated_at||request?.created_at)};
+}
+function workflowSummaryMarkup(request,role=profile?.role,reason=request?.reason) {
+  const details=workflowDetails(request,role);
+  const displayReason=withoutInvoiceDateAssessmentIssues(reason)||details.reason;
+  return `<section class="workflow-summary" aria-label="Diễn giải trạng thái hồ sơ"><div><span>Lý do</span><p>${esc(displayReason)}</p></div><div><span>Người xử lý tiếp</span><p>${esc(details.nextActor)}</p></div><div><span>Bạn cần làm gì</span><p>${esc(details.action)}</p></div><small>Cập nhật lần cuối: ${esc(details.updatedAt)}</small></section>`;
+}
+function renderApplicantQuickAction() {
+  if(profile?.role!=='applicant') return;
+  const needsInfo=rows.filter(request=>request.status==='NEEDS_INFO');
+  $('applicantActionMessage').textContent=needsInfo.length
+    ?`Bạn có ${needsInfo.length} hồ sơ cần bổ sung. Mở hồ sơ tương ứng trong danh sách để xem trường cần cập nhật.`
+    :'Bạn chưa cần làm gì — hồ sơ đang chờ bên xử lý.';
+}
 function renderRows() {
   const filter=$('statusFilter').value, actionable=new Set(approvalQueue().map(r=>r.id));
   const filtered=rows.filter(r=>!filter||(filter==='APPROVAL_QUEUE'?actionable.has(r.id):r.status===filter));
   $('queueBody').innerHTML=filtered.length ? filtered.map(r=>{
-    const highReady=r.status==='READY_FOR_APPROVAL'&&Number(r.amount)>20000000;
-    const label=highReady&&profile?.role==='cfo'?'Chờ Giám đốc duyệt (>20 triệu)':highReady&&profile?.role==='treasurer'?'Đủ điều kiện · thuộc thẩm quyền Giám đốc':statuses[r.status]||esc(r.status);
-    const actions=actionable.has(r.id)?`<div class="queue-actions"><button class="queue-approve" data-approve-id="${r.id}" ${busy||!dailySummary||(profile.role==='cfo'&&!$('batchReason').value.trim())?'disabled':''}>Duyệt lẻ</button><button class="text-button" data-id="${r.id}">Mở</button></div>`:`<button class="text-button" data-id="${r.id}">Mở</button>`;
-    const stateClass={APPROVED:'ready',READY_FOR_APPROVAL:'ready',REJECTED:'reject',CFO_REVIEW:'cfo-wait',NEEDS_INFO:'missing',TREASURER_REVIEW:'review'}[r.status]||'review';
-    return `<tr><td><strong>PAY-${esc(r.id.slice(0,8))}</strong><small>${esc(time(r.created_at))}</small></td><td>${esc(r.payload.requester||'Chưa điền')}<small>${esc(r.payload.department||'')}</small></td><td>${r.amount==null?'—':money(r.amount)}</td><td><span class="status-tag ${stateClass}">${label}</span></td><td>${actions}</td></tr>`;
+    const label=statuses[r.status]||esc(r.status);
+    const context=workflowDetails(r);
+    const actions=actionable.has(r.id)?`<div class="queue-actions"><button class="queue-approve" type="button" data-approve-id="${r.id}" aria-label="Duyệt hồ sơ PAY-${esc(r.id.slice(0,8))}" ${busy||!dailySummary||(profile.role==='cfo'&&!$('batchReason').value.trim())?'disabled':''}>Duyệt lẻ</button><button class="text-button" type="button" data-id="${r.id}" aria-label="Mở hồ sơ PAY-${esc(r.id.slice(0,8))}">Mở</button></div>`:`<button class="text-button" type="button" data-id="${r.id}" aria-label="Mở hồ sơ PAY-${esc(r.id.slice(0,8))}">Mở</button>`;
+    const stateClass={APPROVED:'ready',READY_FOR_APPROVAL:'ai-ready',REJECTED:'reject',CFO_REVIEW:'cfo-wait',NEEDS_INFO:'missing',TREASURER_REVIEW:'review'}[r.status]||'review';
+    return `<tr data-request-id="${esc(r.id)}"><td data-label="Mã hồ sơ"><strong>PAY-${esc(r.id.slice(0,8))}</strong><small>Tạo lúc ${esc(time(r.created_at))}</small></td><td data-label="Người đề nghị">${esc(r.payload.requester||'Chưa điền')}<small>${esc(r.payload.department||'')}</small></td><td data-label="Số tiền">${r.amount==null?'—':money(r.amount)}</td><td data-label="Trạng thái"><span class="status-tag ${stateClass}">${label}</span><div class="queue-status-meta"><span><strong>Lý do:</strong> ${esc(context.reason)}</span><span><strong>Người xử lý tiếp:</strong> ${esc(context.nextActor)}</span><span><strong>Bạn cần làm gì:</strong> ${esc(context.action)}</span><small>Cập nhật: ${esc(context.updatedAt)}</small></div></td><td data-label="Thao tác">${actions}</td></tr>`;
   }).join('') : '<tr><td colspan="5" class="empty-table">Không có hóa đơn trong danh sách này.</td></tr>';
   $('queueBody').querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>openRequest(b.dataset.id));
   $('queueBody').querySelectorAll('[data-approve-id]').forEach(b=>b.onclick=()=>approveQueueItem(rows.find(r=>r.id===b.dataset.approveId)));
   for(const [id,status] of Object.entries({waitingCount:'TREASURER_REVIEW',cfoCount:'CFO_REVIEW',readyCount:'READY_FOR_APPROVAL',infoCount:'NEEDS_INFO'})) $(id).textContent=rows.filter(r=>r.status===status).length;
+  renderApplicantQuickAction();
   renderApprovalTools();
 }
 function aiConfidenceLabel(field) {
@@ -566,10 +644,10 @@ async function openRequest(id,fromVendorNote=false) {
       ?`<p class="muted">Hồ sơ có điểm cần xác minh. Quản lý tài chính kiểm tra hóa đơn và form trước; nếu được xác nhận nhưng vượt 20 triệu/hồ sơ hoặc tổng 100 triệu/ngày, hệ thống chuyển Giám đốc cấp quyền.</p>${renderIdentifierConfirmations(r,ai,annotations)}<div class="review-checks">${Object.entries(checkLabels).map(([k,v])=>`<label class="plain-check"><input type="checkbox" name="${k}">${v}</label>`).join('')}</div>`
       :'<p class="muted">AI đã đánh giá hóa đơn đạt điều kiện. Quản lý không cần kiểm tra lại từng hồ sơ; hãy xem tổng danh sách và số dư hạn mức ngày rồi duyệt riêng hoặc duyệt cả danh sách.</p>';
   const reviewForm=mayReview?`<form id="reviewForm" class="review-form">${reviewerMessage}<label class="field">${profile.role==='cfo'?'Lý do duyệt':'Ghi chú kiểm tra / nội dung cần bổ sung'}<textarea id="reviewReason" maxlength="2000" rows="3" placeholder="${profile.role==='cfo'?'Bắt buộc khi Giám đốc duyệt':'Bắt buộc khi yêu cầu bổ sung hoặc từ chối'}"></textarea></label><div class="decision-actions"><button class="action-secondary" type="button" data-action="clarify">Yêu cầu bổ sung</button><button class="action-secondary" type="button" data-action="reject">Từ chối</button><button class="action-primary" type="button" data-action="approve">${profile.role==='cfo'?'Duyệt và ghi lý do':manualChecks?'Xác nhận đã kiểm tra và xử lý':'Duyệt hóa đơn'}</button></div></form>`:'';
-  const bannerClass={APPROVED:'ready',READY_FOR_APPROVAL:'ready',REJECTED:'reject',CFO_REVIEW:'cfo-wait',NEEDS_INFO:'missing',TREASURER_REVIEW:'review'}[r.status]||'review';
+  const bannerClass={APPROVED:'ready',READY_FOR_APPROVAL:'ai-ready',REJECTED:'reject',CFO_REVIEW:'cfo-wait',NEEDS_INFO:'missing',TREASURER_REVIEW:'review'}[r.status]||'review';
   const aiClear=['CLEAR','U3'].includes(ai?.assessment?.code);
   const aiBadge=aiClear&&r.status==='CFO_REVIEW'?'<span class="ai-clear-badge">AI clear</span>':'';
-  $('decisionResult').innerHTML=`<div class="decision-banner ${bannerClass}"><div><strong>${statuses[r.status]||esc(r.status)}</strong><small>PAY-${esc(r.id.slice(0,8))} · phiên bản ${r.version}</small></div>${aiBadge}</div><h2 class="detail-amount">${r.amount==null?'Chưa điền':money(r.amount)} <small>theo form</small></h2>${visibleReason?`<p class="notice">${esc(visibleReason)}</p>`:''}${visibleQuestion?`<p class="notice">${esc(visibleQuestion)}</p>`:''}${reviewLayout}<div class="scope-note compact"><strong>Chưa kiểm tra:</strong> ngân sách theo mã, chính sách chi tiêu, MST doanh nghiệp, NCC được duyệt, PO và lịch sử hóa đơn/thanh toán. AI không xác thực nguồn phát hành hoặc chữ ký số.</div>${reviewForm}${profile.role==='applicant'&&r.status==='NEEDS_INFO'?'<button class="primary-button clay-button" id="supplementButton">Bổ sung và gửi lại</button>':''}`;
+  $('decisionResult').innerHTML=`<div class="decision-banner ${bannerClass}"><div><strong>${statuses[r.status]||esc(r.status)}</strong><small>PAY-${esc(r.id.slice(0,8))} · phiên bản ${r.version}</small></div>${aiBadge}</div><h2 class="detail-amount">${r.amount==null?'Chưa điền':money(r.amount)} <small>theo form</small></h2>${workflowSummaryMarkup(r,profile.role,visibleReason)}${visibleQuestion?`<p class="notice">${esc(visibleQuestion)}</p>`:''}${reviewLayout}<div class="scope-note compact"><strong>Chưa kiểm tra:</strong> ngân sách theo mã, chính sách chi tiêu, MST doanh nghiệp, NCC được duyệt, PO và lịch sử hóa đơn/thanh toán. AI không xác thực nguồn phát hành hoặc chữ ký số.</div>${reviewForm}${profile.role==='applicant'&&r.status==='NEEDS_INFO'?'<button class="primary-button clay-button" id="supplementButton">Bổ sung và gửi lại</button>':''}`;
   if(profile.role==='applicant'&&r.status==='NEEDS_INFO') {
     const panel=document.createElement('section');
     panel.className='u1-feedback';
@@ -767,8 +845,19 @@ $('batchReason').oninput=renderRows;
 $('approveAllButton').onclick=approveAllQueue;
 $('cancelEdit').onclick=()=>{if(!busy)resetForm();};
 $('newRequest').onclick=()=>{if(!busy)resetForm();};
+$('createRequestCta').onclick=()=>{
+  if(busy||profile?.role!=='applicant') return;
+  resetForm(); showOverviewView($('request-card'),$('newRequest'));
+};
 $('buyerMode').onchange=updateBuyerModeUI;
-document.querySelectorAll('[data-scroll]').forEach(b=>b.addEventListener('click',()=>$(b.dataset.scroll).scrollIntoView({behavior:'smooth'})));
+$('vendorDirectoryNav').onclick=()=>showVendorDirectoryView();
+$('openVendorDirectory').onclick=()=>showVendorDirectoryView();
+$('backToOverview').onclick=()=>showOverviewView($('queue-card'),document.querySelector('[data-scroll="queue-card"]'));
+document.querySelectorAll('[data-scroll]').forEach(b=>b.addEventListener('click',()=>{
+  const target=$(b.dataset.scroll);
+  if(target.closest('#vendorDirectoryView')) showVendorDirectoryView(target,b);
+  else showOverviewView(target,b);
+}));
 $('verifyButton').onclick=()=>{
   const results=FinRefRules.verify();
   $('verifyResult').innerHTML=`<p>${results.filter(r=>r.pass).length}/${results.length} PASS · ${esc(new Date().toLocaleString('vi-VN'))}</p><ul>${results.map(r=>`<li>${r.pass?'✓':'✗'} ${esc(r.name)}: ${r.actual} (cần ${r.expected})</li>`).join('')}</ul>`;
