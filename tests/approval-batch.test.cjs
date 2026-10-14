@@ -35,6 +35,7 @@ async function fixture(){
   await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261008-production-forward-sync.sql'),'utf8'));
   await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261008-z-sales-total-confidence-81.sql'),'utf8'));
   await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261009-structured-buyer-names.sql'),'utf8'));
+  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261015-cfo-read-high-value-manager-review.sql'),'utf8'));
   await db.query('insert into profiles values ($1,$2,$3),($4,$5,$6),($7,$8,$9)',
     [applicant,'Applicant','applicant',treasurer,'Treasurer','treasurer',cfo,'CFO','cfo']);
   const as=async(user,sql,args=[])=>{
@@ -455,6 +456,27 @@ test('manager sends the whole small-invoice batch to CFO when it exceeds the dai
     assert.equal(approved.projected_total,102000000);
     const summary=(await as(cfo,'select * from daily_approval_summary()')).rows[0];
     assert.equal(summary.approved_total,102000000);
+  }finally{await db.close();}
+});
+
+test('CFO can view but cannot approve a high-value invoice while manager review is pending',async()=>{
+  const {db,as,invoice}=await fixture();
+  try{
+    const request=await invoice(25000001,'TREASURER_REVIEW');
+    const invoicePath='private/'+request.id+'.pdf';
+    await db.query('insert into storage.objects(name,bucket_id) values($1,$2)',[invoicePath,'evidence']);
+    const visible=await as(cfo,'select id from requests where id=$1',[request.id]);
+    assert.deepEqual(visible.rows.map(row=>row.id),[request.id]);
+    const pdf=await as(cfo,'select name from storage.objects where name=$1',[invoicePath]);
+    assert.deepEqual(pdf.rows.map(row=>row.name),[invoicePath]);
+    await assert.rejects(as(cfo,"select * from review_request($1,$2,'approve',$3,'{}'::jsonb)",[
+      request.id,request.version,'Hồ sơ còn chờ Quản lý kiểm tra'
+    ]),/Không có quyền xử lý hồ sơ ở trạng thái này/i);
+    await assert.rejects(as(cfo,'select review_requests_batch($1::jsonb,$2)',[
+      JSON.stringify([{id:request.id,version:request.version}]),'Duyệt hồ sơ sau khi quản lý xác minh'
+    ]),/hàng chờ CFO/i);
+    const stored=await db.query('select status from requests where id=$1',[request.id]);
+    assert.equal(stored.rows[0].status,'TREASURER_REVIEW');
   }finally{await db.close();}
 });
 

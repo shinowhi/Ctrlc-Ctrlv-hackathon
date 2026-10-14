@@ -54,7 +54,7 @@
     async logout() { try { if(this.session) await this.request('/auth/v1/logout?scope=local',{method:'POST'}); } finally {this.remember(null);} }
     async list(role) {
       const pageSize = 200;
-      const scope = role === 'cfo' ? '&or=(and(status.eq.READY_FOR_APPROVAL,amount.gt.20000000),status.eq.CFO_REVIEW)' : '';
+      const scope = role === 'cfo' ? '&or=(and(status.eq.READY_FOR_APPROVAL,amount.gt.20000000),status.eq.CFO_REVIEW,and(status.eq.TREASURER_REVIEW,amount.gt.20000000))' : '';
       const all = [];
       for (let offset = 0; ; offset += pageSize) {
         const page = await this.request(`/rest/v1/requests?select=*&order=created_at.desc,id.desc${scope}&limit=${pageSize}&offset=${offset}`);

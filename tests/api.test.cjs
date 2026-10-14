@@ -13,16 +13,19 @@ test('Expired session refreshes once for concurrent reads',async()=>{
   }finally{global.fetch=previous;}
 });
 test('Approval lists paginate beyond the first 200 rows for each financial role',async()=>{
-  const previous=global.fetch;const offsets=[];
+  const previous=global.fetch;const offsets=[],scopes=[];
   global.fetch=async(url)=>{
-    const parsed=new URL(url,'https://test.supabase.co');offsets.push(parsed.searchParams.get('offset'));
+    const parsed=new URL(url,'https://test.supabase.co');offsets.push(parsed.searchParams.get('offset'));scopes.push(parsed.searchParams.get('or'));
     const offset=Number(parsed.searchParams.get('offset'));
     return new Response(JSON.stringify(Array.from({length:offset===0?200:1},(_,i)=>({id:String(offset+i)}))));
   };
   try{
     const api=new Api({supabaseUrl:'https://test.supabase.co',supabaseAnonKey:'public'},memory());api.remember({access_token:'a',expires_at:Date.now()/1000+300});
     assert.equal((await api.list('treasurer')).length,201);assert.deepEqual(offsets,['0','200']);
+    assert.deepEqual(scopes.slice(0,2),[null,null]);
     offsets.length=0;assert.equal((await api.list('cfo')).length,201);assert.deepEqual(offsets,['0','200']);
+    const cfoScope='(and(status.eq.READY_FOR_APPROVAL,amount.gt.20000000),status.eq.CFO_REVIEW,and(status.eq.TREASURER_REVIEW,amount.gt.20000000))';
+    assert.deepEqual(scopes.slice(2),[cfoScope,cfoScope]);
   }finally{global.fetch=previous;}
 });
 test('Logout clears local tokens when network is unavailable',async()=>{

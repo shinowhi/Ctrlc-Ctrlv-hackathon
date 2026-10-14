@@ -8,7 +8,7 @@
 2. Các trường thông tin trên form người nộp đều không bắt buộc lúc gửi; PDF vẫn bắt buộc. Thiếu trường sau khi gửi sẽ vào `NEEDS_INFO` (U1), được tô tím và trả lại người nộp. `buyerCompany` không bắt buộc khi đã chọn `NO_NAME`.
 3. Nếu dữ kiện hóa đơn không chắc, sai số tiền/số hóa đơn hoặc có chi tiết cần xác minh, hồ sơ vào `TREASURER_REVIEW` (U2, vàng). Mâu thuẫn rõ ở tên người mua hoặc nhà cung cấp bị từ chối trực tiếp và vẫn lưu `REJECTED`. Quản lý xác nhận các điểm vàng; nếu hồ sơ sau xác minh vượt thẩm quyền, chuyển lên Giám đốc.
 4. `READY_FOR_APPROVAL` có nghĩa AI đã đánh giá các trường cần thiết đạt ngưỡng, đủ điều kiện để người có thẩm quyền duyệt. Hóa đơn vượt ngưỡng hồ sơ nhưng AI clear vào `CFO_REVIEW` (U3, xanh dương); hóa đơn chờ CFO sau khi Quản lý xác minh cũng ở màu xanh dương.
-5. `CFO_REVIEW` là hàng chờ của Giám đốc Tài chính. Hàng này nhận hóa đơn trên 20 triệu đã đạt kiểm tra, hóa đơn quản lý chuyển lên do tổng ngày vượt hạn mức, và ngoại lệ khác được chuyển cấp. Hồ sơ U2 chỉ được chuyển CFO sau khi Quản lý xác minh; CFO nhận dữ kiện đã xác minh và không còn cờ vàng mở.
+5. `CFO_REVIEW` là hàng chờ hành động của Giám đốc Tài chính. Hàng này nhận hóa đơn trên 20 triệu đã đạt kiểm tra, hóa đơn quản lý chuyển lên do tổng ngày vượt hạn mức, và ngoại lệ khác được chuyển cấp. CFO có thể xem chỉ đọc hồ sơ trên 20 triệu khi hồ sơ còn ở `TREASURER_REVIEW`; chỉ Quản lý mới được xử lý hồ sơ ở trạng thái này. Hồ sơ U2 chỉ được chuyển vào `CFO_REVIEW` sau khi Quản lý xác minh; lúc đó CFO nhận dữ kiện đã xác minh và không còn cờ vàng mở.
 
 ## Quy tắc phân tích hóa đơn
 
