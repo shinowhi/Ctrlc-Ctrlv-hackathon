@@ -345,6 +345,26 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 @media(max-width:650px){.submitted-form-panel,.invoice-review-panel{padding:13px}.pdf-viewer-wrap{padding:7px;min-height:220px}.pdf-toolbar{flex-wrap:wrap}.review-pane-heading h3{font-size:16px}}
 
 .vendor-card {margin:18px 0;padding:22px}
+.vendor-shortcut {margin:18px 0;padding:0;overflow:hidden}
+.vendor-card-summary {display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 22px;cursor:pointer;list-style:none}
+.vendor-card-summary::-webkit-details-marker {display:none}
+.vendor-card-summary:focus-visible {outline:3px solid #7754d7;outline-offset:-3px}
+.vendor-summary-copy {display:grid;gap:4px;min-width:0}
+.vendor-summary-copy .eyebrow {margin:0}
+.vendor-summary-copy h2 {margin:0;color:var(--ink);font:650 16px 'Space Grotesk',system-ui,sans-serif}
+.vendor-summary-copy .muted {margin:0;font-size:12px;line-height:1.5}
+.vendor-summary-action {display:flex;align-items:center;gap:10px;flex:none;color:var(--purple);font-size:12px;font-weight:700;white-space:nowrap}
+.vendor-toggle-open {display:none}
+.vendor-shortcut[open] .vendor-toggle-closed {display:none}
+.vendor-shortcut[open] .vendor-toggle-open {display:inline}
+.vendor-summary-icon {display:grid;width:30px;height:30px;place-items:center;border-radius:9px;background:rgba(255,255,255,.75);color:var(--purple)}
+.vendor-summary-icon::before {content:'+';font-size:20px;line-height:1}
+.vendor-shortcut[open] .vendor-summary-icon::before {content:'−'}
+.vendor-shortcut[open] > .vendor-card-summary {border-bottom:1px solid var(--line)}
+.vendor-shortcut-body {display:flex;align-items:center;justify-content:space-between;gap:18px;padding:15px 22px 18px}
+.vendor-shortcut-body .muted {margin:0;line-height:1.5}
+.vendor-page-actions {margin:4px 0 12px}
+.vendor-directory-view {min-width:0}
 .vendor-management-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:0 0 20px}
 .vendor-management-form {display:grid;align-content:start;gap:12px;padding:16px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.64)}
 .vendor-management-form h3 {margin:0;color:var(--ink);font:650 14px 'Space Grotesk',system-ui,sans-serif}
@@ -359,7 +379,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .vendor-record small {display:block;margin-top:4px;color:var(--muted);font-size:10px}
 .vendor-alias-list {display:flex;flex-wrap:wrap;align-content:start;gap:6px}
 .vendor-alias-chip {max-width:100%;padding:5px 8px;border-radius:8px;color:#5f6f83;background:#eff2f7;font-size:10px;overflow-wrap:anywhere}
-@media(max-width:650px){.vendor-card{padding:16px}.vendor-management-grid,.vendor-record{grid-template-columns:1fr}.vendor-management-form .secondary-button{width:100%}}
+@media(max-width:650px){.vendor-card{padding:16px}.vendor-shortcut{padding:0}.vendor-card-summary{align-items:flex-start;padding:15px 16px}.vendor-summary-action{gap:7px}.vendor-shortcut-body{align-items:stretch;flex-direction:column;padding:14px 16px 16px}.vendor-shortcut-body .secondary-button{width:100%}.vendor-management-grid,.vendor-record{grid-template-columns:1fr}.vendor-management-form .secondary-button{width:100%}}
 
 .decision-banner.review {background:#fff2c8;color:#8d6800}
 .decision-banner.ai-ready {background:#e2efff;color:#3b5f96}

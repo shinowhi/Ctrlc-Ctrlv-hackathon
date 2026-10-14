@@ -24,6 +24,29 @@ function showLogin() {
   $('dailyLimitNotice').classList.add('hidden'); $('dailyLimitNotice').textContent='';
   $('paymentForm').reset(); $('vendorReviewNotesList').innerHTML=''; $('vendorReviewNotesMessage').textContent=''; document.body.className='';
 }
+const rolePageTitles={applicant:'Đề nghị của bạn',treasurer:'Không gian quản lý tài chính',cfo:'Duyệt cấp quyền · Giám đốc Tài chính'};
+function setActiveNav(button) {
+  document.querySelectorAll('.side-nav .nav-item').forEach(item=>item.classList.toggle('active',item===button));
+}
+function showOverviewView(target=null,navButton=null) {
+  $('workspaceOverview').classList.remove('hidden');
+  $('vendorDirectoryView').classList.add('hidden');
+  $('pageTitle').textContent=rolePageTitles[profile?.role]||'';
+  $('pageSubtitle').textContent='Hóa đơn PDF · Tổng thanh toán cuối cùng · Người có thẩm quyền duyệt cuối';
+  setActiveNav(navButton||document.querySelector('[data-scroll="queue-card"]'));
+  if(target) requestAnimationFrame(()=>target.scrollIntoView({behavior:'smooth',block:'start'}));
+}
+function showVendorDirectoryView(target=null,navButton=$('vendorDirectoryNav')) {
+  if(!['treasurer','cfo'].includes(profile?.role)) return;
+  $('workspaceOverview').classList.add('hidden');
+  $('vendorDirectoryView').classList.remove('hidden');
+  $('pageTitle').textContent='Danh mục nhà cung cấp';
+  $('pageSubtitle').textContent=profile.role==='cfo'
+    ?'Tra cứu danh mục và xem các đề xuất cần Giám đốc Tài chính rà soát.'
+    :'Tra cứu, thêm nhà cung cấp và cập nhật bí danh đã đối chiếu.';
+  setActiveNav(navButton);
+  if(target) requestAnimationFrame(()=>target.scrollIntoView({behavior:'smooth',block:'start'}));
+}
 function resetForm() {
   editing=null; $('paymentForm').reset(); $('requester').value=profile?.display_name || '';
   $('formTitle').textContent='Tạo đề nghị mới'; $('submitButton').textContent='Gửi đề nghị →';
@@ -59,13 +82,14 @@ async function enter(p) {
   profile=p; epoch++; dailySummary=null; $('loginScreen').classList.add('hidden'); $('appShell').classList.remove('hidden');
   document.body.className='online role-' + p.role;
   $('profileName').textContent=p.display_name; $('profileRole').textContent=roles[p.role]; $('roleLabel').textContent=roles[p.role];
-  $('pageTitle').textContent={applicant:'Đề nghị của bạn',treasurer:'Không gian quản lý tài chính',cfo:'Duyệt cấp quyền · Giám đốc Tài chính'}[p.role];
+  $('pageTitle').textContent=rolePageTitles[p.role];
   $('queueTitle').textContent=p.role==='applicant'?'Hồ sơ của tôi':p.role==='cfo'?'Danh sách chờ Giám đốc duyệt':'Danh sách đề nghị thanh toán';
   $('request-card').classList.toggle('hidden',p.role!=='applicant'); $('newRequest').classList.toggle('hidden',p.role!=='applicant');
   $('applicantQuickAction').classList.toggle('hidden',p.role!=='applicant');
   const canManageVendors=['treasurer','cfo'].includes(p.role);
-  $('vendorDirectoryNav').classList.toggle('hidden',!canManageVendors); $('vendors-card').classList.toggle('hidden',!canManageVendors);
+  $('vendorDirectoryNav').classList.toggle('hidden',!canManageVendors); $('vendorShortcut').classList.toggle('hidden',!canManageVendors);
   $('vendorReviewNotesNav').classList.toggle('hidden',p.role!=='cfo'); $('vendorReviewNotesCard').classList.toggle('hidden',p.role!=='cfo');
+  showOverviewView(null,document.querySelector('[data-scroll="queue-card"]'));
   $('statusFilter').value=p.role==='applicant'?'':'APPROVAL_QUEUE'; $('batchReason').value=''; resetForm(); await refresh();
   clearInterval(timer); timer=setInterval(()=>{if(!document.hidden) refresh().catch(()=>{});},10000);
 }
@@ -123,6 +147,7 @@ async function refreshVendorReviewNotes(run=epoch) {
     list.querySelectorAll('[data-vendor-note-open]').forEach(button=>button.onclick=async()=>{
       const note=vendorReviewNotes.find(item=>item.request_id===button.dataset.vendorNoteOpen);
       if(!note) return;
+      showOverviewView($('decisionCard'),document.querySelector('[data-scroll="queue-card"]'));
       await openRequest(note.request_id,true);
     });
     list.querySelectorAll('[data-vendor-note-resolve]').forEach(button=>button.onclick=async()=>{
@@ -147,14 +172,14 @@ async function refreshVendorReviewNotes(run=epoch) {
         $('vendorAliasTarget').value=note.evidence.vendorId||'';
         $('vendorAliasName').value=note.vendor_name;
         $('vendorAliasVerified').checked=false;
-        $('vendorAliasForm').scrollIntoView({behavior:'smooth'});
+        showVendorDirectoryView($('vendorAliasForm'),$('vendorReviewNotesNav'));
         $('vendorAliasName').focus({preventScroll:true});
         notify('Đã điền bí danh OCR. Đối chiếu hóa đơn/MST rồi xác nhận để lưu bí danh.');
         return;
       }
       $('vendorLegalName').value=note.vendor_name;
       $('vendorTaxCode').value=note.tax_code;
-      $('vendors-card').scrollIntoView({behavior:'smooth'});
+      showVendorDirectoryView($('vendorCreateForm'),$('vendorReviewNotesNav'));
       $('vendorLegalName').focus({preventScroll:true});
       notify('Đã điền tên và MST để CFO tự xác minh rồi quyết định thêm vào danh mục.');
     });
@@ -822,10 +847,17 @@ $('cancelEdit').onclick=()=>{if(!busy)resetForm();};
 $('newRequest').onclick=()=>{if(!busy)resetForm();};
 $('createRequestCta').onclick=()=>{
   if(busy||profile?.role!=='applicant') return;
-  resetForm(); $('request-card').scrollIntoView({behavior:'smooth'});
+  resetForm(); showOverviewView($('request-card'),$('newRequest'));
 };
 $('buyerMode').onchange=updateBuyerModeUI;
-document.querySelectorAll('[data-scroll]').forEach(b=>b.addEventListener('click',()=>$(b.dataset.scroll).scrollIntoView({behavior:'smooth'})));
+$('vendorDirectoryNav').onclick=()=>showVendorDirectoryView();
+$('openVendorDirectory').onclick=()=>showVendorDirectoryView();
+$('backToOverview').onclick=()=>showOverviewView($('queue-card'),document.querySelector('[data-scroll="queue-card"]'));
+document.querySelectorAll('[data-scroll]').forEach(b=>b.addEventListener('click',()=>{
+  const target=$(b.dataset.scroll);
+  if(target.closest('#vendorDirectoryView')) showVendorDirectoryView(target,b);
+  else showOverviewView(target,b);
+}));
 $('verifyButton').onclick=()=>{
   const results=FinRefRules.verify();
   $('verifyResult').innerHTML=`<p>${results.filter(r=>r.pass).length}/${results.length} PASS · ${esc(new Date().toLocaleString('vi-VN'))}</p><ul>${results.map(r=>`<li>${r.pass?'✓':'✗'} ${esc(r.name)}: ${r.actual} (cần ${r.expected})</li>`).join('')}</ul>`;
