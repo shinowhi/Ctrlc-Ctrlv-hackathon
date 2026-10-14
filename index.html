@@ -50,15 +50,14 @@
         <div><span class="eyebrow">BƯỚC TIẾP THEO</span><p id="applicantActionMessage">Đang tải trạng thái hồ sơ…</p></div>
         <button class="primary-button clay-button" id="createRequestCta" type="button">Tạo đề nghị</button>
       </section>
-      <section class="stats-grid" aria-label="Thống kê hồ sơ được phép xem">
-        <article class="stat-card clay-card peach"><div class="stat-icon">◷</div><div><span class="stat-label">Chờ Quản lý Tài chính xác minh</span><strong id="waitingCount">0</strong></div></article>
-        <article class="stat-card clay-card lavender"><div class="stat-icon">↗</div><div><span class="stat-label">Chờ Giám đốc Tài chính duyệt</span><strong id="cfoCount">0</strong></div></article>
-        <article class="stat-card clay-card ai-ready"><div class="stat-icon">✓</div><div><span class="stat-label">AI đánh giá đạt · chờ người duyệt</span><strong id="readyCount">0</strong></div></article>
-        <article class="stat-card clay-card sky"><div class="stat-icon">!</div><div><span class="stat-label">Người nộp cần bổ sung</span><strong id="infoCount">0</strong></div></article>
-      </section>
-      <article class="clay-card request-card hidden" id="request-card">
-        <div class="card-heading"><div><span class="eyebrow">NGƯỜI NỘP ĐƠN</span><h2 id="formTitle">Tạo đề nghị mới</h2></div><button class="text-button" id="cancelEdit" type="button">Làm trống form</button></div>
-        <form id="paymentForm">
+      <details class="clay-card request-card hidden" id="request-card">
+        <summary class="request-card-summary">
+          <div class="request-card-summary-copy"><span class="eyebrow">NGƯỜI NỘP ĐƠN</span><h2 id="formTitle">Tạo đề nghị mới</h2><span class="muted">Mở biểu mẫu khi cần gửi đề nghị thanh toán.</span></div>
+          <span class="request-disclosure-action"><span class="request-disclosure-closed">Mở biểu mẫu</span><span class="request-disclosure-open">Thu gọn</span><span class="request-disclosure-icon" aria-hidden="true"></span></span>
+        </summary>
+        <div class="request-card-body">
+          <div class="request-form-toolbar"><button class="text-button" id="cancelEdit" type="button">Làm trống form</button></div>
+          <form id="paymentForm">
           <section class="form-section">
             <div class="section-title"><span class="step-number">1</span><div><h3>Người đề nghị</h3><span>Ai gửi hồ sơ và thuộc bộ phận nào?</span></div></div>
             <div class="form-grid two-col">
@@ -92,8 +91,15 @@
           </section>
           <p class="optional-fields-note form-submission-note">Có thể gửi khi còn thiếu trường thông tin; hệ thống sẽ đánh dấu và yêu cầu bổ sung. Chỉ tệp hóa đơn PDF là bắt buộc.</p>
           <div class="form-actions"><button class="primary-button clay-button" id="submitButton" type="submit">Gửi đề nghị →</button></div>
-        </form>
-      </article>
+          </form>
+        </div>
+      </details>
+      <section class="stats-grid" aria-label="Thống kê hồ sơ được phép xem">
+        <article class="stat-card clay-card peach"><div class="stat-icon">◷</div><div><span class="stat-label">Chờ Quản lý Tài chính xác minh</span><strong id="waitingCount">0</strong></div></article>
+        <article class="stat-card clay-card lavender"><div class="stat-icon">↗</div><div><span class="stat-label">Chờ Giám đốc Tài chính duyệt</span><strong id="cfoCount">0</strong></div></article>
+        <article class="stat-card clay-card ai-ready"><div class="stat-icon">✓</div><div><span class="stat-label">AI đánh giá đạt · chờ người duyệt</span><strong id="readyCount">0</strong></div></article>
+        <article class="stat-card clay-card sky"><div class="stat-icon">!</div><div><span class="stat-label">Người nộp cần bổ sung</span><strong id="infoCount">0</strong></div></article>
+      </section>
       <section class="clay-card queue-card" id="queue-card">
         <div class="card-heading"><div><span class="eyebrow">HỒ SƠ THANH TOÁN</span><h2 id="queueTitle">Danh sách hồ sơ</h2></div><label class="field">Lọc danh sách<select id="statusFilter"><option value="">Tất cả hồ sơ</option><option value="APPROVAL_QUEUE">Hàng chờ tôi duyệt</option><option value="TREASURER_REVIEW">Chờ Quản lý Tài chính xác minh</option><option value="READY_FOR_APPROVAL">AI đánh giá đạt · chờ người duyệt</option><option value="CFO_REVIEW">Chờ Giám đốc Tài chính duyệt</option><option value="NEEDS_INFO">Người nộp cần bổ sung</option><option value="APPROVED">Đã duyệt · chưa chuyển tiền</option><option value="REJECTED">Đã từ chối</option></select></label></div>
         <div id="approvalTools" class="approval-tools hidden">

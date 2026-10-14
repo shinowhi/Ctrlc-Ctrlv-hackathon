@@ -34,6 +34,8 @@ function showOverviewView(target=null,navButton=null) {
   $('pageTitle').textContent=rolePageTitles[profile?.role]||'';
   $('pageSubtitle').textContent='Hóa đơn PDF · Tổng thanh toán cuối cùng · Người có thẩm quyền duyệt cuối';
   setActiveNav(navButton||document.querySelector('[data-scroll="queue-card"]'));
+  const requestDisclosure=target?.closest('#request-card');
+  if(requestDisclosure) requestDisclosure.open=true;
   if(target) requestAnimationFrame(()=>target.scrollIntoView({behavior:'smooth',block:'start'}));
 }
 function showVendorDirectoryView(target=null,navButton=$('vendorDirectoryNav')) {
@@ -85,6 +87,7 @@ async function enter(p) {
   $('pageTitle').textContent=rolePageTitles[p.role];
   $('queueTitle').textContent=p.role==='applicant'?'Hồ sơ của tôi':p.role==='cfo'?'Danh sách chờ Giám đốc duyệt':'Danh sách đề nghị thanh toán';
   $('request-card').classList.toggle('hidden',p.role!=='applicant'); $('newRequest').classList.toggle('hidden',p.role!=='applicant');
+  $('request-card').open=false;
   $('applicantQuickAction').classList.toggle('hidden',p.role!=='applicant');
   const canManageVendors=['treasurer','cfo'].includes(p.role);
   $('vendorDirectoryNav').classList.toggle('hidden',!canManageVendors); $('vendorShortcut').classList.toggle('hidden',!canManageVendors);
@@ -696,6 +699,7 @@ async function openRequest(id,fromVendorNote=false) {
     markMissingFormFields(r.checks?.form_missing_fields||[]);
     $('invoiceFile').value='';
     $('formTitle').textContent='Bổ sung PAY-'+r.id.slice(0,8); $('submitButton').textContent='Gửi lại để phân tích →';
+    $('request-card').open=true;
     $('request-card').scrollIntoView({behavior:'smooth'}); notify('Tải lại hóa đơn PDF cho phiên bản bổ sung.');
   };
   $('auditList').textContent='Đang tải nhật ký…';
@@ -819,6 +823,7 @@ $('paymentForm').onsubmit=async event=>{
     await api.upload(invoicePath,invoice);
     const result=await api.rpc('submit_request',{p_id:editing?.id||crypto.randomUUID(),p_payload:payload,p_invoice_path:invoicePath,p_request_path:null,p_expected_version:editing?.version||0});
     resetForm();
+    $('request-card').open=false;
     if(result.status==='NEEDS_INFO') {
       notify('Hồ sơ được gửi nhưng còn thiếu thông tin. Các trường cần bổ sung được đánh dấu màu tím.');
       setBusy(false); await refresh(); await openRequest(result.id); return;

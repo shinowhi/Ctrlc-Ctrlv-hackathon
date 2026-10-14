@@ -345,6 +345,24 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 @media(max-width:650px){.submitted-form-panel,.invoice-review-panel{padding:13px}.pdf-viewer-wrap{padding:7px;min-height:220px}.pdf-toolbar{flex-wrap:wrap}.review-pane-heading h3{font-size:16px}}
 
 .vendor-card {margin:18px 0;padding:22px}
+.request-card {margin:18px 0;padding:0;overflow:hidden}
+.request-card-summary {display:flex;align-items:center;justify-content:space-between;gap:18px;padding:18px 22px;cursor:pointer;list-style:none}
+.request-card-summary::-webkit-details-marker {display:none}
+.request-card-summary:focus-visible {outline:3px solid #7754d7;outline-offset:-3px}
+.request-card-summary-copy {display:grid;gap:4px;min-width:0}
+.request-card-summary-copy .eyebrow,.request-card-summary-copy h2,.request-card-summary-copy .muted {margin:0}
+.request-card-summary-copy h2 {color:var(--ink);font:700 18px 'Space Grotesk',system-ui,sans-serif}
+.request-card-summary-copy .muted {font-size:12px;line-height:1.5}
+.request-disclosure-action {display:flex;align-items:center;gap:10px;flex:none;color:var(--purple);font-size:12px;font-weight:700;white-space:nowrap}
+.request-disclosure-open {display:none}
+.request-card[open] .request-disclosure-closed {display:none}
+.request-card[open] .request-disclosure-open {display:inline}
+.request-disclosure-icon {display:grid;width:30px;height:30px;place-items:center;border-radius:9px;background:#fff;color:var(--purple)}
+.request-disclosure-icon::before {content:'+';font-size:20px;line-height:1}
+.request-card[open] .request-disclosure-icon::before {content:'−'}
+.request-card[open] > .request-card-summary {border-bottom:1px solid var(--line)}
+.request-card-body {padding:16px 22px 22px}
+.request-form-toolbar {display:flex;justify-content:flex-end;margin-bottom:4px}
 .vendor-shortcut {margin:18px 0;padding:0;overflow:hidden}
 .vendor-card-summary {display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 22px;cursor:pointer;list-style:none}
 .vendor-card-summary::-webkit-details-marker {display:none}
@@ -380,6 +398,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .vendor-alias-list {display:flex;flex-wrap:wrap;align-content:start;gap:6px}
 .vendor-alias-chip {max-width:100%;padding:5px 8px;border-radius:8px;color:#5f6f83;background:#eff2f7;font-size:10px;overflow-wrap:anywhere}
 @media(max-width:650px){.vendor-card{padding:16px}.vendor-shortcut{padding:0}.vendor-card-summary{align-items:flex-start;padding:15px 16px}.vendor-summary-action{gap:7px}.vendor-shortcut-body{align-items:stretch;flex-direction:column;padding:14px 16px 16px}.vendor-shortcut-body .secondary-button{width:100%}.vendor-management-grid,.vendor-record{grid-template-columns:1fr}.vendor-management-form .secondary-button{width:100%}}
+@media(max-width:570px){.request-card{padding:0}.request-card-summary{align-items:flex-start;padding:15px 16px}.request-disclosure-action{gap:7px}.request-card-body{padding:14px 16px 16px}}
 
 .decision-banner.review {background:#fff2c8;color:#8d6800}
 .decision-banner.ai-ready {background:#e2efff;color:#3b5f96}
