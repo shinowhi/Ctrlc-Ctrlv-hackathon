@@ -407,10 +407,13 @@ function renderRows() {
     const context=workflowDetails(r);
     const viewState=profile?.role==='cfo'&&actionable.has(r.id)
       ?`<span class="invoice-view-state ${cfoHasViewed(r)?'seen':'unseen'}">${cfoHasViewed(r)?'Đã hiển thị trang 1':'Chưa mở PDF'}</span>`:'';
-    const actions=actionable.has(r.id)?`<div class="queue-actions"><button class="queue-approve" type="button" data-approve-id="${r.id}" aria-label="Duyệt hồ sơ PAY-${esc(r.id.slice(0,8))}" ${busy||approvalBatchPreflight||(profile.role==='treasurer'&&!dailySummary)||(profile.role==='cfo'&&!$('batchReason').value.trim())?'disabled':''}>Duyệt lẻ</button><button class="text-button" type="button" data-id="${r.id}" aria-label="Mở hồ sơ PAY-${esc(r.id.slice(0,8))}">Mở</button></div>`:`<button class="text-button" type="button" data-id="${r.id}" aria-label="Mở hồ sơ PAY-${esc(r.id.slice(0,8))}">Mở</button>`;
+    const actions=actionable.has(r.id)?`<div class="queue-actions"><button class="queue-approve" type="button" data-approve-id="${r.id}" aria-label="Duyệt hồ sơ PAY-${esc(r.id.slice(0,8))}" ${busy||approvalBatchPreflight||(profile.role==='treasurer'&&!dailySummary)||(profile.role==='cfo'&&!$('batchReason').value.trim())?'disabled':''}>Duyệt lẻ</button><button class="text-button" type="button" data-open-request-id="${r.id}" aria-label="Mở hồ sơ PAY-${esc(r.id.slice(0,8))}">Mở</button></div>`:`<button class="text-button" type="button" data-open-request-id="${r.id}" aria-label="Mở hồ sơ PAY-${esc(r.id.slice(0,8))}">Mở</button>`;
     const stateClass={APPROVED:'ready',READY_FOR_APPROVAL:'ai-ready',REJECTED:'reject',CFO_REVIEW:'cfo-wait',NEEDS_INFO:'missing',TREASURER_REVIEW:'review'}[r.status]||'review';
     return `<tr data-request-id="${esc(r.id)}"><td data-label="Mã hồ sơ"><strong>PAY-${esc(r.id.slice(0,8))}</strong><small>Tạo lúc ${esc(time(r.created_at))}</small></td><td data-label="Người đề nghị">${esc(r.payload.requester||'Chưa điền')}<small>${esc(r.payload.department||'')}</small></td><td data-label="Số tiền">${r.amount==null?'—':money(r.amount)}</td><td data-label="Trạng thái"><span class="status-tag ${stateClass}">${label}</span>${viewState}<div class="queue-status-meta"><span><strong>Lý do:</strong> ${esc(context.reason)}</span><span><strong>Người xử lý tiếp:</strong> ${esc(context.nextActor)}</span><span><strong>Bạn cần làm gì:</strong> ${esc(context.action)}</span><small>Cập nhật: ${esc(context.updatedAt)}</small></div></td><td data-label="Thao tác">${actions}</td></tr>`;
   }).join('') : '<tr><td colspan="5" class="empty-table">Không có hóa đơn trong danh sách này.</td></tr>';
+  $('queueBody').querySelectorAll('[data-open-request-id]').forEach(button=>{
+    button.addEventListener('click',()=>openRequest(button.dataset.openRequestId));
+  });
   for(const [id,status] of Object.entries({waitingCount:'TREASURER_REVIEW',cfoCount:'CFO_REVIEW',readyCount:'READY_FOR_APPROVAL',infoCount:'NEEDS_INFO'})) $(id).textContent=rows.filter(r=>r.status===status).length;
   renderApplicantQuickAction();
   renderApprovalTools();
@@ -1015,8 +1018,7 @@ $('queueBody').addEventListener('click',event=>{
   const target=event.target;
   const approveButton=target.closest?.('[data-approve-id]');
   if(approveButton) {approveQueueItem(rows.find(r=>r.id===approveButton.dataset.approveId));return;}
-  const openButton=target.closest?.('[data-id]');
-  if(openButton) {openRequest(openButton.dataset.id);return;}
+  if(target.closest?.('[data-open-request-id]')) return;
   const row=target.closest?.('tr[data-request-id]');
   if(row) openRequest(row.dataset.requestId);
 });
