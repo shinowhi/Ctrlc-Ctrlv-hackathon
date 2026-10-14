@@ -58,7 +58,7 @@
         <div class="request-card-body">
           <div class="request-form-toolbar"><button class="text-button" id="cancelEdit" type="button">Làm trống form</button></div>
           <form id="paymentForm">
-          <section class="form-section">
+          <section class="form-section request-form-section--requester">
             <div class="section-title"><span class="step-number">1</span><div><h3>Người đề nghị</h3><span>Ai gửi hồ sơ và thuộc bộ phận nào?</span></div></div>
             <div class="form-grid two-col">
               <label class="field">Loại người đề nghị<select id="requesterType"><option value="">Chọn nếu đã biết</option><option value="employee">Nhân viên</option><option value="department">Phòng ban</option></select></label>
@@ -66,7 +66,7 @@
               <label class="field">Bộ phận<input id="department" maxlength="1000"></label>
             </div>
           </section>
-          <section class="form-section">
+          <section class="form-section request-form-section--purpose">
             <div class="section-title"><span class="step-number">2</span><div><h3>Người mua và mục đích chi</h3><span>Ghi theo hóa đơn và nhu cầu thanh toán.</span></div></div>
             <div class="form-grid two-col">
               <label class="field">Thông tin người mua<select id="buyerMode"><option value="">Chọn trường hợp trên hóa đơn</option><option value="PERSON">Tên cá nhân</option><option value="ORGANIZATION">Tên đơn vị</option><option value="NO_NAME">Hóa đơn không ghi tên người mua</option></select></label>
@@ -75,7 +75,7 @@
               <label class="field">Mục đích chi<input id="purpose" maxlength="1000"></label>
             </div>
           </section>
-          <section class="form-section">
+          <section class="form-section request-form-section--invoice">
             <div class="section-title"><span class="step-number">3</span><div><h3>Thông tin hóa đơn</h3><span>Nhập dữ kiện có sẵn; có thể bổ sung sau khi gửi.</span></div></div>
             <div class="form-grid two-col">
               <label class="field">Nhà cung cấp<input id="vendor" maxlength="1000" list="vendorDirectoryOptions" autocomplete="organization"><datalist id="vendorDirectoryOptions"></datalist><small>Chọn tên đã có trong danh mục hoặc nhập tên theo hóa đơn.</small></label>

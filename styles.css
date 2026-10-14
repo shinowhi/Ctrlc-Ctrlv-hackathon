@@ -439,11 +439,15 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .applicant-quick-action p {margin:5px 0 0;color:#43516a;font-size:13px;line-height:1.5}
 .applicant-quick-action button {flex:none;min-width:160px}
 .form-section {padding:17px 0}
-.form-section .section-title {align-items:flex-start}
+.form-section .section-title {align-items:center}
 .form-section .section-title>div {min-width:0}
 .form-section .section-title h3 {margin:0;color:#334158;font-size:14px;line-height:1.35}
 .form-section .section-title span:not(.step-number) {color:#748096;line-height:1.45}
 .form-section .muted {margin:0 0 10px;line-height:1.5}
+#paymentForm .request-form-section--requester .form-grid {grid-template-columns:repeat(3,minmax(0,1fr))}
+#paymentForm .request-form-section--purpose .form-grid,#paymentForm .request-form-section--invoice .form-grid {grid-template-columns:repeat(4,minmax(0,1fr))}
+@media(max-width:1200px){#paymentForm .request-form-section--requester .form-grid,#paymentForm .request-form-section--purpose .form-grid,#paymentForm .request-form-section--invoice .form-grid {grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){#paymentForm .form-grid {grid-template-columns:1fr}}
 .form-submission-note {margin:18px 0 8px}
 .workflow-summary {display:grid;gap:10px;margin:14px 0;padding:14px;border:1px solid #e0e5ed;border-radius:14px;background:#f7f9fc}
 .workflow-summary>div {display:grid;grid-template-columns:minmax(105px,.32fr) minmax(0,1fr);gap:10px;align-items:start}

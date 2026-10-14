@@ -324,8 +324,6 @@ function renderRows() {
     const stateClass={APPROVED:'ready',READY_FOR_APPROVAL:'ai-ready',REJECTED:'reject',CFO_REVIEW:'cfo-wait',NEEDS_INFO:'missing',TREASURER_REVIEW:'review'}[r.status]||'review';
     return `<tr data-request-id="${esc(r.id)}"><td data-label="Mã hồ sơ"><strong>PAY-${esc(r.id.slice(0,8))}</strong><small>Tạo lúc ${esc(time(r.created_at))}</small></td><td data-label="Người đề nghị">${esc(r.payload.requester||'Chưa điền')}<small>${esc(r.payload.department||'')}</small></td><td data-label="Số tiền">${r.amount==null?'—':money(r.amount)}</td><td data-label="Trạng thái"><span class="status-tag ${stateClass}">${label}</span><div class="queue-status-meta"><span><strong>Lý do:</strong> ${esc(context.reason)}</span><span><strong>Người xử lý tiếp:</strong> ${esc(context.nextActor)}</span><span><strong>Bạn cần làm gì:</strong> ${esc(context.action)}</span><small>Cập nhật: ${esc(context.updatedAt)}</small></div></td><td data-label="Thao tác">${actions}</td></tr>`;
   }).join('') : '<tr><td colspan="5" class="empty-table">Không có hóa đơn trong danh sách này.</td></tr>';
-  $('queueBody').querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>openRequest(b.dataset.id));
-  $('queueBody').querySelectorAll('[data-approve-id]').forEach(b=>b.onclick=()=>approveQueueItem(rows.find(r=>r.id===b.dataset.approveId)));
   for(const [id,status] of Object.entries({waitingCount:'TREASURER_REVIEW',cfoCount:'CFO_REVIEW',readyCount:'READY_FOR_APPROVAL',infoCount:'NEEDS_INFO'})) $(id).textContent=rows.filter(r=>r.status===status).length;
   renderApplicantQuickAction();
   renderApprovalTools();
@@ -847,6 +845,15 @@ $('logoutButton').onclick=async()=>{if(busy)return; const button=$('logoutButton
 $('refreshButton').onclick=refresh;
 $('statusFilter').onchange=renderRows;
 $('batchReason').oninput=renderRows;
+$('queueBody').addEventListener('click',event=>{
+  const target=event.target;
+  const approveButton=target.closest?.('[data-approve-id]');
+  if(approveButton) {approveQueueItem(rows.find(r=>r.id===approveButton.dataset.approveId));return;}
+  const openButton=target.closest?.('[data-id]');
+  if(openButton) {openRequest(openButton.dataset.id);return;}
+  const row=target.closest?.('tr[data-request-id]');
+  if(row) openRequest(row.dataset.requestId);
+});
 $('approveAllButton').onclick=approveAllQueue;
 $('cancelEdit').onclick=()=>{if(!busy)resetForm();};
 $('newRequest').onclick=()=>{if(!busy)resetForm();};
