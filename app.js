@@ -615,18 +615,31 @@ async function loadPdfJs() {
 }
 async function renderReviewPdf(url,annotations,token,onFirstPageDisplayed=null) {
   const status=$('reviewPdfStatus'),stage=$('reviewPdfStage'),wrap=$('reviewPdfWrap'),toolbar=$('reviewPdfToolbar');
-  let documentProxy=null,renderTask=null,resizeObserver=null,pageVisibilityObserver=null,disposed=false;
-  let firstPageRenderReady=false,firstPageDisplayed=false,pageVisibleInViewport=false;
-  const hasVisibleArea=entry=>entry.isIntersecting&&entry.intersectionRect.width>=120&&entry.intersectionRect.height>=80;
+  let documentProxy=null,renderTask=null,resizeObserver=null,disposed=false;
+  let firstPageRenderReady=false,firstPageDisplayed=false;
   const checkFirstPageVisibility=()=>{
-    if(!onFirstPageDisplayed||firstPageDisplayed||!firstPageRenderReady||!pageVisibleInViewport
-      ||token!==pdfViewToken||disposed||document.visibilityState!=='visible'||!document.hasFocus()) return;
-    if(!stage.querySelector('canvas')) return;
+    if(!onFirstPageDisplayed||firstPageDisplayed||!firstPageRenderReady
+      ||token!==pdfViewToken||disposed||document.visibilityState!=='visible') return;
+    const canvas=stage.querySelector('canvas');
+    if(!canvas) return;
+    const pageRect=canvas.getBoundingClientRect(),wrapRect=wrap.getBoundingClientRect();
+    const wrapContentLeft=wrapRect.left+wrap.clientLeft,wrapContentTop=wrapRect.top+wrap.clientTop;
+    const clipLeft=Math.max(0,wrapContentLeft),clipTop=Math.max(0,wrapContentTop);
+    const clipRight=Math.min(document.documentElement.clientWidth||window.innerWidth,wrapContentLeft+wrap.clientWidth);
+    const clipBottom=Math.min(document.documentElement.clientHeight||window.innerHeight,wrapContentTop+wrap.clientHeight);
+    const visibleWidth=Math.min(pageRect.right,clipRight)-Math.max(pageRect.left,clipLeft);
+    const visibleHeight=Math.min(pageRect.bottom,clipBottom)-Math.max(pageRect.top,clipTop);
+    if(visibleWidth<120||visibleHeight<80) return;
     firstPageDisplayed=true; onFirstPageDisplayed?.();
   };
-  const handleDisplayChange=()=>checkFirstPageVisibility();
+  const scheduleFirstPageVisibilityCheck=()=>{
+    if(!onFirstPageDisplayed||firstPageDisplayed||!firstPageRenderReady) return;
+    requestAnimationFrame(()=>requestAnimationFrame(checkFirstPageVisibility));
+  };
+  const handleDisplayChange=()=>scheduleFirstPageVisibilityCheck();
   const cleanup=()=>{
-    disposed=true; resizeObserver?.disconnect(); pageVisibilityObserver?.disconnect();
+    disposed=true; resizeObserver?.disconnect(); wrap.removeEventListener('scroll',handleDisplayChange);
+    window.removeEventListener('scroll',handleDisplayChange,true); window.removeEventListener('resize',handleDisplayChange);
     document.removeEventListener('visibilitychange',handleDisplayChange); window.removeEventListener('focus',handleDisplayChange); window.removeEventListener('pageshow',handleDisplayChange);
     try { renderTask?.cancel(); } catch {}
     if(documentProxy) void documentProxy.destroy().catch(()=>{});
@@ -702,7 +715,7 @@ async function renderReviewPdf(url,annotations,token,onFirstPageDisplayed=null) 
       }
       stage.append(svg); pageLabel.textContent=`Trang ${pageNumber} / ${documentProxy.numPages}`;
       back.disabled=pageNumber<=1; forward.disabled=pageNumber>=documentProxy.numPages;
-      firstPageRenderReady=pageNumber===1; checkFirstPageVisibility();
+      firstPageRenderReady=pageNumber===1; scheduleFirstPageVisibilityCheck();
     };
     back.onclick=()=>{if(pageNumber>1){pageNumber--;renderPage().catch(showRenderError);}};
     forward.onclick=()=>{if(pageNumber<documentProxy.numPages){pageNumber++;renderPage().catch(showRenderError);}};
@@ -713,13 +726,10 @@ async function renderReviewPdf(url,annotations,token,onFirstPageDisplayed=null) 
     });
     function showRenderError(error) { if(token===pdfViewToken&&!disposed) {status.classList.remove('hidden');status.textContent=error.message||'Không hiển thị được trang PDF.';} }
     if(onFirstPageDisplayed) {
-      // Observe the rendered page against the viewport. The observer accounts for
-      // clipping by the PDF scroll container, avoiding two nested visibility states.
-      pageVisibilityObserver=new IntersectionObserver(entries=>{
-        pageVisibleInViewport=entries.some(entry=>entry.target===stage&&hasVisibleArea(entry));
-        checkFirstPageVisibility();
-      },{threshold:0});
-      pageVisibilityObserver.observe(stage);
+      // The CFO opened this request explicitly. Check the rendered page's visible
+      // bounds after paint and again when its scroll container or viewport moves.
+      wrap.addEventListener('scroll',handleDisplayChange,{passive:true});
+      window.addEventListener('scroll',handleDisplayChange,true); window.addEventListener('resize',handleDisplayChange);
       document.addEventListener('visibilitychange',handleDisplayChange); window.addEventListener('focus',handleDisplayChange); window.addEventListener('pageshow',handleDisplayChange);
     }
     resizeObserver=new ResizeObserver(()=>{if(ignoreInitialResize){ignoreInitialResize=false;return;}clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>renderPage().catch(showRenderError),120);});
