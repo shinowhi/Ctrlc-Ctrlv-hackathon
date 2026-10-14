@@ -1,6 +1,6 @@
 # FinRef — MVP rà soát đề nghị thanh toán
 
-**Cập nhật:** 12/10/2026
+**Cập nhật:** 15/10/2026
 
 FinRef hỗ trợ tiếp nhận và rà soát đề nghị thanh toán dựa trên hóa đơn PDF, trích xuất dữ kiện bằng AI, chuyển các điểm chưa chắc cho người phụ trách, và lưu quyết định cùng nhật ký. FinRef không thực hiện chuyển tiền.
 
@@ -25,14 +25,14 @@ FinRef hỗ trợ tiếp nhận và rà soát đề nghị thanh toán dựa tr�
 - `demo.html` chỉ mô phỏng giao diện và preview luật trên trình duyệt; không đọc PDF thật, không gọi AI/backend và không đại diện cho dữ liệu production.
 - Mã nguồn hiện có không tự chứng minh rằng production đã chạy đúng cùng commit hoặc đã áp dụng mọi migration. Lần rà soát gần nhất và các giới hạn xác minh được ghi tại [VALIDATION.md](VALIDATION.md).
 
-## Trạng thái kiểm tra gần nhất
+## Trạng thái xác minh
 
-Ngày 12/10/2026, ứng dụng chính thức và các giao diện vai trò đã được xem trong phiên đăng nhập. Bộ **17 ca Verify** hiển thị đạt, nhưng đây là preview `FinRefRules.verify()` phía trình duyệt, không phải kiểm thử end-to-end. Khi chuyển sang hồ sơ Quản lý khác để mở PDF, giao diện gặp lỗi; cần khắc phục và kiểm tra lại trước khi trình diễn. Chi tiết nằm trong [VALIDATION.md](VALIDATION.md).
+Lần kiểm tra trực tiếp ứng dụng production gần nhất được ghi nhận ngày 12/10/2026. Khi đó, bộ **17 ca Verify** hiển thị đạt; đây là preview `FinRefRules.verify()` phía trình duyệt, không phải kiểm thử end-to-end. Lần kiểm tra đó cũng ghi nhận lỗi khi chuyển giữa các PDF ở vai trò Quản lý. Chưa xác minh lại lỗi này trên production sau các thay đổi mã nguồn tiếp theo. Chi tiết nằm trong [VALIDATION.md](VALIDATION.md).
 
 Người dùng xác nhận ba tài khoản được dùng để rà soát thuộc về ba nhân sự thật. Chưa thu thập trích dẫn phỏng vấn hoặc tài liệu độc lập để xác minh mức độ sử dụng/tổ chức.
 
 ## Database và cấu hình
 
-- Chuỗi migration trong nhánh hiện đến `supabase/migrations/20261012-restore-single-buyer-name.sql`. Đối chiếu lịch sử của đúng Supabase project và chỉ chạy các migration còn thiếu; không xem riêng migration mới nhất là đủ.
+- Checkout hiện có migration đến `supabase/migrations/20261015-cfo-read-high-value-manager-review.sql`. Đối chiếu lịch sử của đúng Supabase project và chỉ chạy các migration còn thiếu; không xem riêng migration mới nhất là đủ.
 - Trạng thái migration trên production chưa được xác minh trực tiếp trong lần rà soát. Không suy ra trạng thái database production chỉ từ mã nguồn hoặc giao diện đang chạy.
 - API hỗ trợ cấu hình `INVOICE_ANALYSIS_PROVIDER=azure` hoặc `openai`. Biến môi trường và provider đang dùng trên production chưa được xác minh trong lần rà soát.

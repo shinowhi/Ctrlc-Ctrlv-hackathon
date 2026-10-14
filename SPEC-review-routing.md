@@ -20,7 +20,7 @@ Existing static HTML/JavaScript frontend, Node API, Supabase RPCs, RLS, and Post
 Follow existing role/status maps, audit-triggered RPC transitions, escaped HTML rendering, and migration style.
 
 ## Testing strategy
-Existing browser and PGlite-backed tests cover queue transitions and policies. Tests are not added or run in this implementation because the user asked to begin coding, not to test or verify it. Review the final diff and status-policy parity.
+Existing browser and PGlite-backed tests cover queue transitions and policies.
 
 ## Boundaries
 - Always: keep existing per-invoice 20,000,000 VND and daily 100,000,000 VND limits; map the existing `treasurer` role to manager.

@@ -5,9 +5,9 @@
 - Một link HTTPS công khai do Vercel cấp.
 - Ba tài khoản thật, mỗi tài khoản chỉ có một vai trò.
 - Hồ sơ, minh chứng và nhật ký dùng chung giữa các máy.
-- Trang demo riêng không cần đăng nhập ở `/demo.html`, chỉ dùng dữ liệu giả lập trên từng trình duyệt.
+- Trang mô phỏng riêng `/demo.html` dùng dữ liệu giả lập trên từng trình duyệt; theo cập nhật của nhóm, luồng chấm điểm dùng tài khoản đăng nhập.
 
-**Hiện tại chưa có project Supabase/Vercel của bạn được kết nối, nên tài khoản thật và live URL chưa được tạo.** Bộ mã và script bên dưới đã được chuẩn bị để bạn thực hiện việc đó. Luồng cho phép quản lý tài chính kiểm tra thủ công; endpoint AI đọc hóa đơn PDF cần các biến môi trường server.
+**Trạng thái sử dụng:** ứng dụng có live URL và nhóm sẽ dùng tài khoản đăng nhập theo vai trò khi chấm điểm. Các bước bên dưới mô tả cách khởi tạo hoặc khôi phục môi trường. Trước khi chạy SQL hoặc migration trên project đang dùng, hãy đối chiếu lịch sử migration của đúng Supabase project; không chạy lại `schema.sql` trên production hiện hữu. Endpoint AI đọc hóa đơn PDF cần các biến môi trường server.
 
 ## 1. Tạo project Supabase
 
@@ -16,7 +16,7 @@
 3. Đặt tên `finref-hackathon`, chọn khu vực gần Việt Nam (ví dụ Singapore), đặt và lưu mật khẩu database. Chọn gói phù hợp, xem giới hạn hiện tại trong dashboard.
 4. Đợi project sẵn sàng. Đây nên là **project mới**, vì schema bên dưới tạo các bảng mới và không phải script nâng cấp database cũ.
 5. Vào **SQL Editor → New query**. Mở `supabase/schema.sql` trong thư mục dự án, copy toàn bộ nội dung, bấm **Run** một lần.
-6. Khi thành công, kiểm tra có bảng `profiles`, `requests`, `audit_events` và bucket `evidence` **Private**. Với project mới tạo từ `schema.sql`, lần lượt chạy `20261004-z-vendor-directory.sql`, `20261004-zz-vendor-invoice-seed.sql`, `20261005-vendor-invoice-aliases.sql`, `20261005-vendor-unaccented-aliases.sql`, rồi `20261007-z-agreed-payment-rules.sql`. Các migration tạo danh mục NCC/alias cần cho bản mới; chạy trước khi deploy frontend/API.
+6. Khi thành công, kiểm tra có bảng `profiles`, `requests`, `audit_events` và bucket `evidence` **Private**. Với project mới tạo từ `schema.sql`, lần lượt chạy `20261004-z-vendor-directory.sql`, `20261004-zz-vendor-invoice-seed.sql`, `20261005-vendor-invoice-aliases.sql`, `20261005-vendor-unaccented-aliases.sql`, `20261007-z-agreed-payment-rules.sql`, rồi `20261015-cfo-read-high-value-manager-review.sql`. Migration cuối cho CFO quyền xem chỉ đọc các hồ sơ trên 20 triệu đang chờ Quản lý và hồ sơ còn ghi chú nhà cung cấp chưa xử lý; nó không cấp quyền duyệt các hồ sơ đang ở hàng chờ Quản lý. Chạy trước khi deploy frontend/API.
    - Nếu project đã tạo từ schema cũ, chạy một lần `supabase/migrations/20260925-remove-request-evidence.sql` thay vì chạy lại `schema.sql`.
    - Nếu đã chạy `supabase/sprint1.sql`, sao lưu database rồi chạy một lần `supabase/migrations/20260926-human-approval-duplicate-guard.sql` trong đúng project Supabase. Migration giữ nguyên hồ sơ và các bảng ngân sách mẫu; nó khôi phục RPC khớp với giao diện, gỡ nhánh tự duyệt và chặn bấm duyệt khi cùng nhà cung cấp + số hóa đơn đã có hồ sơ được duyệt. Khi gặp trùng, người duyệt phải yêu cầu làm rõ hoặc từ chối. Migration không thay đổi các quyết định cũ, chấp nhận frontend Production hiện tại không gửi `invoiceType`, và chưa thêm ngân sách theo tháng. Không chạy lại `sprint1.sql` hoặc dùng `rollback-sprint1.sql` cùng giao diện hiện tại.
    - Với database đang dùng schema và migration đến `20260930`, chạy một lần `supabase/migrations/20261002-daily-approval-limits.sql` **trước khi deploy giao diện mới**. Migration ghi nhận giờ duyệt của hồ sơ cũ, đưa hồ sơ đang chờ Giám đốc về Quản lý Tài chính kiểm tra trước, áp dụng hạn mức 20 triệu/hồ sơ và tổng 100 triệu/ngày (Asia/Bangkok), cùng cảnh báo Quản lý Tài chính khi tổng vượt 80 triệu. Giám đốc cấp quyền cho phần vượt; khoản được cấp quyền vẫn tính vào tổng ngày. Không chạy lại migration này sau khi đã áp dụng.
@@ -115,7 +115,7 @@ Sau này sửa code, commit rồi push GitHub là Vercel build lại. Nếu đ�
 6. Thử hồ sơ làm tổng duyệt ngày vượt **100 triệu**: Quản lý Tài chính kiểm tra trước, sau đó chuyển Giám đốc cấp quyền; khoản Giám đốc duyệt vẫn tính vào tổng ngày.
 7. Máy C đăng nhập `gdtc@finref.test`, mở hồ sơ đã chuyển và cấp quyền hoặc từ chối; thử cả hồ sơ đang chờ Quản lý Tài chính nhưng có số tiền trên 20 triệu để xác nhận quyền xem.
 8. Máy A kiểm tra trạng thái và nhật ký. Thử thêm **yêu cầu bổ sung → người nộp tải lại hóa đơn PDF → gửi lại → quản lý tài chính kiểm tra**.
-9. Giám khảo mở live URL không có tài khoản vẫn truy cập được trang đầu; chọn **Trải nghiệm demo không cần tài khoản** để xem luồng mẫu độc lập. Demo này không ghi vào hồ sơ online.
+9. Giám khảo mở live URL và đăng nhập bằng tài khoản do nhóm cấp. Kiểm tra luồng theo đúng vai trò Người nộp đơn, Quản lý Tài chính và Giám đốc Tài chính. Luồng chấm điểm dùng tài khoản đăng nhập.
 
 Có thể thử cùng một máy bằng các trình duyệt hoặc cửa sổ riêng. Mỗi tab lưu phiên đăng nhập riêng; khi dùng chung máy, nên đăng xuất sau khi thử.
 

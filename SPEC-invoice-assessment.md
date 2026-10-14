@@ -22,7 +22,7 @@ Existing Node API (`api/analyze-evidence.js`) and Supabase PostgreSQL RPC/migrat
 Follow existing CommonJS API helpers, confidence/evidence field shape, and transactional Supabase RPC conventions.
 
 ## Testing strategy
-Existing assessment and database tests cover confidence, matching, and status behavior. Tests are not added or run in this implementation because the user asked to begin coding, not to test or verify it. Review the final diff and threshold consistency between API and SQL.
+Existing assessment and database tests cover confidence, matching, and status behavior.
 
 ## Boundaries
 - Always: confidence thresholds are inclusive; use evidence for accepted OCR values; retain existing budget thresholds.

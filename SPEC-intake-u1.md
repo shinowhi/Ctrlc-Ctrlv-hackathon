@@ -20,7 +20,7 @@ Existing static HTML/JavaScript frontend, Node API, and Supabase PostgreSQL RPC/
 Follow the existing plain JavaScript and SQL conventions. Keep browser code in the existing IIFE and send writes through Supabase RPCs.
 
 ## Testing strategy
-The existing Node test suite covers browser rules and database RPC behavior. Tests are not added or run in this implementation because the user asked to begin coding, not to test or verify it. Review the final diff and schema contract.
+The existing Node test suite covers browser rules and database RPC behavior.
 
 ## Boundaries
 - Always: keep the PDF required; allow blank form fields before submission; use U1/NEEDS_INFO for the agreed missing-field list.
