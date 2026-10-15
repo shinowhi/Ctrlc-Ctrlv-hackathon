@@ -95,8 +95,6 @@ OPENAI_API_KEY     <tuỳ chọn nếu muốn chọn OpenAI thay cho Azure>
 OPENAI_VISION_MODEL <tuỳ chọn, mặc định gpt-4.1-mini>
 ```
 
-Chế độ khách không cần tài khoản dùng chung Supabase project và các biến `SUPABASE_*` ở trên. Trước khi triển khai phiên bản code mới, áp dụng migration `supabase/migrations/20261016-guest-shared-project.sql` sau toàn bộ migration hiện hành; nó cũng cần cho API phân tích ở bản code mới. Để bật link khách, bật Anonymous Sign-Ins trong Supabase và đặt `GUEST_MODE_ENABLED=true` trong Vercel. Không bật CAPTCHA bảo vệ toàn project vì cài đặt đó cũng ảnh hưởng đăng nhập email/mật khẩu. Xem [GUEST-SANDBOX.md](GUEST-SANDBOX.md) để biết giới hạn demo và cách cấu hình.
-
 Đặt `INVOICE_ANALYSIS_PROVIDER=azure` để dùng Azure. Nếu bỏ biến này, backend chọn Azure khi thấy có một trong hai biến Azure; cần đủ endpoint và key, thiếu một sẽ báo lỗi cấu hình chứ không tự gửi hóa đơn sang nhà cung cấp khác. Khi không cấu hình Azure, backend dùng OpenAI; cũng có thể chọn rõ `INVOICE_ANALYSIS_PROVIDER=openai` với `OPENAI_API_KEY`. Endpoint và key Azure chỉ nằm trong Environment Variables server, không đưa vào `config.js`, GitHub hay trình duyệt.
 
 7. Bấm **Deploy**. Script build sẽ chỉ đưa các file giao diện được phép lên website; script tạo tài khoản, SQL và mật khẩu không nằm trong `dist`.

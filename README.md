@@ -23,7 +23,6 @@ FinRef hỗ trợ tiếp nhận và rà soát đề nghị thanh toán dựa tr�
 - Hệ thống chưa đối chiếu ngân sách thực theo mã, chính sách chi tiêu, PO hoặc lịch sử thanh toán. Hạn mức ngày là giới hạn phê duyệt, không chứng minh hồ sơ nằm trong ngân sách.
 - AI không xác nhận tính xác thực của hóa đơn, nguồn phát hành hoặc chữ ký số.
 - `demo.html` chỉ mô phỏng giao diện và preview luật trên trình duyệt; không đọc PDF thật, không gọi AI/backend và không đại diện cho dữ liệu production.
-- Trải nghiệm online không cần tài khoản dùng chung Supabase project nhưng được cách ly với dữ liệu tài khoản; khách dùng chung hàng đợi demo với nhau. Xem [GUEST-SANDBOX.md](GUEST-SANDBOX.md) trước khi bật liên kết.
 - Mã nguồn hiện có không tự chứng minh rằng production đã chạy đúng cùng commit hoặc đã áp dụng mọi migration. Lần rà soát gần nhất và các giới hạn xác minh được ghi tại [VALIDATION.md](VALIDATION.md).
 
 ## Trạng thái xác minh
@@ -34,6 +33,6 @@ Người dùng xác nhận ba tài khoản được dùng để rà soát thuộ
 
 ## Database và cấu hình
 
-- Database mới dùng `supabase/schema.sql` rồi chạy đúng thứ tự trong [`supabase/fresh-install-migrations.txt`](supabase/fresh-install-migrations.txt); database đang dùng phải đối chiếu lịch sử của đúng project và chỉ chạy migration còn thiếu, không xem riêng migration mới nhất là đủ. Chế độ khách dùng cùng project và cần migration bổ sung theo [GUEST-SANDBOX.md](GUEST-SANDBOX.md).
+- Checkout hiện có migration đến `supabase/migrations/20261015-cfo-read-high-value-manager-review.sql`. Database mới dùng `supabase/schema.sql` rồi chạy đúng thứ tự trong [`supabase/fresh-install-migrations.txt`](supabase/fresh-install-migrations.txt); database đang dùng phải đối chiếu lịch sử của đúng project và chỉ chạy migration còn thiếu, không xem riêng migration mới nhất là đủ.
 - Trạng thái migration trên production chưa được xác minh trực tiếp trong lần rà soát. Không suy ra trạng thái database production chỉ từ mã nguồn hoặc giao diện đang chạy.
 - API hỗ trợ cấu hình `INVOICE_ANALYSIS_PROVIDER=azure` hoặc `openai`. Biến môi trường và provider đang dùng trên production chưa được xác minh trong lần rà soát.

@@ -1,15 +1,6 @@
 'use strict';
 const $ = id => document.getElementById(id);
-const guestMode = new URLSearchParams(window.location.search).get('mode') === 'guest';
-const appConfig = window.FINREF_CONFIG || {};
-const api = new FinRefApi({...appConfig,mode:guestMode?'guest':'main'});
-const guestAccessEnabled=appConfig.guest?.enabled===true;
-const guestAccessConfigured=api.configured&&(!guestMode||guestAccessEnabled);
-let guestRoleBusy=false;
-function syncGuestRoleButtons() {
-  const canSelect=guestAccessConfigured&&!guestRoleBusy;
-  document.querySelectorAll('[data-guest-role]').forEach(button=>{button.disabled=!canSelect;});
-}
+const api = new FinRefApi(window.FINREF_CONFIG || {});
 const money = n => new Intl.NumberFormat('vi-VN').format(n) + ' ₫';
 const esc = s => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const {normalizeInvoiceNumber,normalizePartyName,comparePartyName}=window.FinRefInvoiceMatching;
@@ -23,9 +14,9 @@ const aiFieldLabels={invoiceKind:'Loại hóa đơn',buyerPersonName:'Tên cá n
 const aiMoneyFields=new Set(['amountBeforeTax','vatAmount','discountAmount','totalAmount','amountDue']);
 const aiConfidenceThresholds={buyerName:0.80,buyerPersonName:0.80,buyerOrganizationName:0.80,vendor:0.80,taxCode:0.80,invoiceNumber:0.80,amountBeforeTax:0.90,vatAmount:0.90,discountAmount:0.85,totalAmountSales:0.81,totalAmountVat:0.90,zeroVat:0.70};
 let profile=null, rows=[], vendors=[], vendorReviewNotes=[], vendorDirectoryError='', selected=null, selectedFromVendorNote=false, editing=null, timer=null, loading=false, busy=false, vendorSaving=false, epoch=0, dailySummary=null;
-const CFO_VIEWED_STORAGE_PREFIX=guestMode?'finref-guest-cfo-viewed:':'finref-cfo-viewed:';
+const CFO_VIEWED_STORAGE_PREFIX='finref-cfo-viewed:';
 let cfoViewedActorId=null,cfoViewedVersions=new Set(),approvalBatchPreflight=false;
-const cfoViewStateChannel=typeof BroadcastChannel==='function'?new BroadcastChannel(guestMode?'finref-guest-cfo-view-state':'finref-cfo-view-state'):null;
+const cfoViewStateChannel=typeof BroadcastChannel==='function'?new BroadcastChannel('finref-cfo-view-state'):null;
 function cfoViewedStorageKey(actorId) { return CFO_VIEWED_STORAGE_PREFIX+actorId; }
 function cfoRequestVersionKey(request) { return `${request.id}:${String(request.version)}`; }
 function clearCfoViewedState({removeStored=true,broadcast=false,actorId=cfoViewedActorId}={}) {
@@ -81,7 +72,6 @@ function showLogin() {
   $('approvalTools').classList.add('hidden');
   $('dailyLimitNotice').classList.add('hidden'); $('dailyLimitNotice').textContent='';
   $('paymentForm').reset(); $('vendorReviewNotesList').innerHTML=''; $('vendorReviewNotesMessage').textContent=''; document.body.className='';
-  if(guestMode) syncGuestRoleButtons();
 }
 const rolePageTitles={applicant:'Đề nghị của bạn',treasurer:'Không gian quản lý tài chính',cfo:'Duyệt cấp quyền · Giám đốc Tài chính'};
 function setActiveNav(button) {
@@ -153,8 +143,6 @@ async function enter(p) {
   profile=p; epoch++; dailySummary=null; approvalBatchPreflight=false;
   if(p.role==='cfo') loadCfoViewedState(p.id); else if(cfoViewedActorId) clearCfoViewedState({broadcast:true});
   $('loginScreen').classList.add('hidden'); $('appShell').classList.remove('hidden');
-  $('changeGuestRole').classList.toggle('hidden',!guestMode);
-  $('guestSandboxNotice').classList.toggle('hidden',!guestMode);
   document.body.className='online role-' + p.role;
   $('profileName').textContent=p.display_name; $('profileRole').textContent=roles[p.role]; $('roleLabel').textContent=roles[p.role];
   $('pageTitle').textContent=rolePageTitles[p.role];
@@ -1033,26 +1021,6 @@ $('loginForm').onsubmit=async event=>{
   try {const p=await api.login($('email').value.trim(),$('password').value); $('password').value=''; await enter(p); notify('',false,true);}
   catch(e) {clearCfoViewedState({broadcast:true,actorId:api.session?.user?.id});api.remember(null); notify('Đăng nhập thất bại: '+e.message,true,true);} finally {button.disabled=false;}
 };
-$('loginForm').classList.toggle('hidden',guestMode);
-$('guestRolePicker').classList.toggle('hidden',!guestMode);
-$('guestAccessLink').classList.toggle('hidden',guestMode||!guestAccessEnabled);
-document.querySelectorAll('[data-guest-role]').forEach(button=>button.addEventListener('click',async()=>{
-  if(!guestAccessConfigured) {notify('Chế độ khách chưa được bật trong cấu hình build. Hãy xem GUEST-SANDBOX.md.',false,true);return;}
-  const createSession=!api.session;
-  guestRoleBusy=true; button.disabled=true; notify('Đang tạo phiên khách và mở demo…',false,true);
-  try {
-    if(createSession) {
-      await api.loginAnonymously(); syncGuestRoleButtons();
-    }
-    await enter(await api.selectGuestRole(button.dataset.guestRole));
-    notify('Đang dùng dữ liệu demo, tách khỏi tài khoản thật.',false);
-  } catch(error) {
-    if(createSession&&!api.session) syncGuestRoleButtons();
-    notify('Không vào được chế độ khách: '+error.message,true,true);
-  }
-  finally {guestRoleBusy=false;syncGuestRoleButtons();}
-}));
-$('changeGuestRole').onclick=()=>{if(guestMode&&!busy) {showLogin();notify('Chọn vai trò sandbox muốn trải nghiệm.',false,true);}};
 $('logoutButton').onclick=async()=>{if(busy)return; const button=$('logoutButton');button.disabled=true; try {await api.logout();notify('',false,true);} catch {notify('Đã thoát trên thiết bị này; không liên lạc được máy chủ để thu hồi phiên.',true,true);} finally {showLogin();button.disabled=false;}};
 $('refreshButton').onclick=refresh;
 $('statusFilter').onchange=renderRows;
@@ -1096,19 +1064,9 @@ $('verifyButton').onclick=()=>{
   const results=FinRefRules.verify();
   $('verifyResult').innerHTML=`<p>${results.filter(r=>r.pass).length}/${results.length} PASS · ${esc(new Date().toLocaleString('vi-VN'))}</p><ul>${results.map(r=>`<li>${r.pass?'✓':'✗'} ${esc(r.name)}: ${r.actual} (cần ${r.expected})</li>`).join('')}</ul>`;
 };
-syncGuestRoleButtons();
-if(!guestAccessConfigured) {
-  if(guestMode) {
-    notify('Chế độ khách chưa được bật trong cấu hình build. Hãy xem GUEST-SANDBOX.md.',false,true);
-    document.querySelectorAll('[data-guest-role]').forEach(button=>button.disabled=true);
-  } else {
-    notify('Chưa kết nối Supabase. Làm theo HUONG-DAN-ONLINE.md để bật đăng nhập.',false,true);
-    $('loginForm').querySelector('button').disabled=true;
-  }
+if(!api.configured) {
+  notify('Chưa kết nối Supabase. Làm theo HUONG-DAN-ONLINE.md để bật đăng nhập.',false,true);
+  $('loginForm').querySelector('button').disabled=true;
 } else if(api.session) {
-  if(guestMode) {guestRoleBusy=true;syncGuestRoleButtons();}
-  api.profile().then(enter).catch(e=>{clearCfoViewedState({broadcast:true,actorId:api.session?.user?.id});api.remember(null);showLogin();notify(e.message,true,true);})
-    .finally(()=>{if(guestMode) {guestRoleBusy=false;syncGuestRoleButtons();}});
-} else if(guestMode&&!api.session) {
-  syncGuestRoleButtons();
+  api.profile().then(enter).catch(e=>{clearCfoViewedState({broadcast:true,actorId:api.session?.user?.id});api.remember(null);showLogin();notify(e.message,true,true);});
 }
