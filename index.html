@@ -16,6 +16,17 @@
         <label class="field">Mật khẩu<input id="password" type="password" autocomplete="current-password" required></label>
         <button class="primary-button clay-button" type="submit">Đăng nhập →</button>
       </form>
+      <p class="gateway-foot" id="guestAccessLink"><span><a href="?mode=guest">Trải nghiệm không cần tài khoản →</a></span><span>Dữ liệu khách tách khỏi tài khoản thật</span></p>
+      <div id="guestRolePicker" class="hidden" aria-labelledby="guestRoleHeading">
+        <h2 id="guestRoleHeading">Chọn vai trò trải nghiệm</h2>
+        <p class="gateway-copy">Bạn đang dùng môi trường demo chung cho khách; hồ sơ khách được tách khỏi tài khoản thật. Mọi người vào vai trò Quản lý/CFO đều có thể xem và xử lý hồ sơ demo của khách khác. Vai trò và quyết định ở đây không xác thực thẩm quyền thực tế. Không tải hóa đơn hoặc thông tin thật. Mỗi identity khách có 5 lượt OCR/AI mỗi ngày; tổng lượt toàn hệ thống không bị giới hạn.</p>
+        <div class="role-grid">
+          <button class="role-card applicant-role" type="button" data-guest-role="applicant"><span class="role-icon">↗</span><span class="role-title">Người nộp đơn</span><span class="role-desc">Tạo đề nghị, tải hóa đơn PDF và theo dõi xử lý.</span><span class="role-link">Vào cổng nộp đơn →</span></button>
+          <button class="role-card treasurer-role" type="button" data-guest-role="treasurer"><span class="role-icon">◈</span><span class="role-title">Quản lý tài chính</span><span class="role-desc">Kiểm tra hồ sơ, yêu cầu bổ sung hoặc duyệt/chuyển Giám đốc.</span><span class="role-link">Vào hàng đợi xét duyệt →</span></button>
+          <button class="role-card cfo-role" type="button" data-guest-role="cfo"><span class="role-icon">⌁</span><span class="role-title">CFO</span><span class="role-desc">Xem hàng chờ cấp quyền và duyệt theo luồng hiện hành.</span><span class="role-link">Vào hàng đợi CFO →</span></button>
+        </div>
+        <p class="gateway-foot"><span><a href="index.html">← Quay lại đăng nhập</a></span><span>Không cần tạo tài khoản</span></p>
+      </div>
       <p id="loginMessage" class="notice" role="status" aria-live="polite"></p>
     </div>
   </section>
@@ -32,8 +43,9 @@
       <div class="profile clay-inset"><div class="avatar">F</div><div><strong id="profileName"></strong><span id="profileRole"></span></div></div>
     </aside>
     <main class="main-content">
-      <header class="topbar"><div><span class="eyebrow" id="roleLabel"></span><h1 id="pageTitle"></h1><p class="muted" id="pageSubtitle">Hóa đơn PDF · Tổng thanh toán cuối cùng · Người có thẩm quyền duyệt cuối</p></div><div class="topbar-actions"><button class="secondary-button clay-button" id="refreshButton">Làm mới</button><button class="logout-button" id="logoutButton">Đăng xuất</button></div></header>
+      <header class="topbar"><div><span class="eyebrow" id="roleLabel"></span><h1 id="pageTitle"></h1><p class="muted" id="pageSubtitle">Hóa đơn PDF · Tổng thanh toán cuối cùng · Người có thẩm quyền duyệt cuối</p></div><div class="topbar-actions"><button class="secondary-button clay-button hidden" id="changeGuestRole" type="button">Đổi vai trò</button><button class="secondary-button clay-button" id="refreshButton">Làm mới</button><button class="logout-button" id="logoutButton">Đăng xuất</button></div></header>
       <p class="notice" id="message" role="status" aria-live="polite"></p>
+      <aside class="scope-note hidden" id="guestSandboxNotice" role="status">DEMO KHÁCH · Tách khỏi tài khoản thật nhưng dùng chung hàng đợi với khách khác. Ai chọn Quản lý/CFO đều có thể xử lý hồ sơ demo; quyết định không xác thực thẩm quyền. Tối đa 5 lượt OCR/AI mỗi identity/ngày, không có trần tổng. Không dùng hóa đơn hoặc thông tin thật.</aside>
       <aside class="scope-note daily-limit-note hidden" id="dailyLimitNotice" role="status" aria-live="polite"></aside>
       <div id="workspaceOverview">
       <details class="scope-note" id="approvalRules">
