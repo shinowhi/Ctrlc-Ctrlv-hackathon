@@ -572,6 +572,14 @@ function renderIdentifierConfirmations(request,ai,annotations) {
   }).join('');
   return `<section class="identifier-verification"><h4>Đối chiếu thông tin dùng phát hiện hóa đơn trùng</h4><p>Đọc đúng giá trị in trên PDF. Nếu AI đọc sai, sửa ô bên dưới rồi bấm xác nhận. Giá trị này sẽ được lưu kèm người xác nhận và dùng để so MST + số hóa đơn với hồ sơ đã duyệt. Nếu không đọc rõ trên PDF, để hồ sơ ở hàng quản lý.</p><div class="identifier-confirmation-list">${fields}</div></section>`;
 }
+function combineReviewAnnotations(annotations,keys) {
+  const items=keys.map(key=>annotations?.[key]).filter(item=>item&&typeof item==='object');
+  if(!items.length) return null;
+  return items.reduce((combined,item)=>({
+    state:combined.state==='red'||item.state==='red'?'red':'yellow',
+    notes:[...combined.notes,...(Array.isArray(item.notes)?item.notes:[])]
+  }),{state:'yellow',notes:[]});
+}
 function renderSubmittedForm(request,annotations) {
   const missing=new Set(request?.checks?.form_missing_fields||[]);
   const rows=formReviewFields.map(field=>{
@@ -579,7 +587,7 @@ function renderSubmittedForm(request,annotations) {
     const buyerField=request.payload?.buyerMode==='PERSON'?'buyerPersonName':request.payload?.buyerMode==='ORGANIZATION'?'buyerOrganizationName':null;
     const annotation=field.key==='buyerCompany'&&buyerField?annotations[buyerField]
       :field.key==='buyerMode'&&request.payload?.buyerMode==='NO_NAME'
-        ?buyerNameFields.map(key=>annotations[key]).filter(Boolean).reduce((combined,item)=>({state:combined.state==='red'||item.state==='red'?'red':'yellow',notes:[...combined.notes,...item.notes]}),null)
+        ?combineReviewAnnotations(annotations,buyerNameFields)
         :field.analysisKey?annotations[field.analysisKey]:null;
     const isMissing=missing.has(field.key)||(field.key==='buyerCompany'&&missing.has('buyerCompany'));
     const state=isMissing?'purple':annotation?.state||'';
@@ -742,7 +750,7 @@ async function renderReviewPdf(url,annotations,token,onFirstPageDisplayed=null) 
     if(token===pdfViewToken&&!disposed) {status.classList.remove('hidden');status.textContent=`Không hiển thị được hóa đơn: ${error.message||'Lỗi PDF.'}`;toolbar.classList.add('hidden');}
   }
 }
-async function openRequest(id,fromVendorNote=false) {
+async function renderRequestDetails(id,fromVendorNote=false) {
   const requestEpoch=epoch;
   let r=rows.find(x=>x.id===id);
   if(!r&&fromVendorNote&&profile?.role==='cfo') {
@@ -830,6 +838,16 @@ async function openRequest(id,fromVendorNote=false) {
   try { const audit=await api.audit(id); if(epoch!==run||selected?.id!==id) return;
     $('auditList').innerHTML=audit.map(a=>`<div class="audit-item"><span class="audit-dot purple"></span><div><strong>${esc(roles[a.actor_role]||a.actor_role)} · ${esc(statuses[a.new_status]||a.new_status)}</strong><p>${esc(a.reason)}</p><small>${esc(time(a.created_at))} · phiên bản ${a.version}</small></div></div>`).join('');
   } catch(e) {if(epoch===run&&selected?.id===id) $('auditList').textContent='Không tải được nhật ký: '+e.message;}
+}
+async function openRequest(id,fromVendorNote=false) {
+  try {await renderRequestDetails(id,fromVendorNote);}
+  catch(error) {
+    console.error('Không thể mở chi tiết hồ sơ.',error);
+    if(selected?.id!==id) return;
+    clearPdfViewer();
+    $('decisionResult').textContent='Không thể hiển thị chi tiết hồ sơ. Vui lòng thử mở lại.';
+    $('auditList').textContent='';
+  }
 }
 function setBusy(value) {busy=value; $('submitButton').disabled=value; $('logoutButton').disabled=value; document.querySelectorAll('[data-action],[data-batch-action],[data-approve-id],[data-verify-identifier],[data-verified-identifier]').forEach(b=>b.disabled=value); renderApprovalTools();}
 async function submitApprovalBatch(items,reason='',{requireCfoQueueView=false,actorId=profile?.id,run=epoch}={}) {

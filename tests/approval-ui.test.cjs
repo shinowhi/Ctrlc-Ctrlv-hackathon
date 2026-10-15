@@ -68,3 +68,78 @@ test('CFO batch submission reaches the database when the daily summary is unavai
   assert.equal(rpcCall.name,'review_requests_batch');
   assert.equal(rpcCall.args.p_reason,'Lý do duyệt ngoại lệ');
 });
+
+function combineReviewAnnotations(annotations,keys){
+  const context={annotations,keys};
+  return vm.runInNewContext(
+    appFunction('combineReviewAnnotations','renderSubmittedForm')+
+    '\ncombineReviewAnnotations(annotations,keys);',
+    context
+  );
+}
+
+test('review form renders NO_NAME records with buyer annotations',()=>{
+  const context={
+    formReviewFields:[{key:'buyerMode',label:'Thông tin người mua',read:value=>value}],
+    buyerNameFields:['buyerPersonName','buyerOrganizationName'],
+    request:{payload:{buyerMode:'NO_NAME'},checks:{}},
+    annotations:{buyerPersonName:{state:'yellow',notes:['Cần kiểm tra tên người mua.']}},
+    esc:value=>String(value)
+  };
+  assert.doesNotThrow(()=>vm.runInNewContext(
+    appFunction('combineReviewAnnotations','renderSubmittedForm')+
+    appFunction('renderSubmittedForm','renderInvoiceNotes')+
+    '\nrenderSubmittedForm(request,annotations);',
+    context
+  ));
+});
+
+test('buyer annotations stay empty when there are no findings',()=>{
+  assert.equal(combineReviewAnnotations({},['buyerPersonName','buyerOrganizationName']),null);
+});
+
+test('buyer annotation aggregation handles a single finding and missing notes',()=>{
+  const result=combineReviewAnnotations({buyerPersonName:{state:'red'}},['buyerPersonName']);
+  assert.equal(result.state,'red');
+  assert.deepEqual(Array.from(result.notes),[]);
+});
+
+test('buyer annotation aggregation preserves notes and gives red findings precedence',()=>{
+  const result=combineReviewAnnotations({
+    buyerPersonName:{state:'yellow',notes:['Chưa đọc rõ tên cá nhân.']},
+    buyerOrganizationName:{state:'red',notes:['Có tên doanh nghiệp trên hóa đơn.']}
+  },['buyerPersonName','buyerOrganizationName']);
+  assert.equal(result.state,'red');
+  assert.deepEqual(Array.from(result.notes),['Chưa đọc rõ tên cá nhân.','Có tên doanh nghiệp trên hóa đơn.']);
+});
+
+test('opening a request reports rendering errors without replacing another selection',async()=>{
+  const elements={decisionResult:{textContent:'Chi tiết hồ sơ hiện tại'},auditList:{textContent:'Nhật ký hiện tại'}};
+  let loggedError=null,clearedPdf=false;
+  const context={
+    renderRequestDetails:async()=>{throw new Error('Render failed');},
+    selected:{id:'another-request'},
+    clearPdfViewer:()=>{clearedPdf=true;},
+    console:{error:(...args)=>{loggedError=args;}},
+    $:id=>elements[id]
+  };
+  await vm.runInNewContext(appFunction('openRequest','setBusy',true)+'\nopenRequest("request-1");',context);
+  assert.match(loggedError[0],/Không thể mở chi tiết hồ sơ/);
+  assert.equal(elements.decisionResult.textContent,'Chi tiết hồ sơ hiện tại');
+  assert.equal(elements.auditList.textContent,'Nhật ký hiện tại');
+  assert.equal(clearedPdf,false);
+});
+
+test('opening a selected request shows a safe fallback when rendering fails',async()=>{
+  const elements={decisionResult:{textContent:'Chi tiết'},auditList:{textContent:'Nhật ký'}};
+  const context={
+    renderRequestDetails:async()=>{throw new Error('Render failed');},
+    selected:{id:'request-1'},
+    clearPdfViewer(){},
+    console:{error(){}},
+    $:id=>elements[id]
+  };
+  await vm.runInNewContext(appFunction('openRequest','setBusy',true)+'\nopenRequest("request-1");',context);
+  assert.equal(elements.decisionResult.textContent,'Không thể hiển thị chi tiết hồ sơ. Vui lòng thử mở lại.');
+  assert.equal(elements.auditList.textContent,'');
+});
