@@ -14,9 +14,9 @@ const readBody = req => new Promise((resolve, reject) => {
   req.on('error', reject);
 });
 
-const supabase = (path, options = {}, token, key) => fetch(process.env.SUPABASE_URL + path, {
+const supabase = (baseUrl, path, options = {}, token, key) => fetch(baseUrl + path, {
   ...options,
-  headers: { apikey: key, ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(options.headers || {}) }
+  headers: { apikey: key, ...(token && !token.startsWith('sb_secret_') ? { Authorization: `Bearer ${token}` } : {}), ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(options.headers || {}) }
 }).then(async response => {
   const text = await response.text();
   let data; try { data = JSON.parse(text); } catch { data = text; }
@@ -48,9 +48,9 @@ const readLimitedBytes = async (response, maxBytes, message) => {
   return Buffer.concat(chunks, size);
 };
 
-const asInvoiceBytes = async (path, maxBytes, sizeMessage) => {
-  const response = await fetch(`${process.env.SUPABASE_URL}/storage/v1/object/evidence/${path}`, {
-    headers: { Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`, apikey: process.env.SUPABASE_SERVICE_ROLE_KEY },
+const asInvoiceBytes = async (baseUrl, serviceKey, path, maxBytes, sizeMessage) => {
+  const response = await fetch(`${baseUrl}/storage/v1/object/evidence/${path}`, {
+    headers: { ...(serviceKey.startsWith('sb_secret_') ? {} : {Authorization: `Bearer ${serviceKey}`}), apikey: serviceKey },
     signal: AbortSignal.timeout(15000), redirect: 'error'
   });
   if (!response.ok) throw new Error('Không đọc được file minh chứng.');
@@ -931,6 +931,11 @@ const analyzeWithAzure = async (request, invoiceBytes) => {
 
 const handler = async (req, res) => {
   if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed.' });
+  const database = {
+    url: process.env.SUPABASE_URL,
+    anonKey: process.env.SUPABASE_ANON_KEY,
+    serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY
+  };
   const requestedProvider = String(process.env.INVOICE_ANALYSIS_PROVIDER || '').trim().toLowerCase();
   const azureConfigured = Boolean(process.env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT || process.env.AZURE_DOCUMENT_INTELLIGENCE_KEY);
   const provider = requestedProvider || (azureConfigured ? 'azure' : 'openai');
@@ -938,26 +943,35 @@ const handler = async (req, res) => {
   const providerConfigured = provider === 'azure'
     ? Boolean(process.env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT && process.env.AZURE_DOCUMENT_INTELLIGENCE_KEY)
     : Boolean(process.env.OPENAI_API_KEY);
-  if (!providerConfigured || !process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) return json(res, 503, { error: 'AI backend chưa được cấu hình.' });
+  if (!providerConfigured || !database.url || !database.anonKey || !database.serviceKey) {
+    return json(res, 503, { error: 'AI backend chưa được cấu hình.' });
+  }
   const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
   if (!token) return json(res, 401, { error: 'Vui lòng đăng nhập.' });
   try {
     const { requestId } = await readBody(req);
     if (!/^[0-9a-f-]{36}$/i.test(String(requestId || ''))) return json(res, 400, { error: 'Mã hồ sơ không hợp lệ.' });
-    const publicKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const user = await supabase('/auth/v1/user', {}, token, publicKey);
-    const rows = await supabase(`/rest/v1/requests?id=eq.${encodeURIComponent(requestId)}&select=*`, {}, token, publicKey);
+    const user = await supabase(database.url, '/auth/v1/user', {}, token, database.anonKey);
+    const guestMode = user.is_anonymous === true;
+    const rows = await supabase(database.url, `/rest/v1/requests?id=eq.${encodeURIComponent(requestId)}&select=*`, {}, token, database.anonKey);
     const request = rows[0];
-    if (!request || request.owner_id !== user.id) return json(res, 403, { error: 'Không có quyền đọc hồ sơ này.' });
+    if (!request || request.owner_id !== user.id || Boolean(request.is_guest) !== guestMode) return json(res, 403, { error: 'Không có quyền đọc hồ sơ này.' });
     if (request.status !== 'TREASURER_REVIEW') return json(res, 409, { error: 'Hồ sơ không còn chờ phân tích. Hãy làm mới để xem trạng thái mới nhất.' });
-    const profile = (await supabase(`/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=role`, {}, token, publicKey))[0];
+    const profile = (await supabase(database.url, `/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=role`, {}, token, database.anonKey))[0];
     if (profile?.role !== 'applicant') return json(res, 403, { error: 'Chỉ người nộp đơn được yêu cầu đọc minh chứng.' });
+    const serviceKey = database.serviceKey;
     if (!request.invoice_path?.endsWith('/invoice.pdf')) return json(res, 422, { error: 'Đợt này chỉ phân tích hóa đơn PDF.' });
+    if (guestMode) {
+      const withinQuota = await supabase(database.url, '/rest/v1/rpc/consume_guest_analysis_quota', {
+        method: 'POST', body: JSON.stringify({p_user_id:user.id,p_daily_limit:5})
+      }, serviceKey, serviceKey);
+      if (withinQuota !== true) return json(res, 429, { error: 'Phiên khách đã dùng hết 5 lượt phân tích hôm nay. Hãy thử lại vào ngày mai.' });
+    }
     const invoiceMaxBytes = provider === 'azure' ? 4 * 1024 * 1024 : 10 * 1024 * 1024;
     const sizeMessage = provider === 'azure'
       ? 'Azure Document Intelligence F0 chỉ nhận file tối đa 4 MB.'
       : 'File hóa đơn vượt giới hạn 10 MB.';
-    const invoiceBytes = await asInvoiceBytes(request.invoice_path, invoiceMaxBytes, sizeMessage);
+    const invoiceBytes = await asInvoiceBytes(database.url, serviceKey, request.invoice_path, invoiceMaxBytes, sizeMessage);
     const extraction = provider === 'azure'
       ? await analyzeWithAzure(request, invoiceBytes)
       : await analyzeWithOpenAI(request, invoiceBytes);
@@ -965,12 +979,12 @@ const handler = async (req, res) => {
       rereadBuyerFieldsIfNeeded(request,extraction,invoiceBytes,8000),
       rereadVendorFieldsIfNeeded(extraction,invoiceBytes,8000)
     ]);
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     let registeredVendorMatch = null;
     try {
-      registeredVendorMatch = await supabase('/rest/v1/rpc/resolve_vendor_name_match_with_confidence', {
+      registeredVendorMatch = await supabase(database.url, '/rest/v1/rpc/resolve_vendor_name_match_with_confidence', {
         method: 'POST', body: JSON.stringify({
-          ...buildVendorMatchPayload(request, extraction)
+          ...buildVendorMatchPayload(request, extraction),
+          p_is_guest: guestMode
         })
       }, serviceKey, serviceKey);
     } catch {
@@ -979,8 +993,8 @@ const handler = async (req, res) => {
     const assessment = assess(request, extraction, registeredVendorMatch);
     assessment.checks.vendorDirectoryResolution = registeredVendorMatch ? 'RESOLVED' : 'UNAVAILABLE';
     const analysis = { ...extraction, assessment, policyChecked: false, budgetChecked: false };
-    const result = await supabase('/rest/v1/rpc/record_invoice_analysis', {
-      method: 'POST', body: JSON.stringify({ p_id: request.id, p_expected_version: request.version, p_analysis: analysis })
+    const result = await supabase(database.url, '/rest/v1/rpc/record_invoice_analysis', {
+      method: 'POST', body: JSON.stringify({ p_id: request.id, p_expected_version: request.version, p_analysis: analysis, p_is_guest: guestMode })
     }, serviceKey, serviceKey);
     return json(res, 200, { status: result.status, analysis });
   } catch (error) { return json(res, error.status || 422, { error: error.message || 'Không đọc được minh chứng.' }); }
