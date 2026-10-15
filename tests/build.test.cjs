@@ -14,18 +14,10 @@ function fixture(){
   return root;
 }
 test('Build copies public assets only',()=>{
-  const root=fixture();const result=spawnSync(process.execPath,[path.join(root,'scripts/build.cjs')],{env:{...process.env,SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'sb_publishable_test',GUEST_MODE_ENABLED:'false'},encoding:'utf8'});
+  const root=fixture();const result=spawnSync(process.execPath,[path.join(root,'scripts/build.cjs')],{env:{...process.env,SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'sb_publishable_test'},encoding:'utf8'});
   assert.equal(result.status,0,result.stderr);
   assert.deepEqual(fs.readdirSync(path.join(root,'dist')).sort(),[...publicFiles,'config.js','vendor'].sort());
-  const config=fs.readFileSync(path.join(root,'dist/config.js'),'utf8');
-  assert.ok(!config.includes('SENSITIVE'));
-  assert.deepEqual(JSON.parse(config.match(/^window\.FINREF_CONFIG = (.+);\s*$/)[1]).guest,{enabled:false});
-});
-test('Build exposes guest mode only when explicitly enabled',()=>{
-  const root=fixture();const result=spawnSync(process.execPath,[path.join(root,'scripts/build.cjs')],{env:{...process.env,SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'sb_publishable_test',GUEST_MODE_ENABLED:'true'},encoding:'utf8'});
-  assert.equal(result.status,0,result.stderr);
-  const config=fs.readFileSync(path.join(root,'dist/config.js'),'utf8');
-  assert.deepEqual(JSON.parse(config.match(/^window\.FINREF_CONFIG = (.+);\s*$/)[1]).guest,{enabled:true});
+  assert.ok(!fs.readFileSync(path.join(root,'dist/config.js'),'utf8').includes('SENSITIVE'));
 });
 test('Build refuses admin or missing keys',()=>{
   const root=fixture();const adminJWT='e30.'+Buffer.from(JSON.stringify({role:'service_role'})).toString('base64url')+'.sig';

@@ -97,6 +97,26 @@ test('authenticated analysis reads the stored PDF and records the current assess
   assert.ok(calls.some(call=>call.url.includes('/storage/v1/object/evidence/')));
 });
 
+test('secret API keys stay in apikey while the user session remains a bearer token',async()=>{
+  const {res,calls}=await run({env:{...env,SUPABASE_SERVICE_ROLE_KEY:'sb_secret_test'}});
+  assert.equal(res.statusCode,200);
+  const userCall=calls.find(call=>call.url.endsWith('/auth/v1/user'));
+  assert.equal(userCall.options.headers.apikey,'public-test');
+  assert.equal(userCall.options.headers.Authorization,'Bearer user-test');
+  for(const call of calls.filter(call=>call.url.includes('/storage/v1/object/evidence/')||call.url.includes('/rpc/record_invoice_analysis'))){
+    assert.equal(call.options.headers.apikey,'sb_secret_test');
+    assert.equal(call.options.headers.Authorization,undefined);
+  }
+});
+
+test('legacy service_role JWT remains in the bearer header',async()=>{
+  const {res,calls}=await run();
+  assert.equal(res.statusCode,200);
+  const recordCall=calls.find(call=>call.url.includes('/rpc/record_invoice_analysis'));
+  assert.equal(recordCall.options.headers.apikey,'server-test');
+  assert.equal(recordCall.options.headers.Authorization,'Bearer server-test');
+});
+
 test('unauthorized, inaccessible, stale, non-applicant, and invalid-PDF requests never reach OpenAI',async()=>{
   for(const options of [
     {unauthorized:true},
