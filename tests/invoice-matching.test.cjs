@@ -33,9 +33,8 @@ test('verified party aliases count as exact matches', () => {
 });
 
 test('browser helper does not collide with app.js global declarations', () => {
-  const context = vm.createContext({ URLSearchParams });
+  const context = vm.createContext({});
   context.window = context;
-  context.location = { search: '' };
   context.document = { getElementById: () => null };
   context.FinRefApi = class {};
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../invoice-matching.js'), 'utf8'), context, { filename: 'invoice-matching.js' });

@@ -16,4 +16,3 @@
 20261011-buyer-a-b-names.sql
 20261012-restore-single-buyer-name.sql
 20261015-cfo-read-high-value-manager-review.sql
-20261016-guest-shared-project.sql

@@ -4,16 +4,14 @@
     constructor(config, storage = sessionStorage) {
       this.url = (config.supabaseUrl || '').replace(/\/$/,'');
       this.key = config.supabaseAnonKey || '';
-      this.mode = config.mode === 'guest' ? 'guest' : 'main';
-      this.storageKey = this.mode === 'guest' ? 'finref-guest-session' : 'finref-session';
       this.storage = storage;
-      try { this.session = JSON.parse(storage.getItem(this.storageKey)); } catch { this.session = null; }
+      try { this.session = JSON.parse(storage.getItem('finref-session')); } catch { this.session = null; }
     }
     get configured() { return /^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(this.url) && !!this.key; }
     remember(session) {
       this.session = session ? {...session, expires_at: session.expires_at || Date.now()/1000 + session.expires_in} : null;
-      if (this.session) this.storage.setItem(this.storageKey, JSON.stringify(this.session));
-      else this.storage.removeItem(this.storageKey);
+      if (this.session) this.storage.setItem('finref-session', JSON.stringify(this.session));
+      else this.storage.removeItem('finref-session');
     }
     async raw(path, options = {}, token) {
       const response = await fetch(this.url + path, {
@@ -47,23 +45,10 @@
       this.remember(await this.raw('/auth/v1/token?grant_type=password', {method:'POST',body:JSON.stringify({email,password})}));
       return this.profile();
     }
-    async loginAnonymously() {
-      if (this.mode !== 'guest') throw new Error('Phiên khách chỉ dùng trong chế độ trải nghiệm.');
-      const session = await this.raw('/auth/v1/signup', {method:'POST',body:JSON.stringify({data:{}})});
-      if (!session?.access_token || !session?.user?.is_anonymous) throw new Error('Supabase chưa bật Anonymous Sign-Ins.');
-      this.remember(session);
-      return session.user;
-    }
-    async selectGuestRole(role) {
-      if (this.mode !== 'guest' || !['applicant','treasurer','cfo'].includes(role)) throw new Error('Vai trò sandbox không hợp lệ.');
-      await this.rpc('set_guest_role',{p_role:role});
-      return this.profile();
-    }
     async profile() {
       const user = await this.request('/auth/v1/user');
-      if (Boolean(user.is_anonymous) !== (this.mode === 'guest')) throw new Error('Loại phiên đăng nhập không khớp với chế độ hiện tại.');
       const rows = await this.request('/rest/v1/profiles?id=eq.' + encodeURIComponent(user.id) + '&select=id,role,display_name');
-      if (!rows.length) throw new Error('Phiên chưa được tạo hồ sơ vai trò.');
+      if (!rows.length) throw new Error('Tài khoản chưa được gán vai trò. Hãy chạy bước tạo tài khoản.');
       return rows[0];
     }
     async logout() { try { if(this.session) await this.request('/auth/v1/logout?scope=local',{method:'POST'}); } finally {this.remember(null);} }

@@ -129,12 +129,9 @@ test('finance roles can add verified vendor aliases; all roles can read the dire
     await db.exec('set role service_role');
     try{
       for(const [name,taxCode] of invoiceSuppliers){
-        const match=(await db.query(
-          'select resolve_vendor_name_match_with_confidence($1,$1,$2,$3,false) result',
-          [name,taxCode,1]
-        )).rows[0].result;
+        const match=(await db.query('select resolve_vendor_name_match($1,$1,$2) result',[name,taxCode])).rows[0].result;
         assert.equal(match.status,'MATCH');
-        assert.equal(match.method,'VERIFIED_ALIAS');
+        assert.equal(match.method,'NORMALIZED_NAME');
       }
     }finally{await db.exec('reset role');}
   }finally{await db.close();}
