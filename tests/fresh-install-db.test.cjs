@@ -9,10 +9,14 @@ test('PostgreSQL: fresh-install migrations expose current invoice and CFO rules'
     assert.ok(migrationFiles.includes('20261015-cfo-read-high-value-manager-review.sql'));
 
     const analysis=(await db.query(
-      "select pg_get_functiondef('public.record_invoice_analysis(uuid,integer,jsonb)'::regprocedure) as definition"
+      "select pg_get_functiondef('public.record_invoice_analysis_scoped_legacy(uuid,integer,jsonb)'::regprocedure) as definition"
     )).rows[0].definition;
     assert.match(analysis,/buyerPersonName/);
     assert.match(analysis,/buyerOrganizationName/);
+    const accountAnalysis=(await db.query(
+      "select pg_get_functiondef('public.record_invoice_analysis(uuid,integer,jsonb)'::regprocedure) as definition"
+    )).rows[0].definition;
+    assert.match(accountAnalysis,/record_invoice_analysis_scoped_legacy/);
 
     const submit=(await db.query(
       "select pg_get_functiondef('public.submit_request(uuid,jsonb,text,text,integer)'::regprocedure) as definition"
