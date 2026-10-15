@@ -1,41 +1,13 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
-const fs=require('node:fs');
-const path=require('node:path');
-const {PGlite}=require(process.env.PGLITE_PATH||'@electric-sql/pglite');
+const {createFreshDatabase}=require('./helpers/fresh-database.cjs');
 
 const applicant='11111111-1111-4111-8111-111111111111';
 const treasurer='22222222-2222-4222-8222-222222222222';
 const cfo='33333333-3333-4333-8333-333333333333';
 
 async function fixture(){
-  const db=new PGlite();
-  await db.exec("create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create schema storage;"+
-    "create table auth.users(id uuid primary key);"+
-    "create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;"+
-    "create function auth.role() returns text language sql stable as $$select coalesce(current_setting('request.jwt.claim.role',true),'')$$;"+
-    "create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);"+
-    "create table storage.objects(id bigint generated always as identity,name text,bucket_id text);"+
-    "alter table storage.objects enable row level security;"+
-    "grant usage on schema public,auth,storage to authenticated,service_role;"+
-    "grant select on storage.objects to authenticated;"+
-    "insert into auth.users values('"+applicant+"'),('"+treasurer+"'),('"+cfo+"');");
-  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/schema.sql'),'utf8'));
-  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261002-daily-approval-limits.sql'),'utf8'));
-  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261002-z-batch-approval-queues.sql'),'utf8'));
-  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261004-invoice-name-normalization.sql'),'utf8'));
-  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261004-temporary-disable-invoice-date-analysis.sql'),'utf8'));
-  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261004-z-vendor-directory.sql'),'utf8'));
-  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261004-zz-vendor-invoice-seed.sql'),'utf8'));
-  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261004-zzz-tax-code-confidence-80.sql'),'utf8'));
-  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261005-invoice-kind-aware-assessment.sql'),'utf8'));
-  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261005-vendor-invoice-aliases.sql'),'utf8'));
-  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261006-buyer-exemption-and-tax-code-identity.sql'),'utf8'));
-  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261007-sales-buyer-and-vendor-alias-resolution.sql'),'utf8'));
-  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261008-production-forward-sync.sql'),'utf8'));
-  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261008-z-sales-total-confidence-81.sql'),'utf8'));
-  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261009-structured-buyer-names.sql'),'utf8'));
-  await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations/20261015-cfo-read-high-value-manager-review.sql'),'utf8'));
+  const db=await createFreshDatabase([applicant,treasurer,cfo]);
   await db.query('insert into profiles values ($1,$2,$3),($4,$5,$6),($7,$8,$9)',
     [applicant,'Applicant','applicant',treasurer,'Treasurer','treasurer',cfo,'CFO','cfo']);
   const as=async(user,sql,args=[])=>{

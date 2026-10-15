@@ -1,0 +1,18 @@
+# Each filename is under supabase/migrations/. Apply in this order after schema.sql on a new database.
+20261002-daily-approval-limits.sql
+20261002-z-batch-approval-queues.sql
+20261004-invoice-name-normalization.sql
+20261004-temporary-disable-invoice-date-analysis.sql
+20261004-z-vendor-directory.sql
+20261004-zz-vendor-invoice-seed.sql
+20261004-zzz-tax-code-confidence-80.sql
+20261005-invoice-kind-aware-assessment.sql
+20261005-vendor-invoice-aliases.sql
+20261006-buyer-exemption-and-tax-code-identity.sql
+20261007-sales-buyer-and-vendor-alias-resolution.sql
+20261008-production-forward-sync.sql
+20261008-z-sales-total-confidence-81.sql
+20261009-structured-buyer-names.sql
+20261011-buyer-a-b-names.sql
+20261012-restore-single-buyer-name.sql
+20261015-cfo-read-high-value-manager-review.sql

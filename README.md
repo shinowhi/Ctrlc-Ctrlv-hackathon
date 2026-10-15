@@ -33,6 +33,6 @@ Người dùng xác nhận ba tài khoản được dùng để rà soát thuộ
 
 ## Database và cấu hình
 
-- Checkout hiện có migration đến `supabase/migrations/20261015-cfo-read-high-value-manager-review.sql`. Đối chiếu lịch sử của đúng Supabase project và chỉ chạy các migration còn thiếu; không xem riêng migration mới nhất là đủ.
+- Checkout hiện có migration đến `supabase/migrations/20261015-cfo-read-high-value-manager-review.sql`. Database mới dùng `supabase/schema.sql` rồi chạy đúng thứ tự trong [`supabase/fresh-install-migrations.txt`](supabase/fresh-install-migrations.txt); database đang dùng phải đối chiếu lịch sử của đúng project và chỉ chạy migration còn thiếu, không xem riêng migration mới nhất là đủ.
 - Trạng thái migration trên production chưa được xác minh trực tiếp trong lần rà soát. Không suy ra trạng thái database production chỉ từ mã nguồn hoặc giao diện đang chạy.
 - API hỗ trợ cấu hình `INVOICE_ANALYSIS_PROVIDER=azure` hoặc `openai`. Biến môi trường và provider đang dùng trên production chưa được xác minh trong lần rà soát.

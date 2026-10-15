@@ -23,11 +23,17 @@ function renderApprovalTools(role,dailySummary,reason){
     batchReasonField:{classList:noopClassList},
     approvalSummaryText:{textContent:''},
     approveAllButton:{textContent:'',disabled:false},
-    batchReason:{value:reason}
+    batchReason:{value:reason,disabled:false},
+    statusFilter:{value:''},
+    showApprovalQueueButton:{classList:noopClassList,textContent:'',setAttribute(){}}
   };
   const context={
-    profile:{role},busy:false,dailySummary,
-    approvalQueue:()=>[{amount:25000001}],
+    profile:{role,id:'test-cfo'},busy:false,loading:false,dailySummary,approvalBatchPreflight:false,epoch:1,
+    api:{session:{user:{id:'test-cfo'}}},
+    rows:[],
+    approvalQueue:()=>[{id:'request-1',version:3,status:'READY_FOR_APPROVAL',amount:25000001}],
+    cfoHasViewed:()=>true,
+    document:{querySelectorAll:()=>[]},
     money:value=>String(value),
     $:id=>elements[id]
   };
@@ -55,7 +61,8 @@ test('CFO batch submission reaches the database when the daily summary is unavai
   let rpcCall=null;
   const elements={batchReason:{value:'Lý do duyệt ngoại lệ'}};
   const context={
-    profile:{role:'cfo'},busy:false,dailySummary:null,
+    profile:{role:'cfo',id:'test-cfo'},busy:false,dailySummary:null,approvalBatchPreflight:false,epoch:1,
+    cfoHasViewed:()=>true,
     api:{rpc:async(name,args)=>{rpcCall={name,args};return {status:'APPROVED',invoice_count:1,requested_total:25000001};}},
     setBusy(){},notify(){},money:value=>String(value),$ :id=>elements[id],refresh:async()=>{}
   };

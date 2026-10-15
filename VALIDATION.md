@@ -2,7 +2,7 @@
 
 **Cập nhật:** 15/10/2026
 
-**Checkout được đối chiếu hiện tại:** branch `main`, HEAD `6893de2`, cùng các thay đổi local chưa commit tại `app.js`, `index.html` và `rules.js`.
+**Checkout local được đối chiếu hiện tại:** branch `main`, HEAD `d23f9fd`. Working tree có thay đổi chưa commit trong hướng dẫn/README và bộ kiểm thử, gồm kiểm thử migration cài mới; `VALIDATION.md` cũng đang được cập nhật để phản ánh trạng thái này.
 **Lần rà soát production gần nhất:** 12/10/2026. Mã nguồn production và trạng thái migration chưa được xác nhận.
 **Mã nguồn được xem trong lần rà soát production đó:** branch `fix/restore-single-buyer-name`, HEAD `14423bd`.
 
@@ -32,6 +32,12 @@ Phạm vi là đọc giao diện đã đăng nhập và mã nguồn hiện có. 
 
 Đánh giá dựa trên bằng chứng hiện có trong lần rà soát là **63/100**. Con số **72/100** chỉ là kịch bản giả định nếu phần thuyết trình được chấm 9/10; chưa xem video/bài trình bày nên không phải điểm đã xác minh. Không dùng các con số này thay cho kết quả chính thức của Ban Tổ chức.
 
+## Kiểm chứng local — 15/10/2026
+
+- Trên checkout `main`, HEAD `d23f9fd` cùng các thay đổi local chưa commit, `pnpm test` đạt **120/120**, không có test thất bại hoặc bị bỏ qua. Lần chạy này bao gồm các kiểm thử API với dependency giả lập, kiểm thử UI trong VM và kiểm thử database bằng PGlite.
+- Kiểm thử migration cài mới chạy trên PostgreSQL giả lập bằng PGlite, với cấu trúc Auth/Storage giả lập. Kết quả giúp kiểm tra thứ tự và khả năng áp dụng migration trong môi trường kiểm thử; không xác nhận trạng thái hay dữ liệu của Supabase production.
+- Không chạy SQL lên Supabase production. Commit Vercel đang triển khai và trạng thái migration production vẫn chưa được xác minh.
+
 ## Kết quả cũ — chỉ để tham khảo lịch sử
 
 Phiên bản trước của tài liệu ghi nhận:
@@ -40,11 +46,11 @@ Phiên bản trước của tài liệu ghi nhận:
 - `node scripts/smoke-local.cjs`: 5/5 đạt.
 - Kiểm tra Chrome headless với API giả lập; Verify UI khi đó có 15 ca và hiển thị 15/15.
 
-Các kết quả này thuộc bản rà soát cũ, trước nhiều thay đổi sau đó và không được chạy lại trên checkout hiện tại (`main`, HEAD `6893de2`). Chúng không chứng minh AI, Supabase thật, migration hoặc deployment hiện tại hoạt động đúng.
+Các kết quả này thuộc bản rà soát cũ, trước nhiều thay đổi sau đó. Chúng không phải kết quả của checkout hiện tại (`main`, HEAD `d23f9fd`) và không chứng minh AI, Supabase thật, migration production hoặc deployment hiện tại hoạt động đúng.
 
 ## Phân biệt các loại kiểm tra
 
 - `npm run smoke` chạy năm ca preview luật từ `scripts/smoke-local.cjs`; không gọi OpenAI hoặc Supabase.
-- `node --test tests/*.test.cjs` chạy unit/integration tests theo cấu hình của từng test; chưa chạy trên checkout hiện tại trong lần cập nhật ngày 15/10/2026.
+- `pnpm test` chạy bộ unit/integration tests local; lần chạy trên checkout `main`, HEAD `d23f9fd` ngày 15/10/2026 đạt 120/120. Bộ test dùng dependency/database giả lập ở các phần tương ứng, không phải kiểm thử end-to-end với production.
 - `TESTCASES.md` mô tả kịch bản và kết quả mong đợi. Một kịch bản được ghi trong đó không có nghĩa là đã chạy qua acceptance trên production.
 - Verify UI hiện có 17 ca trạng thái luật; nó không thay thế kiểm tra upload PDF, OCR, quyền Supabase, RPC, audit và quyết định thật.
