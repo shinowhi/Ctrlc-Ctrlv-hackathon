@@ -5,10 +5,43 @@ begin;
 do $$
 begin
   if not exists (select 1 from pg_roles where rolname='finref_rpc') then
-    execute 'create role finref_rpc nologin noinherit nobypassrls';
+    -- PostgreSQL defaults to NOLOGIN, NOSUPERUSER, NOCREATEDB,
+    -- NOCREATEROLE, NOREPLICATION, and NOBYPASSRLS.
+    execute 'create role finref_rpc noinherit';
+  elsif exists (select 1 from pg_roles where rolname='finref_rpc'
+      and (rolcanlogin or rolinherit or rolsuper or rolcreatedb or rolcreaterole or rolreplication or rolbypassrls)) then
+    raise exception 'Existing role finref_rpc has unexpected elevated attributes; inspect it before applying this migration.';
   end if;
 end $$;
-alter role finref_rpc nologin noinherit nosuperuser nocreatedb nocreaterole noreplication nobypassrls;
+
+-- PostgreSQL 16+ creates the role with ADMIN membership for its creator,
+-- but does not enable SET ROLE by default. Object ownership changes below
+-- require SET ROLE, so enable it for this migration transaction only.
+do $$
+declare
+  had_current_user_grant boolean;
+begin
+  perform set_config('finref.guest_migration_restore_finref_rpc_set','',true);
+  if not pg_has_role(current_user,'finref_rpc','SET') then
+    select exists(
+      select 1 from pg_auth_members m
+      where m.roleid='finref_rpc'::regrole::oid
+        and m.member=current_user::regrole::oid
+        and m.grantor=current_user::regrole::oid
+    ) into had_current_user_grant;
+
+    execute format('grant finref_rpc to %I with set true granted by current_user',current_user);
+    if had_current_user_grant then
+      perform set_config('finref.guest_migration_restore_finref_rpc_set','modified',true);
+    else
+      execute format('grant finref_rpc to %I with inherit false granted by current_user',current_user);
+      perform set_config('finref.guest_migration_restore_finref_rpc_set','added',true);
+    end if;
+  end if;
+  if not pg_has_role(current_user,'finref_rpc','SET') then
+    raise exception 'The SQL Editor role cannot SET ROLE to finref_rpc; verify it has ADMIN OPTION on that role.';
+  end if;
+end $$;
 
 create or replace function public.current_data_scope()
 returns boolean language sql stable set search_path = '' as $$
@@ -315,6 +348,16 @@ begin
   if not found then raise exception 'Không tìm thấy hồ sơ khách.'; end if;
 end $$;
 alter function public.set_guest_role(text) owner to finref_rpc;
+do $$
+declare
+  membership_change text:=coalesce(current_setting('finref.guest_migration_restore_finref_rpc_set',true),'');
+begin
+  if membership_change='modified' then
+    execute format('grant finref_rpc to %I with set false granted by current_user',current_user);
+  elsif membership_change='added' then
+    execute format('revoke finref_rpc from %I granted by current_user',current_user);
+  end if;
+end $$;
 revoke create on schema public from finref_rpc;
 revoke execute on function public.set_guest_role(text) from public,anon;
 grant execute on function public.set_guest_role(text) to authenticated;
