@@ -77,10 +77,10 @@ const rolePageTitles={applicant:'Đề nghị của bạn',treasurer:'Không gia
 function setActiveNav(button) {
   document.querySelectorAll('.side-nav .nav-item').forEach(item=>item.classList.toggle('active',item===button));
 }
-function setApplicantQueueExpanded(expanded) {
+function setQueueExpanded(expanded) {
   $('queueContent').hidden=!expanded;
-  $('toggleApplicantQueue').setAttribute('aria-expanded',String(expanded));
-  $('toggleApplicantQueue').textContent=expanded?'Thu gọn hồ sơ':'Xem hồ sơ';
+  $('toggleQueue').setAttribute('aria-expanded',String(expanded));
+  $('toggleQueue').textContent=expanded?'Thu gọn hồ sơ':'Xem hồ sơ';
 }
 function syncApplicantCreateAction() {
   $('applicantQuickAction').classList.toggle('hidden',profile?.role!=='applicant'||$('request-card').open);
@@ -91,7 +91,7 @@ function showOverviewView(target=null,navButton=null) {
   $('pageTitle').textContent=rolePageTitles[profile?.role]||'';
   $('pageSubtitle').textContent='Hóa đơn PDF · Tổng thanh toán cuối cùng · Người có thẩm quyền duyệt cuối';
   setActiveNav(navButton||document.querySelector('[data-scroll="queue-card"]'));
-  if(target?.closest('#queue-card')&&profile?.role==='applicant') setApplicantQueueExpanded(true);
+  if(target?.closest('#queue-card')) setQueueExpanded(true);
   const requestDisclosure=target?.closest('#request-card');
   if(requestDisclosure) {requestDisclosure.open=true;syncApplicantCreateAction();}
   if(target) requestAnimationFrame(()=>target.scrollIntoView({behavior:'smooth',block:'start'}));
@@ -149,8 +149,8 @@ async function enter(p) {
   $('queueTitle').textContent=p.role==='applicant'?'Hồ sơ của tôi':p.role==='cfo'?'Hồ sơ CFO theo dõi và chờ duyệt':'Danh sách đề nghị thanh toán';
   $('request-card').classList.toggle('hidden',p.role!=='applicant');
   $('request-card').open=false;
-  $('toggleApplicantQueue').classList.toggle('hidden',p.role!=='applicant');
-  setApplicantQueueExpanded(p.role!=='applicant');
+  $('toggleQueue').classList.toggle('hidden',!['applicant','treasurer','cfo'].includes(p.role));
+  setQueueExpanded(p.role!=='applicant');
   $('applicantQuickAction').classList.toggle('hidden',p.role!=='applicant');
   syncApplicantCreateAction();
   const canManageVendors=['treasurer','cfo'].includes(p.role);
@@ -626,7 +626,7 @@ async function loadPdfJs() {
 }
 async function renderReviewPdf(url,annotations,token,onFirstPageDisplayed=null) {
   const status=$('reviewPdfStatus'),stage=$('reviewPdfStage'),wrap=$('reviewPdfWrap'),toolbar=$('reviewPdfToolbar');
-  let documentProxy=null,renderTask=null,resizeObserver=null,disposed=false;
+  let loadingTask=null,documentProxy=null,renderTask=null,resizeObserver=null,disposed=false;
   let firstPageRenderReady=false,firstPageDisplayed=false;
   const checkFirstPageVisibility=()=>{
     if(!onFirstPageDisplayed||firstPageDisplayed||!firstPageRenderReady
@@ -649,11 +649,12 @@ async function renderReviewPdf(url,annotations,token,onFirstPageDisplayed=null) 
   };
   const handleDisplayChange=()=>scheduleFirstPageVisibilityCheck();
   const cleanup=()=>{
+    if(disposed) return;
     disposed=true; resizeObserver?.disconnect(); wrap.removeEventListener('scroll',handleDisplayChange);
     window.removeEventListener('scroll',handleDisplayChange,true); window.removeEventListener('resize',handleDisplayChange);
     document.removeEventListener('visibilitychange',handleDisplayChange); window.removeEventListener('focus',handleDisplayChange); window.removeEventListener('pageshow',handleDisplayChange);
     try { renderTask?.cancel(); } catch {}
-    if(documentProxy) void documentProxy.destroy().catch(()=>{});
+    if(loadingTask) { const task=loadingTask; loadingTask=null; void task.destroy().catch(()=>{}); }
   };
   pdfViewCleanup=cleanup;
   try {
@@ -664,11 +665,12 @@ async function renderReviewPdf(url,annotations,token,onFirstPageDisplayed=null) 
     const bytes=new Uint8Array(await response.arrayBuffer());
     if(token!==pdfViewToken||disposed) return;
     const base=new URL('./vendor/pdfjs/',document.baseURI).toString();
-    documentProxy=await pdfjs.getDocument({
+    loadingTask=pdfjs.getDocument({
       data:bytes,
       cMapUrl:`${base}cmaps/`,cMapPacked:true,
       standardFontDataUrl:`${base}standard_fonts/`,wasmUrl:`${base}wasm/`,iccUrl:`${base}iccs/`
-    }).promise;
+    });
+    documentProxy=await loadingTask.promise;
     if(token!==pdfViewToken||disposed) { cleanup(); return; }
     status.classList.add('hidden'); toolbar.classList.remove('hidden');
     const pageLabel=$('reviewPdfPageLabel'),back=$('reviewPdfPrevious'),forward=$('reviewPdfNext');
@@ -1042,9 +1044,9 @@ $('queueBody').addEventListener('click',event=>{
 });
 $('approveAllButton').onclick=approveAllQueue;
 $('cancelEdit').onclick=()=>{if(!busy)resetForm();};
-$('toggleApplicantQueue').onclick=()=>{
-  if(profile?.role!=='applicant') return;
-  setApplicantQueueExpanded($('queueContent').hidden);
+$('toggleQueue').onclick=()=>{
+  if(!['applicant','treasurer','cfo'].includes(profile?.role)) return;
+  setQueueExpanded($('queueContent').hidden);
 };
 $('request-card').addEventListener('toggle',syncApplicantCreateAction);
 $('createRequestCta').onclick=()=>{

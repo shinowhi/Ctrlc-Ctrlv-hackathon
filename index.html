@@ -99,7 +99,7 @@
         <article class="stat-card clay-card sky"><div class="stat-icon">!</div><div><span class="stat-label">Người nộp cần bổ sung</span><strong id="infoCount">0</strong></div></article>
       </section>
       <section class="clay-card queue-card" id="queue-card">
-        <div class="card-heading"><div><span class="eyebrow">HỒ SƠ THANH TOÁN</span><h2 id="queueTitle">Danh sách hồ sơ</h2></div><div class="queue-heading-actions"><button class="secondary-button clay-button queue-toggle-button hidden" id="toggleApplicantQueue" type="button" aria-expanded="true" aria-controls="queueContent">Thu gọn hồ sơ</button><label class="field">Lọc danh sách<select id="statusFilter"><option value="">Tất cả hồ sơ</option><option value="APPROVAL_QUEUE">Hàng chờ tôi duyệt</option><option value="TREASURER_REVIEW">Chờ Quản lý Tài chính xác minh</option><option value="READY_FOR_APPROVAL">AI đánh giá đạt · chờ người duyệt</option><option value="CFO_REVIEW">Chờ Giám đốc Tài chính duyệt</option><option value="NEEDS_INFO">Người nộp cần bổ sung</option><option value="APPROVED">Đã duyệt · chưa chuyển tiền</option><option value="REJECTED">Đã từ chối</option></select></label></div></div>
+        <div class="card-heading"><div><span class="eyebrow">HỒ SƠ THANH TOÁN</span><h2 id="queueTitle">Danh sách hồ sơ</h2></div><div class="queue-heading-actions"><button class="secondary-button clay-button queue-toggle-button hidden" id="toggleQueue" type="button" aria-expanded="true" aria-controls="queueContent">Thu gọn hồ sơ</button><label class="field">Lọc danh sách<select id="statusFilter"><option value="">Tất cả hồ sơ</option><option value="APPROVAL_QUEUE">Hàng chờ tôi duyệt</option><option value="TREASURER_REVIEW">Chờ Quản lý Tài chính xác minh</option><option value="READY_FOR_APPROVAL">AI đánh giá đạt · chờ người duyệt</option><option value="CFO_REVIEW">Chờ Giám đốc Tài chính duyệt</option><option value="NEEDS_INFO">Người nộp cần bổ sung</option><option value="APPROVED">Đã duyệt · chưa chuyển tiền</option><option value="REJECTED">Đã từ chối</option></select></label></div></div>
         <div class="queue-content" id="queueContent">
           <div id="approvalTools" class="approval-tools hidden">
             <div class="approval-summary"><strong id="approvalQueueCount">Hàng chờ duyệt</strong><p id="approvalSummaryText" class="muted" aria-live="polite">Đang tải tổng số tiền và hạn mức hôm nay…</p><button class="text-button cfo-unseen-shortcut hidden" id="showApprovalQueueButton" type="button">Hiện hóa đơn chưa xem</button></div>
@@ -148,12 +148,18 @@
           </div>
           <label class="field vendor-search">Tìm nhà cung cấp<input id="vendorSearch" type="search" placeholder="Tên pháp lý, mã số thuế hoặc bí danh"></label>
           <div id="vendorDirectoryMessage" class="vendor-directory-message" role="status" aria-live="polite"></div>
-          <div id="vendorDirectoryList" class="vendor-directory-list"></div>
+          <details class="vendor-list-collapse" open>
+            <summary><span>Danh sách nhà cung cấp</span><span class="vendor-list-toggle"><span class="vendor-list-open">Thu gọn</span><span class="vendor-list-closed">Mở danh sách</span></span></summary>
+            <div id="vendorDirectoryList" class="vendor-directory-list"></div>
+          </details>
         </section>
         <section class="clay-card vendor-card hidden" id="vendorReviewNotesCard">
           <div class="card-heading"><div><span class="eyebrow">CHỈ GIÁM ĐỐC TÀI CHÍNH</span><h2>Ghi chú cập nhật danh mục nhà cung cấp</h2><p class="muted">Gồm nhà cung cấp mới hoặc bí danh OCR chưa có trong danh mục; kèm MST và hóa đơn gốc để CFO xem xét.</p></div></div>
           <div id="vendorReviewNotesMessage" class="vendor-directory-message" role="status" aria-live="polite">Đang tải ghi chú…</div>
-          <div id="vendorReviewNotesList" class="vendor-directory-list"></div>
+          <details class="vendor-list-collapse" open>
+            <summary><span>Danh sách ghi chú</span><span class="vendor-list-toggle"><span class="vendor-list-open">Thu gọn</span><span class="vendor-list-closed">Mở danh sách</span></span></summary>
+            <div id="vendorReviewNotesList" class="vendor-directory-list"></div>
+          </details>
         </section>
       </section>
     </main>

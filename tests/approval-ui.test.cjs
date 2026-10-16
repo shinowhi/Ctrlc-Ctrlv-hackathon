@@ -9,7 +9,19 @@ const appSource=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8');
 function appFunction(name,nextName,async=false){
   const prefix=async?'async function ':'function ';
   const start=appSource.indexOf(prefix+name+'(');
-  const end=appSource.indexOf('\nfunction '+nextName+'(',start);
+  const endCandidates=[
+    appSource.indexOf('\nfunction '+nextName+'(',start),
+    appSource.indexOf('\nasync function '+nextName+'(',start)
+  ].filter(index=>index!==-1);
+  const end=endCandidates.length?Math.min(...endCandidates):-1;
+  assert.notEqual(start,-1,`${name} should exist in app.js`);
+  assert.notEqual(end,-1,`${nextName} should follow ${name}`);
+  return appSource.slice(start,end);
+}
+
+function asyncAppFunction(name,nextName){
+  const start=appSource.indexOf('async function '+name+'(');
+  const end=appSource.indexOf('\nasync function '+nextName+'(',start);
   assert.notEqual(start,-1,`${name} should exist in app.js`);
   assert.notEqual(end,-1,`${nextName} should follow ${name}`);
   return appSource.slice(start,end);
@@ -149,4 +161,70 @@ test('opening a selected request shows a safe fallback when rendering fails',asy
   await vm.runInNewContext(appFunction('openRequest','setBusy',true)+'\nopenRequest("request-1");',context);
   assert.equal(elements.decisionResult.textContent,'Không thể hiển thị chi tiết hồ sơ. Vui lòng thử mở lại.');
   assert.equal(elements.auditList.textContent,'');
+});
+
+test('queue disclosure keeps its button label and accessible state in sync',()=>{
+  const elements={
+    queueContent:{hidden:false},
+    toggleQueue:{textContent:'',attributes:{},setAttribute(name,value){this.attributes[name]=value;}}
+  };
+  const context={$:id=>elements[id]};
+  vm.runInNewContext(appFunction('setQueueExpanded','syncApplicantCreateAction')+
+    "\nsetQueueExpanded(false);",context);
+  assert.equal(elements.queueContent.hidden,true);
+  assert.equal(elements.toggleQueue.attributes['aria-expanded'],'false');
+  assert.equal(elements.toggleQueue.textContent,'Xem hồ sơ');
+  vm.runInNewContext('setQueueExpanded(true);',context);
+  assert.equal(elements.queueContent.hidden,false);
+  assert.equal(elements.toggleQueue.attributes['aria-expanded'],'true');
+  assert.equal(elements.toggleQueue.textContent,'Thu gọn hồ sơ');
+});
+
+test('vendor directory and CFO notes lists are collapsible and initially expanded',()=>{
+  const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
+  assert.match(html,/<details class="vendor-list-collapse" open>[\s\S]*?id="vendorDirectoryList"/);
+  assert.match(html,/<details class="vendor-list-collapse" open>[\s\S]*?id="vendorReviewNotesList"/);
+});
+
+test('switching requests destroys the PDF loading task while the document is still loading',async()=>{
+  let resolveDocument,notifyGetDocument;
+  let destroyCount=0;
+  const getDocumentCalled=new Promise(resolve=>{notifyGetDocument=resolve;});
+  const loadingTask={
+    promise:new Promise(resolve=>{resolveDocument=resolve;}),
+    destroy(){destroyCount++;return Promise.resolve();}
+  };
+  const elements={
+    reviewPdfStatus:{classList:{add(){},remove(){}}},
+    reviewPdfStage:{},
+    reviewPdfWrap:{removeEventListener(){}},
+    reviewPdfToolbar:{classList:{add(){},remove(){}}}
+  };
+  const context={
+    pdfViewToken:0,pdfViewCleanup:null,
+    loadPdfJs:async()=>({getDocument(){notifyGetDocument();return loadingTask;}}),
+    fetch:async()=>({ok:true,arrayBuffer:()=>new ArrayBuffer(0)}),
+    document:{baseURI:'https://example.test/',removeEventListener(){}},window:{removeEventListener(){}},
+    URL,Uint8Array,
+    $:id=>elements[id]
+  };
+  const renderPromise=vm.runInNewContext(
+    appFunction('clearPdfViewer','loadPdfJs')+
+    asyncAppFunction('renderReviewPdf','renderRequestDetails')+
+    '\nrenderReviewPdf("signed-url",{},0);',context
+  );
+
+  let timer;
+  const reachedGetDocument=await Promise.race([
+    getDocumentCalled.then(()=>true),
+    renderPromise.then(()=>false,error=>{throw error;}),
+    new Promise(resolve=>{timer=setTimeout(()=>resolve(false),1000);})
+  ]);
+  clearTimeout(timer);
+  assert.equal(reachedGetDocument,true,'PDF loading should start before switching requests');
+  vm.runInNewContext('clearPdfViewer();',context);
+  resolveDocument({});
+
+  await assert.doesNotReject(renderPromise);
+  assert.equal(destroyCount,1);
 });

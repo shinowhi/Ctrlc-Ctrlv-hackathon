@@ -400,6 +400,13 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .vendor-confirm-label input {margin:1px 0 0;accent-color:var(--purple)}
 .vendor-search {max-width:420px;margin-bottom:12px}
 .vendor-directory-message {margin:8px 0;color:var(--muted);font-size:12px;line-height:1.5}
+.vendor-list-collapse {margin-top:12px;border-top:1px solid var(--line)}
+.vendor-list-collapse summary {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 2px;color:var(--ink);font-size:12px;font-weight:700;cursor:pointer;list-style:none}
+.vendor-list-collapse summary::-webkit-details-marker {display:none}
+.vendor-list-collapse summary:focus-visible {outline:3px solid #7754d7;outline-offset:2px;border-radius:8px}
+.vendor-list-toggle {color:var(--purple);font-size:11px;white-space:nowrap}
+.vendor-list-closed,.vendor-list-collapse:not([open]) .vendor-list-open {display:none}
+.vendor-list-collapse:not([open]) .vendor-list-closed {display:inline}
 .vendor-directory-list {display:grid;gap:9px}
 .vendor-record {display:grid;grid-template-columns:minmax(180px,.8fr) minmax(0,1.2fr);gap:12px;padding:13px;border:1px solid var(--line);border-radius:14px;background:#fff}
 .vendor-record strong {display:block;color:var(--ink);font-size:12px;overflow-wrap:anywhere}
