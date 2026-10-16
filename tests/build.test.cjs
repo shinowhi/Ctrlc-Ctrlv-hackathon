@@ -1,6 +1,10 @@
 const test=require('node:test');const assert=require('node:assert/strict');
 const fs=require('node:fs');const path=require('node:path');const os=require('node:os');const {spawnSync}=require('node:child_process');
-const publicFiles=['index.html','app.js','api.js','invoice-matching.js','rules.js','styles.css','demo.html','demo.js'];
+const publicFiles=[
+  ['index.html','web/index.html'],['app.js','web/app.js'],['api.js','web/api.js'],
+  ['invoice-matching.js','shared/invoice-matching.js'],['rules.js','web/rules.js'],
+  ['styles.css','web/styles.css'],['demo.html','web/demo.html'],['demo.js','web/demo.js']
+];
 function fixture(){
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'finref-build-test-'));
   fs.mkdirSync(path.join(root,'scripts'));fs.mkdirSync(path.join(root,'.local'));
@@ -10,13 +14,13 @@ function fixture(){
   for(const name of ['pdf.min.mjs','pdf.worker.min.mjs'])fs.writeFileSync(path.join(pdfjsRoot,'build',name),'test');
   fs.writeFileSync(path.join(pdfjsRoot,'LICENSE'),'test');
   fs.copyFileSync(path.resolve(__dirname,'../scripts/build.cjs'),path.join(root,'scripts/build.cjs'));
-  for(const file of publicFiles)fs.writeFileSync(path.join(root,file),'test');
+  for(const [,source] of publicFiles){const file=path.join(root,source);fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,'test');}
   return root;
 }
 test('Build copies public assets only',()=>{
   const root=fixture();const result=spawnSync(process.execPath,[path.join(root,'scripts/build.cjs')],{env:{...process.env,SUPABASE_URL:'https://test.supabase.co',SUPABASE_ANON_KEY:'sb_publishable_test'},encoding:'utf8'});
   assert.equal(result.status,0,result.stderr);
-  assert.deepEqual(fs.readdirSync(path.join(root,'dist')).sort(),[...publicFiles,'config.js','vendor'].sort());
+  assert.deepEqual(fs.readdirSync(path.join(root,'dist')).sort(),[...publicFiles.map(([name])=>name),'config.js','vendor'].sort());
   assert.ok(!fs.readFileSync(path.join(root,'dist/config.js'),'utf8').includes('SENSITIVE'));
 });
 test('Build refuses admin or missing keys',()=>{

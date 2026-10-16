@@ -7,7 +7,7 @@ const {
   normalizeInvoiceNumber,
   normalizePartyName,
   comparePartyName
-} = require('../invoice-matching.js');
+} = require('../shared/invoice-matching.js');
 
 test('invoice numbers normalize Unicode, case and spacing without erasing meaningful separators', () => {
   assert.equal(normalizeInvoiceNumber('  ００１２３  '), '123');
@@ -37,8 +37,8 @@ test('browser helper does not collide with app.js global declarations', () => {
   context.window = context;
   context.document = { getElementById: () => null };
   context.FinRefApi = class {};
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '../invoice-matching.js'), 'utf8'), context, { filename: 'invoice-matching.js' });
-  const appSource = fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8');
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../shared/invoice-matching.js'), 'utf8'), context, { filename: 'invoice-matching.js' });
+  const appSource = fs.readFileSync(path.join(__dirname, '../web/app.js'), 'utf8');
   const declarationsEnd = appSource.indexOf('const normalized = normalizePartyName;');
   assert.notEqual(declarationsEnd, -1, 'app.js declaration block should include its matching helper binding');
   const appDeclarations = appSource.slice(0, declarationsEnd + 'const normalized = normalizePartyName;'.length);
@@ -46,7 +46,7 @@ test('browser helper does not collide with app.js global declarations', () => {
 });
 
 test('invoice date is shown as reference data and is not included in AI review requirements', () => {
-  const appSource = fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8');
+  const appSource = fs.readFileSync(path.join(__dirname, '../web/app.js'), 'utf8');
   assert.match(appSource, /invoiceDate:'Ngày hóa đơn \(tham khảo\)'/);
   assert.match(appSource, /key:'invoiceDate',label:'Ngày hóa đơn',reviewNote:'AI trích xuất để tham khảo; không dùng ngày này làm điều kiện đối chiếu hoặc duyệt\.'/);
   assert.match(appSource, /const requiredInvoiceFields=\['invoiceNumber','totalAmount'\]/);
@@ -56,7 +56,7 @@ test('invoice date is shown as reference data and is not included in AI review r
 });
 
 test('tax code confidence threshold is 80 percent in the AI review display', () => {
-  const appSource = fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8');
+  const appSource = fs.readFileSync(path.join(__dirname, '../web/app.js'), 'utf8');
   const analyzerSource = fs.readFileSync(path.join(__dirname, '../api/analyze-evidence.js'), 'utf8');
   assert.match(appSource, /aiConfidenceThresholds=\{[^}]*taxCode:0\.80/);
   assert.match(analyzerSource, /confidenceThresholds = \{[^}]*taxCode: 0\.80/);
@@ -64,9 +64,9 @@ test('tax code confidence threshold is 80 percent in the AI review display', () 
 });
 
 test('vendor directory UI supports supplier creation, verified aliases and invoice-form suggestions', () => {
-  const appSource = fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8');
-  const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
-  const apiSource = fs.readFileSync(path.join(__dirname, '../api.js'), 'utf8');
+  const appSource = fs.readFileSync(path.join(__dirname, '../web/app.js'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '../web/index.html'), 'utf8');
+  const apiSource = fs.readFileSync(path.join(__dirname, '../web/api.js'), 'utf8');
   assert.match(html, /id="vendorDirectoryNav"/);
   assert.match(html, /id="vendorCreateForm"/);
   assert.match(html, /id="vendorAliasForm"/);
@@ -78,8 +78,8 @@ test('vendor directory UI supports supplier creation, verified aliases and invoi
 });
 
 test('CFO alias-update notes prefill the matched supplier and require explicit verification', () => {
-  const appSource = fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8');
-  const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+  const appSource = fs.readFileSync(path.join(__dirname, '../web/app.js'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '../web/index.html'), 'utf8');
   assert.match(appSource, /note\.evidence\?\.reviewType==='ALIAS_UPDATE'/);
   assert.match(appSource, /vendorAliasTarget'\)\.value=note\.evidence\.vendorId/);
   assert.match(appSource, /vendorAliasVerified'\)\.checked=false/);

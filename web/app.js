@@ -1067,7 +1067,7 @@ $('verifyButton').onclick=()=>{
   $('verifyResult').innerHTML=`<p>${results.filter(r=>r.pass).length}/${results.length} PASS · ${esc(new Date().toLocaleString('vi-VN'))}</p><ul>${results.map(r=>`<li>${r.pass?'✓':'✗'} ${esc(r.name)}: ${r.actual} (cần ${r.expected})</li>`).join('')}</ul>`;
 };
 if(!api.configured) {
-  notify('Chưa kết nối Supabase. Làm theo HUONG-DAN-ONLINE.md để bật đăng nhập.',false,true);
+  notify('Chưa kết nối Supabase. Làm theo docs/HUONG-DAN-ONLINE.md để bật đăng nhập.',false,true);
   $('loginForm').querySelector('button').disabled=true;
 } else if(api.session) {
   api.profile().then(enter).catch(e=>{clearCfoViewedState({broadcast:true,actorId:api.session?.user?.id});api.remember(null);showLogin();notify(e.message,true,true);});

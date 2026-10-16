@@ -12,7 +12,7 @@ test('fresh-install setup stays on the pre-guest authenticated-only baseline', (
   assert.match(manifest.trim().split(/\r?\n/).at(-1), /^20261015-cfo-read-high-value-manager-review\.sql$/);
   assert.doesNotMatch(manifest, /guest|anonymous/i);
 
-  for (const file of ['api.js', 'api/analyze-evidence.js', 'app.js', 'index.html', 'scripts/build.cjs', '.env.example']) {
+  for (const file of ['web/api.js', 'api/analyze-evidence.js', 'web/app.js', 'web/index.html', 'scripts/build.cjs', '.env.example']) {
     assert.doesNotMatch(read(file), /guest|anonymous|is_guest/i, `${file} should not contain guest-mode behavior`);
   }
 

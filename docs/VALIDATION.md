@@ -2,7 +2,7 @@
 
 **Cập nhật:** 15/10/2026
 
-**Checkout local được đối chiếu hiện tại:** branch `main`, HEAD `d23f9fd`. Working tree có thay đổi chưa commit trong hướng dẫn/README và bộ kiểm thử, gồm kiểm thử migration cài mới; `VALIDATION.md` cũng đang được cập nhật để phản ánh trạng thái này.
+**Checkout được đối chiếu tại thời điểm ghi nhận:** branch `main`, HEAD `d23f9fd`. Khi đó working tree có thay đổi chưa commit trong hướng dẫn/README và bộ kiểm thử, gồm kiểm thử migration cài mới; `VALIDATION.md` cũng đang được cập nhật để phản ánh trạng thái đó.
 **Lần rà soát production gần nhất:** 12/10/2026. Mã nguồn production và trạng thái migration chưa được xác nhận.
 **Mã nguồn được xem trong lần rà soát production đó:** branch `fix/restore-single-buyer-name`, HEAD `14423bd`.
 
@@ -52,5 +52,5 @@ Các kết quả này thuộc bản rà soát cũ, trước nhiều thay đổi 
 
 - `npm run smoke` chạy năm ca preview luật từ `scripts/smoke-local.cjs`; không gọi OpenAI hoặc Supabase.
 - `pnpm test` chạy bộ unit/integration tests local; lần chạy trên checkout `main`, HEAD `d23f9fd` ngày 15/10/2026 đạt 120/120. Bộ test dùng dependency/database giả lập ở các phần tương ứng, không phải kiểm thử end-to-end với production.
-- `TESTCASES.md` mô tả kịch bản và kết quả mong đợi. Một kịch bản được ghi trong đó không có nghĩa là đã chạy qua acceptance trên production.
+- `docs/TESTCASES.md` mô tả kịch bản và kết quả mong đợi. Một kịch bản được ghi trong đó không có nghĩa là đã chạy qua acceptance trên production.
 - Verify UI hiện có 17 ca trạng thái luật; nó không thay thế kiểm tra upload PDF, OCR, quyền Supabase, RPC, audit và quyết định thật.

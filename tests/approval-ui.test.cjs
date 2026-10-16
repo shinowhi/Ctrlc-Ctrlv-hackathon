@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
 
-const appSource=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8');
+const appSource=fs.readFileSync(path.join(__dirname,'../web/app.js'),'utf8');
 
 function appFunction(name,nextName,async=false){
   const prefix=async?'async function ':'function ';
@@ -181,7 +181,7 @@ test('queue disclosure keeps its button label and accessible state in sync',()=>
 });
 
 test('vendor directory and CFO notes lists are collapsible and initially expanded',()=>{
-  const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
+  const html=fs.readFileSync(path.join(__dirname,'../web/index.html'),'utf8');
   assert.match(html,/<details class="vendor-list-collapse" open>[\s\S]*?id="vendorDirectoryList"/);
   assert.match(html,/<details class="vendor-list-collapse" open>[\s\S]*?id="vendorReviewNotesList"/);
 });
