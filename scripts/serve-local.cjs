@@ -29,7 +29,7 @@ async function main(){
       if(req.headers.host!==`127.0.0.1:${port}`||(req.headers.origin&&req.headers.origin!==origin)) return json(res,{error:'Local access only'},403);
       const url=new URL(req.url,origin),name=url.pathname.slice(1)||'index.html';
       if(req.method==='GET'&&assets.has(name)){
-        let content=fs.readFileSync(path.join(root,name));
+        let content=fs.readFileSync(path.join(root,name==='invoice-matching.js'?'shared':'web',name));
         if(name==='index.html') content=content.toString().replace('<body>','<body><div style="padding:12px;background:#fff0c2;text-align:center">BẢN TEST LOCAL · Tài khoản mẫu · Dữ liệu mất khi tắt server · Không gọi Azure AI</div>').replace('<script src="api.js"></script>','<script src="api.js"></script><script src="local-adapter.js"></script>');
         res.setHeader('Content-Type',name.endsWith('.html')?'text/html; charset=utf-8':name.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8');
         return res.end(content);
