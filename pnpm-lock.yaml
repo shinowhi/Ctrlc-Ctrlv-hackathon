@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@napi-rs/canvas':
+        specifier: 1.0.9
+        version: 1.0.9
       pdfjs-dist:
         specifier: 6.3.289
         version: 6.3.289
@@ -150,7 +153,6 @@ snapshots:
       '@napi-rs/canvas-linux-x64-musl': 1.0.9
       '@napi-rs/canvas-win32-arm64-msvc': 1.0.9
       '@napi-rs/canvas-win32-x64-msvc': 1.0.9
-    optional: true
 
   pdfjs-dist@6.3.289:
     optionalDependencies:
