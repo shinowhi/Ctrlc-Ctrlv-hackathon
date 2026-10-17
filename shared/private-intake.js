@@ -192,7 +192,7 @@ function maskPlan(result, documentPages) {
   });
 }
 async function inspectPdf(bytes) {
-  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const pdfjs = await require('./pdf-runtime.js').loadPdfRuntime();
   const task = pdfjs.getDocument({ data: new Uint8Array(bytes), isEvalSupported: false, useSystemFonts: false, verbosity: 0 });
   try {
     const pdf = await task.promise;

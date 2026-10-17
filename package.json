@@ -14,7 +14,10 @@
     "@electric-sql/pglite": "0.5.8"
   },
   "dependencies": {
+    "@napi-rs/canvas": "1.0.9",
     "pdfjs-dist": "6.3.289"
   },
-  "engines": { "node": ">=22.13.0" }
+  "engines": {
+    "node": ">=22.13.0"
+  }
 }
