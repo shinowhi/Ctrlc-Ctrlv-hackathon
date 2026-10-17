@@ -45,7 +45,7 @@ Người dùng xác nhận ba tài khoản được dùng để rà soát thuộ
 
 ## Database và cấu hình
 
-- Checkout này đã quay về baseline chỉ đăng nhập trước khi thêm chế độ khách. Project Supabase mới dùng `supabase/schema.sql`, sau đó chạy đúng thứ tự trong [`supabase/fresh-install-migrations.txt`](supabase/fresh-install-migrations.txt), kết thúc ở `20261017-invoice-currency.sql`. Không dùng SQL rollback guest từng chạy lỗi để dựng project mới hoặc sửa project cũ.
+- Checkout này đã quay về baseline chỉ đăng nhập trước khi thêm chế độ khách. Project Supabase mới dùng `supabase/schema.sql`, sau đó chạy đúng thứ tự trong [`supabase/fresh-install-migrations.txt`](supabase/fresh-install-migrations.txt), kết thúc ở `20261017-z-decimal-invoice-amounts.sql`. Không dùng SQL rollback guest từng chạy lỗi để dựng project mới hoặc sửa project cũ.
 - Database đang dùng phải đối chiếu lịch sử của đúng project và chỉ chạy migration còn thiếu; không chạy lại `schema.sql` hoặc xem riêng migration mới nhất là đủ. Việc chuyển dữ liệu/tài khoản từ project cũ sang project mới là bước riêng, không được thực hiện bằng các migration trong manifest.
 - Trạng thái migration trên production chưa được xác minh trực tiếp trong lần rà soát. Không suy ra trạng thái database production chỉ từ mã nguồn hoặc giao diện đang chạy.
 - API hỗ trợ cấu hình `INVOICE_ANALYSIS_PROVIDER=azure` hoặc `openai`. Biến môi trường và provider đang dùng trên production chưa được xác minh trong lần rà soát.

@@ -42,7 +42,22 @@ function comparePartyName(actual, expected, verifiedAliases = []) {
   return { status: 'MISMATCH' };
 }
 
-const matchingApi = { normalizeInvoiceNumber, normalizePartyName, comparePartyName };
+function moneyMinorUnits(value) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value)>999999999999.99) return null;
+  const scaled=value*100, rounded=Math.round(scaled);
+  return Math.abs(scaled-rounded)<=Math.max(1e-7,Number.EPSILON*Math.abs(scaled)*2) ? rounded : null;
+}
+function parseAmountInput(raw,currency='VND') {
+  const text=String(raw??'').trim();
+  if(!text) return null;
+  // A comma or dot is a decimal separator; grouping and exponent notation are rejected.
+  if(!/^\d{1,12}(?:[.,]\d{1,2})?$/.test(text)) throw new Error('Nhập số tiền như 51.94 hoặc 51,94; không dùng dấu phân cách hàng nghìn.');
+  const value=Number(text.replace(',','.'));
+  if(value<=0||moneyMinorUnits(value)===null) throw new Error('Số tiền phải lớn hơn 0 và có tối đa 2 chữ số thập phân.');
+  if(currency==='VND'&&!Number.isSafeInteger(value)) throw new Error('VND dùng số nguyên; USD, CNY và EUR cho phép tối đa 2 chữ số thập phân.');
+  return value;
+}
+const matchingApi = { normalizeInvoiceNumber, normalizePartyName, comparePartyName, moneyMinorUnits, parseAmountInput };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = matchingApi;
 if (root) root.FinRefInvoiceMatching = matchingApi;
