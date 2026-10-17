@@ -11,7 +11,7 @@
 
 1. Trình duyệt gửi PDF cùng form trong body nhị phân tới `/api/analyze-evidence`, không upload bản gốc vào Supabase. API xác thực người nộp và kiểm tra migration đã sẵn sàng trước khi gọi Azure.
 2. PDF.js đếm số trang và kiểm tra kích thước. MVP bám Azure F0: tối đa 4 MiB, 2 trang, một hóa đơn/file. Trang quá lớn, bị lệch/xoay không khớp, OCR thiếu trang hoặc geometry không hợp lệ thì dừng.
-3. Azure đọc tài liệu tạm thời. Mọi đường OpenAI fallback/đọc lại PDF đã bị loại bỏ. Không còn ép locale `vi`; chưa mở rộng quy tắc tiền tệ, vẫn chỉ VND.
+3. Azure đọc tài liệu tạm thời. Mọi đường OpenAI fallback/đọc lại PDF đã bị loại bỏ. Không còn ép locale `vi`; hỗ trợ VND, USD, CNY và EUR; ngoại tệ có tối đa hai chữ số thập phân và chưa được duyệt khi thiếu quy đổi tỷ giá.
 4. Sau khi lấy kết quả hoặc lỗi truy vấn, API gọi DELETE tới operation URL đã kiểm tra. Chỉ HTTP 204 được xem là xác nhận xóa; nếu không xác nhận được, API trả lỗi chung, không cấp phiên lưu và không upload. Log chỉ chứa mã cố định `azure_analysis_cleanup_unconfirmed`.
 5. Backend tính đối chiếu tạm; trả danh sách vùng che, kết quả tối thiểu và biên nhận có chữ ký, thời hạn 30 phút. Biên nhận không có tên, mã định danh, OCR text hay hash định danh. Khóa ký này bảo vệ biên nhận khỏi bị sửa, không phải HMAC đối chiếu hóa đơn đã từ chối trong phạm vi.
 6. Gợi ý che dùng fields và toàn bộ words/lines/paragraphs có polygon; mặc định che chữ ngoài các trường ngày/tiền được cho phép, kể cả bảng chi tiết. Đây là cách thận trọng, có thể che nhiều hơn cần thiết. QR/chữ ký/ảnh hoặc PII OCR bỏ sót vẫn cần người nộp kiểm tra, dùng kéo vùng, nhập tọa độ hoặc che cả trang. Không cho bỏ vùng che tự động. Sửa vùng che làm mất xác nhận của trang.

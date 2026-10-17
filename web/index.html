@@ -79,8 +79,8 @@
               <label class="field">Nhà cung cấp<input id="vendor" maxlength="1000" list="vendorDirectoryOptions" autocomplete="organization"><datalist id="vendorDirectoryOptions"></datalist><small>Chọn tên đã có trong danh mục hoặc nhập tên theo hóa đơn.</small></label>
               <label class="field">Số hóa đơn<input id="invoiceNumber" maxlength="1000"></label>
               <label class="field">Ngày hóa đơn<input id="invoiceDate" type="date"></label>
-              <label class="field">Đơn vị tiền tệ trên hóa đơn<select id="currency"><option value="VND">VND — Việt Nam đồng (Việt Nam)</option></select><small>Hiện chỉ nhận hóa đơn VND. Chưa hỗ trợ nộp hóa đơn ngoại tệ hoặc quy đổi tỷ giá.</small></label>
-              <label class="field">Tổng thanh toán cuối cùng trên hóa đơn (VNĐ)<input id="amount" type="number" max="999999999999" step="1"></label>
+              <label class="field">Đơn vị tiền tệ trên hóa đơn<select id="currency"><option value="VND">VND — Việt Nam đồng (Việt Nam)</option><option value="USD">USD — Đô la Mỹ (Hoa Kỳ)</option><option value="CNY">CNY — Nhân dân tệ / NDT (Trung Quốc)</option><option value="EUR">EUR — Euro (Khu vực đồng euro)</option></select><small>Chọn đúng loại tiền ghi trên hóa đơn. Ngoại tệ cần xác nhận quy đổi trước khi duyệt theo hạn mức VNĐ.</small></label>
+              <label class="field">Tổng thanh toán cuối cùng trên hóa đơn<input id="amount" type="text" inputmode="decimal" maxlength="15"><small>USD, CNY, EUR: tối đa 2 số thập phân. VND: số nguyên. Không nhập dấu phân cách hàng nghìn.</small></label>
             </div>
           </section>
           <section class="form-section">

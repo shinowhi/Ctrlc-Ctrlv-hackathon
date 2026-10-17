@@ -2,7 +2,7 @@
 
 const { createHmac, timingSafeEqual, randomUUID } = require('node:crypto');
 const { inflateSync, deflateSync } = require('node:zlib');
-const { comparePartyName } = require('./invoice-matching.js');
+const { comparePartyName, moneyMinorUnits, parseAmountInput } = require('./invoice-matching.js');
 const MAX_BODY = 4 * 1024 * 1024 + 65540;
 const MAX_PAGES = 2; // Current Azure F0 limit: never silently accept a partial analysis.
 const MONEY = ['amountBeforeTax', 'vatAmount', 'discountAmount', 'totalAmount', 'amountDue'];
@@ -81,14 +81,16 @@ function verify(token, owner) {
 }
 function readForm(meta) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(meta.id || '') || !Number.isInteger(meta.expectedVersion) || meta.expectedVersion < 0) throw fail(400, 'Mã hoặc phiên bản hồ sơ không hợp lệ.');
-  if (meta.payload?.currency !== undefined && meta.payload.currency !== 'VND') throw fail(422, 'Hiện chỉ nhận hóa đơn VND. Chưa hỗ trợ nộp hóa đơn ngoại tệ hoặc quy đổi tỷ giá.');
+  const currency=meta.payload?.currency||'VND';
+  if(!['VND','USD','CNY','EUR'].includes(currency))throw fail(422,'Đơn vị tiền tệ không hợp lệ.');
   const form = {};
   for (const field of FORM_FIELDS) {
     const value = meta.payload?.[field] ?? '';
     if (typeof value !== 'string' || value.length > 1000) throw fail(400, 'Thông tin form không hợp lệ.');
     form[field] = value.trim();
   }
-  form.amount = Number.isSafeInteger(meta.payload?.amount) && meta.payload.amount > 0 && meta.payload.amount <= 999999999999 ? meta.payload.amount : null;
+  form.currency=currency;
+  try { form.amount=parseAmountInput(meta.payload?.amount,currency); } catch { throw fail(422,'Số tiền không hợp lệ: VND dùng số nguyên, ngoại tệ tối đa 2 chữ số thập phân.'); }
   return form;
 }
 function minimalSummary(form, extraction, assessment) {
@@ -96,7 +98,7 @@ function minimalSummary(form, extraction, assessment) {
   for (const key of MONEY) {
     const field = extraction.fields[key];
     fields[key] = {
-      value: Number.isSafeInteger(field?.value) && field.value >= 0 && field.value <= 999999999999 ? field.value : 0,
+      value: moneyMinorUnits(field?.value)!==null && field.value >= 0 ? field.value : 0,
       confidence: Number.isFinite(field?.confidence) && field.confidence >= 0 && field.confidence <= 1 ? field.confidence : 0
     };
   }
@@ -111,12 +113,13 @@ function minimalSummary(form, extraction, assessment) {
   if (!form.amount) missing.push('amount');
   const vendor = extraction.fields.vendor;
   return {
-    fields, amount: form.amount, currency: 'VND', missing,
+    fields, amount: form.amount, currency: form.currency, missing,
+    detectedCurrency:['VND','USD','CNY','EUR'].includes(extraction.fields.totalAmount?.currency||extraction.fields.currency?.value)?(extraction.fields.totalAmount?.currency||extraction.fields.currency?.value):'',
     matching: {
       buyer: status(assessment.matching.buyerIdentity?.status),
       vendor: vendor?.confidence >= 0.8 ? status(comparePartyName(vendor.value, form.vendor).status) : 'UNKNOWN',
       invoiceNumber: extraction.fields.invoiceNumber?.confidence >= 0.8 ? status(assessment.matching.invoiceNumber) : 'UNKNOWN',
-      total: fields.totalAmount.confidence >= 0.9 ? status(assessment.matching.totalAmount) : 'UNKNOWN'
+      total: (extraction.fields.totalAmount?.currency||extraction.fields.currency?.value) && (extraction.fields.totalAmount?.currency||extraction.fields.currency?.value)!==form.currency ? 'MISMATCH' : fields.totalAmount.confidence >= 0.9 ? status(assessment.matching.totalAmount) : 'UNKNOWN'
     },
     totalsConsistent: typeof assessment.checks.totalsConsistent === 'boolean' ? assessment.checks.totalsConsistent : null,
     duplicateCheck: 'MANUAL_REQUIRED', vendorDirectoryCheck: 'MANUAL_REQUIRED'
@@ -282,4 +285,4 @@ async function submitHandler(req, res) {
     return json(res, 200, { id: result.id, status: result.status });
   } catch (error) { return json(res, error.safe ? error.status : 422, { error: error.safe ? error.message : 'Không lưu được bản đã che. Hãy tải lại trạng thái trước khi thử lại.' }); }
 }
-module.exports = { createAnalyzeHandler, submitHandler };
+module.exports = { createAnalyzeHandler, submitHandler, readForm, minimalSummary, maskPlan };

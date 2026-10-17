@@ -1,7 +1,10 @@
 'use strict';
 
-const { normalizeInvoiceNumber, comparePartyName } = require('../shared/invoice-matching.js');
+const { normalizeInvoiceNumber, comparePartyName, moneyMinorUnits } = require('../shared/invoice-matching.js');
 
+const {extractChineseInvoice}=require('./azure-layout');
+const validMoney=value=>moneyMinorUnits(value)!==null;
+const unknownBuyerField=()=>({value:'',confidence:0,evidence:'',regions:[]});
 const buyerNameFields = ['buyerPersonName', 'buyerOrganizationName'];
 const labels = { invoiceKind: 'loại hóa đơn', buyerPersonName: 'tên cá nhân người mua', buyerOrganizationName: 'tên doanh nghiệp/đơn vị người mua', vendor: 'nhà cung cấp', invoiceNumber: 'số hóa đơn', invoiceDate: 'ngày hóa đơn', amountBeforeTax: 'tiền trước thuế', vatAmount: 'tiền VAT', totalAmount: 'tổng thanh toán cuối cùng' };
 const confidenceThresholds = {
@@ -108,14 +111,14 @@ function assess(request, analysis, registeredVendorMatch = null) {
   const total=field('totalAmount');
   const totalThreshold=invoiceKind==='SALES'?confidenceThresholds.salesTotalAmount:confidenceThresholds.vatTotalAmount;
   const submittedAmount=Number(request.amount);
-  const totalPresent=Number.isSafeInteger(total.value)&&total.value>0;
+  const totalPresent=validMoney(total.value)&&total.value>0;
   if(!totalPresent||!confident('totalAmount',totalThreshold))
     addIssue('totalAmount','YELLOW',`AI chưa đọc tổng thanh toán đủ chắc (cần ≥${Math.round(totalThreshold*100)}%) hoặc thiếu bằng chứng.`);
   else if(total.value!==submittedAmount)
     addIssue('totalAmount','YELLOW','Tổng thanh toán trên PDF không khớp số tiền form; quản lý cần kiểm tra phép tính và chứng từ.');
 
   const discountField=field('discountAmount');
-  const discount=Math.abs(Number.isSafeInteger(discountField.value)?discountField.value:0);
+  const discount=Math.abs(validMoney(discountField.value)?discountField.value:0);
   const discountEvidence=String(discountField.evidence||'').trim();
   const discountObserved=discount>0||Boolean(discountEvidence);
   const discountReady=!discountObserved||(Number.isFinite(Number(discountField.confidence))
@@ -125,23 +128,27 @@ function assess(request, analysis, registeredVendorMatch = null) {
   let totalsConsistent=invoiceKind==='SALES';
   if(invoiceKind==='VAT') {
     const before=field('amountBeforeTax'), vat=field('vatAmount');
-    const beforeReady=Number.isSafeInteger(before.value)&&before.value>=0&&confident('amountBeforeTax',confidenceThresholds.amountBeforeTax);
-    const vatIsZero=Number.isSafeInteger(vat.value)&&vat.value===0;
+    const beforeReady=validMoney(before.value)&&before.value>=0&&confident('amountBeforeTax',confidenceThresholds.amountBeforeTax);
+    const vatIsZero=validMoney(vat.value)&&vat.value===0;
     const vatThreshold=vatIsZero?confidenceThresholds.zeroVat:confidenceThresholds.vatAmount;
     const vatZeroEvidence=/(?:\bVAT\b|thu[eế])/iu.test(String(vat.evidence||''))
       &&/(?:^|[^\d])0(?:[,.]0+)?(?:\s*(?:đ|₫|vnd|đồng|%))?(?:$|[^\d])/iu.test(String(vat.evidence||''));
-    const vatReady=Number.isSafeInteger(vat.value)&&vat.value>=0&&confident('vatAmount',vatThreshold)
+    const vatReady=validMoney(vat.value)&&vat.value>=0&&confident('vatAmount',vatThreshold)
       &&(!vatIsZero||vatZeroEvidence);
     if(!beforeReady) addIssue('amountBeforeTax','YELLOW','Tiền trước thuế chưa đạt confidence ≥90% hoặc thiếu bằng chứng.');
     if(!vatReady) addIssue('vatAmount','YELLOW',vatIsZero?'VAT được đọc là 0 nhưng confidence chưa đạt 70% hoặc bằng chứng chưa thể hiện rõ số 0.':'Tiền VAT chưa đạt confidence ≥90% hoặc thiếu bằng chứng.');
     if(beforeReady&&vatReady&&discountReady&&totalPresent) {
-      const expected=before.value-discount+vat.value;
-      totalsConsistent=expected===total.value;
+      const expected=moneyMinorUnits(before.value)-moneyMinorUnits(discount)+moneyMinorUnits(vat.value);
+      totalsConsistent=expected===moneyMinorUnits(total.value);
       if(!totalsConsistent) addIssue('totalAmount','YELLOW','Tổng tính theo tiền trước thuế − giảm giá + VAT không khớp tổng trên hóa đơn; quản lý cần kiểm tra.');
     } else totalsConsistent=null;
   }
 
   if(field('totalAmount').rereadConflict) addIssue('totalAmount','YELLOW','Hai lần AI đọc tổng thanh toán cho kết quả khác nhau; quản lý cần đối chiếu PDF.');
+  const submittedCurrency=request.payload.currency||'VND';
+  const detectedCurrency=field('totalAmount').currency||field('currency').value;
+  if(detectedCurrency&&detectedCurrency!==submittedCurrency) addIssue('totalAmount','YELLOW','Loại tiền trên hóa đơn không khớp loại tiền đã chọn.');
+  if(submittedCurrency!=='VND') addIssue('currency','YELLOW','Ngoại tệ cần tỷ giá quy đổi được xác nhận trước khi duyệt theo hạn mức VNĐ.');
   const rejection=issues.some(issue=>issue.severity==='RED');
   const needsReview=issues.length>0;
   const code=rejection?'REJECTED':needsReview?'U2':submittedAmount>20000000?'U3':'CLEAR';
@@ -161,8 +168,6 @@ function assess(request, analysis, registeredVendorMatch = null) {
       vendorIdentityMethod:vendorMatch.method||'UNVERIFIED',totalsConsistent,buyerMode}
   };
 }
-
-const unknownBuyerField = () => ({ value: '', confidence: 0, evidence: '', regions: [] });
 
 const azureRegions = (field, pages) => {
   if (!Array.isArray(field?.boundingRegions) || !Array.isArray(pages)) return [];
@@ -325,11 +330,14 @@ const azureField = (fields, names, kind, pages) => {
     const currency = field.valueCurrency;
     // FinRef amounts are VND; unknown and foreign currencies must not be compared as VND.
     const currencyCode = String(currency?.currencyCode || '').toUpperCase();
-    const knownForeignCurrency = Boolean(currencyCode && currencyCode !== 'VND');
+    const knownForeignCurrency = ['USD','CNY','EUR'].includes(currencyCode);
     const isVnd = currencyCode === 'VND'
       || /(?:VND|VNĐ|₫|đ)/i.test(`${currency?.currencySymbol || ''} ${field.content || ''}`);
     if (kind === 'money' && typeof currency?.amount === 'number' && Number.isFinite(currency.amount)) {
-      if (knownForeignCurrency || !isVnd) {
+      if (knownForeignCurrency && validMoney(currency.amount)) {
+        value=currency.amount;
+        confidence=Number.isFinite(field.confidence)?field.confidence:0;
+      } else if (currencyCode && currencyCode!=='VND' || !isVnd) {
         confidence = 0;
       } else {
         const normalizedAmount = normalizeVndAmount(currency.amount, field.content);
@@ -350,7 +358,7 @@ const azureField = (fields, names, kind, pages) => {
     }
     evidence = typeof field.content === 'string' ? field.content.slice(0, 240) : '';
   }
-  return { value, confidence, evidence, regions: azureRegions(field, pages) };
+  return { value, confidence, evidence, regions: azureRegions(field, pages), ...(kind==='money'?{currency:String(field?.valueCurrency?.currencyCode||'').toUpperCase()}: {}) };
 };
 
 const normalizeInvoiceTypeText = value => String(value || '')
@@ -472,22 +480,42 @@ const analyzeAzureModel = async (base, modelId, invoiceBytes, apiVersion, timeou
   }
 };
 
-const analyzeWithAzure = async (request, invoiceBytes, timeoutMs) => {
-  let endpoint;
-  try { endpoint = new URL(process.env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT); }
-  catch { throw new Error('Azure endpoint không hợp lệ.'); }
-  if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash || !['', '/'].includes(endpoint.pathname)) {
-    throw new Error('Azure endpoint không hợp lệ.');
+const analyzeWithAzure = async (request, invoiceBytes, timeoutMs=35000) => {
+  const deadline=Date.now()+timeoutMs;
+  const endpoint=new URL(process.env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT);
+  if(endpoint.protocol!=='https:'||endpoint.username||endpoint.password||endpoint.search||endpoint.hash||!['','/'].includes(endpoint.pathname))throw new Error('Azure endpoint không hợp lệ.');
+  let result,extraction;
+  try {
+    result=await analyzeAzureModel(endpoint.origin,'prebuilt-invoice',invoiceBytes,'2024-11-30',Math.min(18000,timeoutMs));
+    extraction=normalizeAzureInvoice(result);
+  } catch(error) {
+    // Never continue after unconfirmed deletion of an Azure operation.
+    if(error.safe||error.status===503)throw error;
   }
-  const result = await analyzeAzureModel(endpoint.origin, 'prebuilt-invoice', invoiceBytes, '2024-11-30', timeoutMs);
-  const extraction = normalizeAzureInvoice(result);
-  const mode = request.payload.buyerMode;
-  const key = mode === 'PERSON' ? 'buyerPersonName' : mode === 'ORGANIZATION' ? 'buyerOrganizationName' : null;
-  if (key && extraction._azureBuyerCandidate) extraction.fields[key] = extraction._azureBuyerCandidate;
-  extraction.buyerRereadStatus = 'UNAVAILABLE';
-  extraction.vendorRereadStatus = 'UNAVAILABLE';
+  if(!extraction||(request.payload.currency||'VND')!=='VND'||!extraction.fields.invoiceNumber.value||!extraction.fields.totalAmount.confidence){
+    const remaining=deadline-Date.now();
+    if(remaining<3000)throw new Error('Không đủ thời gian đọc bố cục hóa đơn.');
+    const layout=await analyzeAzureModel(endpoint.origin,'prebuilt-layout',invoiceBytes,'2024-11-30',Math.min(14000,remaining));
+    const chinese=extractChineseInvoice(layout);
+    if(!extraction)extraction={fields:Object.fromEntries(['invoiceKind','buyerPersonName','buyerOrganizationName','vendor','taxCode','invoiceNumber','invoiceDate','amountBeforeTax','vatAmount','discountAmount','totalAmount','amountDue'].map(key=>[key,{value:['amountBeforeTax','vatAmount','discountAmount','totalAmount','amountDue'].includes(key)?0:'',confidence:0,evidence:'',regions:[]}]))};
+    for(const [key,value] of Object.entries(chinese.fields)){
+      if(key==='buyerCandidate')extraction._azureBuyerCandidate=value;
+      else if(value.value!==''&&(value.confidence>0||!extraction.fields[key]?.confidence))extraction.fields[key]=value;
+    }
+    if(!result){
+      const titles=(layout.analyzeResult?.pages||[]).flatMap(p=>p.lines||[]).filter(l=>/电子发票|增值税.*发票/.test(l.content||''));
+      if(titles.length!==1||!chinese.fields.invoiceNumber?.value)throw new Error('Không xác định được một hóa đơn duy nhất.');
+      // Layout fallback has no model document fields: mask all OCR text, with no
+      // exemptions. Do not copy identity or raw text into the signed summary.
+      layout.analyzeResult.documents=[{docType:'invoice',fields:{}}];
+      result=layout;
+    }
+  }
+  const key=request.payload.buyerMode==='PERSON'?'buyerPersonName':request.payload.buyerMode==='ORGANIZATION'?'buyerOrganizationName':null;
+  if(key&&extraction._azureBuyerCandidate&&!extraction.fields[key]?.confidence)extraction.fields[key]=extraction._azureBuyerCandidate;
+  extraction.buyerRereadStatus='UNAVAILABLE';extraction.vendorRereadStatus='UNAVAILABLE';
   delete extraction._azureBuyerCandidate;
-  return { extraction, result };
+  return {extraction,result};
 };
 
 module.exports = require('../shared/private-intake.js').createAnalyzeHandler({ analyzeWithAzure, assess });
@@ -495,3 +523,5 @@ module.exports.config = { api: { bodyParser: false } };
 module.exports.assess = assess;
 module.exports.normalizeAzureInvoice = normalizeAzureInvoice;
 module.exports.normalizeAzureInvoiceDateFromLayout = normalizeAzureInvoiceDateFromLayout;
+
+module.exports.analyzeWithAzure=analyzeWithAzure;
