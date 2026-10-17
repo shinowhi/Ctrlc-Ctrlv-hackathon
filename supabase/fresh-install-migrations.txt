@@ -17,4 +17,5 @@
 20261012-restore-single-buyer-name.sql
 20261015-cfo-read-high-value-manager-review.sql
 20261017-invoice-currency.sql
+20261017-private-invoice-intake.sql
 20261017-z-decimal-invoice-amounts.sql

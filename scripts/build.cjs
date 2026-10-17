@@ -18,6 +18,7 @@ const publicFiles = {
   'index.html': 'web/index.html',
   'app.js': 'web/app.js',
   'api.js': 'web/api.js',
+  'invoice-privacy.js': 'web/invoice-privacy.js',
   'invoice-matching.js': 'shared/invoice-matching.js',
   'rules.js': 'web/rules.js',
   'styles.css': 'web/styles.css',

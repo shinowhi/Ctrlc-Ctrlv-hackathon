@@ -39,13 +39,19 @@ test('Azure orchestration falls back to layout on an unsupported invoice model, 
  process.env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT='https://example.cognitiveservices.azure.com';process.env.AZURE_DOCUMENT_INTELLIGENCE_KEY='test';delete process.env.OPENAI_API_KEY;
  const calls=[];
  global.fetch=async(url,opts)=>{
- calls.push(String(url));assert.equal(new URL(url).searchParams.has('locale'),false);
+ calls.push(String(url));if(opts?.method==='DELETE')return new Response(null,{status:204});assert.equal(new URL(url).searchParams.has('locale'),false);
  if(String(url).includes('prebuilt-invoice'))return new Response('{}',{status:400});
  if(opts?.method==='POST')return new Response('',{status:202,headers:{'operation-location':'https://example.cognitiveservices.azure.com/documentintelligence/documentModels/prebuilt-layout/analyzeResults/123?api-version=2024-11-30'}});
  return new Response(JSON.stringify({status:'succeeded',...layout()}),{status:200});
  };
  try{
- const result=await analyzeWithAzure({payload:{currency:'CNY',buyerMode:'PERSON',buyerCompany:'李明'}},Buffer.from('%PDF-test'));
+ const {extraction:result}=await analyzeWithAzure({payload:{currency:'CNY',buyerMode:'PERSON',buyerCompany:'李明'}},Buffer.from('%PDF-test'));
  assert.equal(result.fields.totalAmount.value,51.94);assert.equal(result.fields.buyerPersonName.value,'李明');assert.ok(calls.some(u=>u.includes('prebuilt-layout')));
  }finally{global.fetch=savedFetch;for(const key of Object.keys(process.env))if(!(key in env))delete process.env[key];Object.assign(process.env,env);}
+});
+test('Azure cleanup failure blocks intake and does not attempt another model',async()=>{
+ const savedFetch=global.fetch,env={...process.env};const calls=[];
+ process.env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT='https://example.cognitiveservices.azure.com';process.env.AZURE_DOCUMENT_INTELLIGENCE_KEY='test';
+ global.fetch=async(url,opts)=>{calls.push(String(url));if(opts?.method==='DELETE')return new Response('{}',{status:500});if(opts?.method==='POST')return new Response('',{status:202,headers:{'operation-location':'https://example.cognitiveservices.azure.com/documentintelligence/documentModels/prebuilt-invoice/analyzeResults/123?api-version=2024-11-30'}});return new Response(JSON.stringify({status:'succeeded',...layout()}),{status:200});};
+ try{await assert.rejects(analyzeWithAzure({payload:{currency:'CNY'}},Buffer.from('%PDF-test')),e=>e.status===503&&e.safe===true);assert.ok(!calls.some(u=>u.includes('prebuilt-layout')));}finally{global.fetch=savedFetch;for(const key of Object.keys(process.env))if(!(key in env))delete process.env[key];Object.assign(process.env,env);}
 });

@@ -74,20 +74,22 @@
     vendorReviewNotes() { return this.rpc('vendor_review_note_list',{}); }
     resolveVendorReviewNote(requestId) { return this.rpc('vendor_review_note_resolve',{p_request_id:requestId}); }
     saveVendor(vendorId,legalName,taxCode,aliases) {
-      return this.rpc('save_vendor',{p_vendor_id:vendorId,p_legal_name:legalName,p_tax_code:taxCode,p_aliases:aliases});
+      throw new Error('MVP bảo mật tạm ngừng lưu mới tên, MST và bí danh nhà cung cấp.');
     }
-    async analyzeEvidence(requestId) {
+    async privateInvoiceRequest(endpoint, metadata, parts) {
       if (!this.session) throw new Error('Vui lòng đăng nhập.');
       if (this.session.expires_at < Date.now()/1000 + 60) await this.refresh();
-      const response = await fetch('/api/analyze-evidence', {
-        method:'POST', headers:{'Content-Type':'application/json', Authorization:'Bearer '+this.session.access_token},
-        body:JSON.stringify({requestId})
+      const header=new TextEncoder().encode(JSON.stringify(metadata));
+      if(header.byteLength>65536) throw new Error('Thông tin gửi quá lớn.');
+      const length=new Uint8Array(4);new DataView(length.buffer).setUint32(0,header.byteLength);
+      const response = await fetch('/api/'+endpoint, {
+        method:'POST', headers:{'Content-Type':'application/octet-stream', Authorization:'Bearer '+this.session.access_token},
+        body:new Blob([length,header,...parts]), signal:AbortSignal.timeout(90000)
       });
       const text = await response.text(); let data; try { data=JSON.parse(text); } catch { data={}; }
       if (!response.ok) { const e=new Error(data.error||'Không đọc được minh chứng.'); e.status=response.status; throw e; }
       return data;
     }
-    upload(path,file) { return this.request('/storage/v1/object/evidence/' + path,{method:'POST',headers:{'Content-Type':file.type,'x-upsert':'false'},body:file}); }
     async signedUrl(path) {
       const result=await this.request('/storage/v1/object/sign/evidence/' + path,{method:'POST',body:JSON.stringify({expiresIn:60})});
       if (typeof result.signedURL !== 'string' || !result.signedURL.startsWith('/object/sign/')) throw new Error('Không tạo được liên kết minh chứng.');

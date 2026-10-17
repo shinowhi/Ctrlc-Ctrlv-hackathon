@@ -7,13 +7,14 @@ settings:
 importers:
 
   .:
+    dependencies:
+      pdfjs-dist:
+        specifier: 6.3.289
+        version: 6.3.289
     devDependencies:
       '@electric-sql/pglite':
         specifier: 0.5.8
         version: 0.5.8
-      pdfjs-dist:
-        specifier: 6.3.289
-        version: 6.3.289
 
 packages:
 

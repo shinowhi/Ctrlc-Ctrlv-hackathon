@@ -3,7 +3,7 @@ const fs=require('node:fs');const path=require('node:path');const os=require('no
 const publicFiles=[
   ['index.html','web/index.html'],['app.js','web/app.js'],['api.js','web/api.js'],
   ['invoice-matching.js','shared/invoice-matching.js'],['rules.js','web/rules.js'],
-  ['styles.css','web/styles.css'],['demo.html','web/demo.html'],['demo.js','web/demo.js']
+  ['invoice-privacy.js','web/invoice-privacy.js'],['styles.css','web/styles.css'],['demo.html','web/demo.html'],['demo.js','web/demo.js']
 ];
 function fixture(){
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'finref-build-test-'));
