@@ -8,7 +8,8 @@ const normalized = normalizePartyName;
 const roles={applicant:'Người nộp đơn',treasurer:'Quản lý tài chính',cfo:'Giám đốc Tài chính'};
 const statuses={TREASURER_REVIEW:'Chờ Quản lý Tài chính xác minh',READY_FOR_APPROVAL:'AI đánh giá đạt · chờ người duyệt',CFO_REVIEW:'Chờ Giám đốc Tài chính duyệt',NEEDS_INFO:'Người nộp cần bổ sung',APPROVED:'Sẵn sàng duyệt',REJECTED:'Đã từ chối'};
 const checkLabels={invoice:'Đã xem hóa đơn PDF',fields_match:'Nhà cung cấp, người mua và số hóa đơn khớp form',total_includes_vat:'Tổng thanh toán trên form khớp tổng cuối cùng trên hóa đơn'};
-const fields=['requesterType','requester','department','buyerMode','buyerCompany','budgetCode','purpose','vendor','invoiceNumber','invoiceDate','amount'];
+const fields=['requesterType','requester','department','buyerMode','buyerCompany','budgetCode','purpose','vendor','invoiceNumber','invoiceDate','currency','amount'];
+const currencyLabels={VND:'VND — Việt Nam đồng',USD:'USD — Đô la Mỹ',CNY:'CNY — Nhân dân tệ (NDT)',EUR:'EUR — Euro'};
 const buyerNameFields=['buyerPersonName','buyerOrganizationName'];
 const aiFieldLabels={invoiceKind:'Loại hóa đơn',buyerPersonName:'Tên cá nhân người mua',buyerOrganizationName:'Tên doanh nghiệp/đơn vị người mua',buyerName:'Tên người mua OCR (hồ sơ cũ)',vendor:'Nhà cung cấp',taxCode:'Mã số thuế NCC',invoiceNumber:'Số hóa đơn',invoiceDate:'Ngày hóa đơn (tham khảo)',amountBeforeTax:'Tiền trước thuế',vatAmount:'VAT',discountAmount:'Chiết khấu',totalAmount:'Tổng thanh toán cuối cùng',amountDue:'Còn phải thanh toán (thông tin)'};
 const aiMoneyFields=new Set(['amountBeforeTax','vatAmount','discountAmount','totalAmount','amountDue']);
@@ -494,6 +495,7 @@ const formReviewFields=[
   {key:'vendor',label:'Nhà cung cấp',analysisKey:'vendor'},
   {key:'invoiceNumber',label:'Số hóa đơn',analysisKey:'invoiceNumber'},
   {key:'invoiceDate',label:'Ngày hóa đơn',reviewNote:'AI trích xuất để tham khảo; không dùng ngày này làm điều kiện đối chiếu hoặc duyệt.'},
+  {key:'currency',label:'Đơn vị tiền tệ trên hóa đơn',read:value=>currencyLabels[value||'VND']||value},
   {key:'amount',label:'Tổng thanh toán trên form',analysisKey:'totalAmount',read:(_,request)=>request.amount==null?'Chưa điền':money(request.amount)},
   {key:'budgetCode',label:'Mã ngân sách'}
 ];
@@ -770,7 +772,7 @@ async function renderRequestDetails(id,fromVendorNote=false) {
   const visibleReason=withoutInvoiceDateAssessmentIssues(r.reason);
   const visibleQuestion=withoutInvoiceDateAssessmentIssues(ai?.assessment?.question);
   const annotations=buildReviewAnnotations(r,ai);
-  const metadata={ 'Người đề nghị':r.payload.requester,'Bộ phận':r.payload.department,'Công ty mua trên hóa đơn':r.payload.buyerCompany,'Mục đích':r.payload.purpose,'Nhà cung cấp':r.payload.vendor,'Số hóa đơn':r.payload.invoiceNumber,'Ngày hóa đơn':r.payload.invoiceDate,'Mã ngân sách':r.payload.budgetCode };
+  const metadata={ 'Người đề nghị':r.payload.requester,'Bộ phận':r.payload.department,'Công ty mua trên hóa đơn':r.payload.buyerCompany,'Mục đích':r.payload.purpose,'Nhà cung cấp':r.payload.vendor,'Số hóa đơn':r.payload.invoiceNumber,'Ngày hóa đơn':r.payload.invoiceDate,'Đơn vị tiền tệ':currencyLabels[r.payload.currency||'VND']||r.payload.currency,'Mã ngân sách':r.payload.budgetCode };
   const reviewLayout=isReviewer?`<div class="reviewer-layout"><section class="submitted-form-panel"><div class="review-pane-heading"><span class="eyebrow">BÊN TRÁI · FORM NGƯỜI NỘP</span><h3>Thông tin đã gửi</h3><p class="muted">Các giá trị giữ nguyên như lúc nộp hồ sơ.</p></div><div class="review-legend"><span class="legend-yellow"><i></i>Vàng · AI chưa đọc chắc</span><span class="legend-red"><i></i>Đỏ · sai lệch đã rõ</span><small>Trường khớp và đủ rõ không đánh dấu.</small></div>${renderSubmittedForm(r,annotations)}</section><section class="invoice-review-panel"><div class="review-pane-heading"><span class="eyebrow">BÊN PHẢI · MINH CHỨNG</span><h3>Hóa đơn PDF</h3><p class="muted">Các khung màu chỉ vị trí cần kiểm tra trên hóa đơn.</p></div><div id="reviewPdfToolbar" class="pdf-toolbar hidden"><button id="reviewPdfPrevious" type="button" aria-label="Trang trước">‹</button><span id="reviewPdfPageLabel">Trang 1</span><button id="reviewPdfNext" type="button" aria-label="Trang sau">›</button><span class="pdf-toolbar-spacer"></span><button id="reviewPdfZoomOut" type="button" aria-label="Thu nhỏ">−</button><button id="reviewPdfZoomIn" type="button" aria-label="Phóng to">＋</button></div><p id="reviewPdfStatus" class="muted">Đang mở hóa đơn…</p><div id="reviewPdfWrap" class="pdf-viewer-wrap"><div id="reviewPdfStage" class="pdf-stage" tabindex="0" aria-label="Trang hóa đơn và các vùng cần kiểm tra"></div></div><div class="invoice-issues"><h4>Ghi chú cần kiểm tra</h4><div id="invoiceIssueList">${renderInvoiceNotes(annotations,ai)}</div></div></section></div>${renderAiAnalysis(ai,r)}`:`<div class="decision-meta">${Object.entries(metadata).map(([k,v])=>`<div class="meta-row"><span>${k}</span><strong>${esc(v)}</strong></div>`).join('')}</div>${renderAiAnalysis(ai,r)}<section class="invoice-preview"><h3>Hóa đơn PDF</h3><p id="invoicePreviewStatus" class="muted">Đang mở hóa đơn…</p><iframe id="invoicePreview" title="Hóa đơn PDF" class="hidden"></iframe></section>`;
   const reviewerMessage=profile.role==='cfo'
     ?r.checks?.manager_verified?'<p class="review-clear-note">Quản lý tài chính đã kiểm tra các điểm cần xác minh; dữ kiện dưới đây đã được xác nhận trước khi chuyển CFO.</p><p class="muted">Giám đốc duyệt hồ sơ vượt thẩm quyền hoặc được chuyển lên do tổng duyệt trong ngày. Lý do được lưu vào nhật ký.</p>':'<p class="muted">AI đã đánh giá hóa đơn clear. Hồ sơ vượt thẩm quyền hoặc được quản lý chuyển lên đang chờ CFO; lý do duyệt được lưu vào nhật ký.</p>'
@@ -827,7 +829,7 @@ async function renderRequestDetails(id,fromVendorNote=false) {
   });
   $('decisionResult').querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>review(r,b.dataset.action));
   if($('supplementButton')) $('supplementButton').onclick=()=>{
-    editing={id:r.id,version:r.version}; fields.forEach(k=>$(k).value=r.payload[k]??'');
+    editing={id:r.id,version:r.version}; fields.forEach(k=>$(k).value=r.payload[k]??(k==='currency'?'VND':''));
     updateBuyerModeUI();
     markMissingFormFields(r.checks?.form_missing_fields||[]);
     $('invoiceFile').value='';
