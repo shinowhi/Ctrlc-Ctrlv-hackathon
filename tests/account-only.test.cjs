@@ -9,7 +9,7 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
 test('fresh-install setup stays on the pre-guest authenticated-only baseline', () => {
   const manifest = read('supabase/fresh-install-migrations.txt');
-  assert.match(manifest.trim().split(/\r?\n/).at(-1), /^20261017-z-decimal-invoice-amounts\.sql$/);
+  assert.match(manifest.trim().split(/\r?\n/).at(-1), /^20261017-zz-selective-invoice-redaction\.sql$/);
   assert.doesNotMatch(manifest, /guest|anonymous/i);
 
   for (const file of ['web/api.js', 'api/analyze-evidence.js', 'web/app.js', 'web/index.html', 'scripts/build.cjs', '.env.example']) {

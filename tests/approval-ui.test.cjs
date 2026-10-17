@@ -228,3 +228,8 @@ test('switching requests destroys the PDF loading task while the document is sti
   await assert.doesNotReject(renderPromise);
   assert.equal(destroyCount,1);
 });
+test('selective form shows permitted fields, escapes HTML and omits invoice number',()=>{
+ const context={formReviewFields:[{key:'requester',label:'Người đề nghị'},{key:'invoiceNumber',label:'Số hóa đơn'},{key:'vendor',label:'Nhà cung cấp'}],request:{payload:{requester:'<img src=x>',invoiceNumber:'HIDDEN-123',vendor:'Hoa Mai'},checks:{privacy_version:1,redaction_policy:2}},annotations:{},esc:v=>String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')};
+ const html=vm.runInNewContext(appFunction('renderSubmittedForm','renderInvoiceNotes')+'\nrenderSubmittedForm(request,annotations);',context);
+ assert.ok(html.includes('Hoa Mai'));assert.ok(html.includes('&lt;img src=x&gt;'));assert.ok(!html.includes('HIDDEN-123'));assert.ok(!html.includes('<img'));
+});

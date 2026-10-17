@@ -7,11 +7,15 @@
     dialog.setAttribute('aria-labelledby', 'privacyTitle');
     dialog.innerHTML = `<h2 id="privacyTitle">Kiểm tra bản hóa đơn đã che</h2>
       <p>Azure đã đọc bản gốc và xác nhận yêu cầu xóa kết quả tạm. Supabase chưa nhận file.</p>
-      <p>Vùng đen chỉ là gợi ý tự động. Kiểm tra và che thêm tên, địa chỉ, điện thoại, email, giấy tờ, mã số thuế, tài khoản, QR, chữ ký và mọi thông tin định danh còn sót trên <strong>tất cả các trang</strong>.</p>
+      <p>Vùng đen chỉ là gợi ý tự động. Chỉ che mã số thuế, địa chỉ, số hóa đơn và QR chứa các thông tin này, dẫn đến hóa đơn đầy đủ hoặc chưa xác minh được. Kiểm tra và che thêm những vùng còn sót trên <strong>tất cả các trang</strong>.</p>
       <p>Bản lưu chỉ có ảnh đã che. Người phụ trách cần đối chiếu chứng từ ngoài hệ thống để xác minh các trường đã che và kiểm tra trùng.</p>
-      <div class="privacy-pages"></div><p class="privacy-status" role="status" aria-live="polite">Đang dựng bản xem trước…</p>
+      <section class="privacy-form"><h3>Thông tin form sẽ lưu</h3><dl data-form-preview></dl><label class="plain-check"><input type="checkbox" data-form-reviewed> Tôi đã kiểm tra thông tin form bên trên không còn MST, địa chỉ hoặc số hóa đơn; nếu còn tôi sẽ hủy và sửa form.</label></section><div class="privacy-pages"></div><p class="privacy-status" role="status" aria-live="polite">Đang dựng bản xem trước…</p>
       <div class="form-actions"><button type="button" data-cancel>Hủy, không lưu</button><button type="button" class="primary-button" data-confirm disabled>Xác nhận mọi trang và lưu bản đã che</button></div>`;
     document.body.append(dialog);
+    const formNames={requesterType:'Loại người đề nghị',requester:'Người đề nghị',department:'Bộ phận',buyerMode:'Loại người mua',buyerCompany:'Người mua',budgetCode:'Mã ngân sách',purpose:'Mục đích chi',vendor:'Nhà cung cấp',invoiceDate:'Ngày hóa đơn',currency:'Đơn vị tiền tệ',amount:'Tổng thanh toán'};
+    const formPreview=dialog.querySelector('[data-form-preview]');
+    for(const [key,label] of Object.entries(formNames)) {const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=label;const raw=key==='invoiceDate'?plan.summary?.fields?.invoiceDate?.value:['currency','amount'].includes(key)?plan.summary?.[key]:plan.summary?.displayForm?.[key];dd.textContent=({employee:'Nhân viên',department:'Phòng ban',PERSON:'Tên cá nhân',ORGANIZATION:'Tên đơn vị',NO_NAME:'Không ghi tên người mua'})[raw]||String(raw??'—');formPreview.append(dt,dd);}
+    const formReviewed=dialog.querySelector('[data-form-reviewed]');
     const previousFocus = document.activeElement;
     dialog.showModal();
     const states = []; let task, cancelled = false, exporting = false;
@@ -22,8 +26,9 @@
     function abort() { if (exporting) return; cancelled = true; resolveChoice(false); }
     cancel.onclick = abort;
     dialog.addEventListener('cancel', event => { event.preventDefault(); abort(); });
-    function checkReady() { confirm.disabled = cancelled || states.length !== plan.pages.length || states.some(s => !s.confirmed.checked); }
+    function checkReady() { confirm.disabled = !formReviewed.checked || cancelled || states.length !== plan.pages.length || states.some(s => !s.confirmed.checked); }
     try {
+      formReviewed.onchange=checkReady;
       const pdfjs = await loadPdfJs();
       if (cancelled) return null;
       task = pdfjs.getDocument({ data: await file.arrayBuffer(), isEvalSupported: false,
@@ -45,7 +50,7 @@
           <div class="privacy-canvas-wrap"><canvas aria-label="Bản đã che trang ${index + 1}"></canvas></div>
           <div class="privacy-coordinates">${[['x', 'Trái'], ['y', 'Trên'], ['w', 'Rộng'], ['h', 'Cao']].map(([key, label]) => `<label>${label} (%)<input data-coord="${key}" type="number" min="0" max="100" step="0.1" value="${key === 'w' || key === 'h' ? 10 : 0}"></label>`).join('')}</div>
           <div class="form-actions"><button type="button" data-add>Che vùng đã nhập</button><button type="button" data-full>Che cả trang</button><button type="button" data-undo disabled>Bỏ vùng vừa thêm</button></div>
-          <label class="plain-check"><input type="checkbox" data-reviewed> Tôi đã kiểm tra toàn bộ trang ${index + 1}, gồm QR/chữ ký, và không còn thông tin định danh cần che.</label>`;
+          <label class="plain-check"><input type="checkbox" data-reviewed> Tôi đã kiểm tra toàn bộ trang ${index + 1}, và đã che hết MST, địa chỉ, số hóa đơn và QR cần che.</label>`;
         dialog.querySelector('.privacy-pages').append(section);
         const canvas = section.querySelector('canvas'); canvas.width = source.width; canvas.height = source.height;
         const confirmed = section.querySelector('[data-reviewed]');
@@ -96,7 +101,7 @@
         pages.push({ width: canvas.width, height: canvas.height, length: packed.byteLength, confirmed: true });
         parts.push(packed);
       }
-      return { pages, parts, confirmed: true, receipt: plan.receipt };
+      return { pages, parts, confirmed: true, formConfirmed: true, receipt: plan.receipt };
     } finally {
       for (const state of states) { state.canvas.width = state.canvas.height = state.source.width = state.source.height = 0; }
       try { if (task) await task.destroy(); }

@@ -505,8 +505,8 @@ const analyzeWithAzure = async (request, invoiceBytes, timeoutMs=35000) => {
     if(!result){
       const titles=(layout.analyzeResult?.pages||[]).flatMap(p=>p.lines||[]).filter(l=>/电子发票|增值税.*发票/.test(l.content||''));
       if(titles.length!==1||!chinese.fields.invoiceNumber?.value)throw new Error('Không xác định được một hóa đơn duy nhất.');
-      // Layout fallback has no model document fields: mask all OCR text, with no
-      // exemptions. Do not copy identity or raw text into the signed summary.
+      // Selective redaction also inspects OCR labels/values when invoice-model
+      // fields are unavailable. Raw OCR is never copied into the signed summary.
       layout.analyzeResult.documents=[{docType:'invoice',fields:{}}];
       result=layout;
     }

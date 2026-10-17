@@ -19,3 +19,4 @@
 20261017-invoice-currency.sql
 20261017-private-invoice-intake.sql
 20261017-z-decimal-invoice-amounts.sql
+20261017-zz-selective-invoice-redaction.sql
