@@ -81,6 +81,7 @@ function verify(token, owner) {
 }
 function readForm(meta) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(meta.id || '') || !Number.isInteger(meta.expectedVersion) || meta.expectedVersion < 0) throw fail(400, 'Mã hoặc phiên bản hồ sơ không hợp lệ.');
+  if (meta.payload?.currency !== undefined && meta.payload.currency !== 'VND') throw fail(422, 'Hiện chỉ nhận hóa đơn VND. Chưa hỗ trợ nộp hóa đơn ngoại tệ hoặc quy đổi tỷ giá.');
   const form = {};
   for (const field of FORM_FIELDS) {
     const value = meta.payload?.[field] ?? '';
