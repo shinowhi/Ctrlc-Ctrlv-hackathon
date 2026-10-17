@@ -1,6 +1,6 @@
 'use strict';
 
-const { normalizeInvoiceNumber, comparePartyName } = require('../invoice-matching.js');
+const { normalizeInvoiceNumber, comparePartyName } = require('../shared/invoice-matching.js');
 
 const json = (res, status, body) => {
   res.status(status).setHeader('Content-Type', 'application/json');

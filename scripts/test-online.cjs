@@ -1,7 +1,7 @@
 // Optional acceptance test against your configured Supabase project.
 // Creates labelled test requests and evidence; it does not delete business records.
 const fs=require('node:fs');const path=require('node:path');const assert=require('node:assert/strict');
-const {randomUUID}=require('node:crypto');const Api=require('../api.js');
+const {randomUUID}=require('node:crypto');const Api=require('../web/api.js');
 const all={invoice:true,fields_match:true,total_includes_vat:true};
 async function main(){
   const text=fs.readFileSync(path.resolve(__dirname,'../.local/accounts.txt'),'utf8');

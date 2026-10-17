@@ -10,6 +10,18 @@ FinRef hỗ trợ tiếp nhận và rà soát đề nghị thanh toán dựa tr�
 - **Mã nguồn:** [shinowhi/Ctrlc-Ctrlv-hackathon](https://github.com/shinowhi/Ctrlc-Ctrlv-hackathon)
 - **Thư mục Drive do nhóm cung cấp:** [Mở thư mục](https://drive.google.com/drive/folders/1lYAtANlfRtEfsqp-cihvlo8kT-dxD3tJ?usp=sharing). Chưa xác minh thư mục hiện có video thuyết trình/demo.
 
+## Cấu trúc repo
+
+- `web/`: mã nguồn giao diện chính và trang demo.
+- `shared/`: tiện ích được dùng chung giữa giao diện và API.
+- `api/`: endpoint serverless của Vercel; giữ nguyên đường dẫn endpoint.
+- `scripts/`: build, chạy local, thiết lập tài khoản và kiểm tra.
+- `tests/`: kiểm thử tự động và helper dành cho test.
+- `supabase/`: schema, thứ tự migration và SQL migrations.
+- `docs/`: chính sách, đặc tả, hướng dẫn, testcase, validation và kế hoạch.
+
+Build vẫn xuất các file giao diện với tên và URL hiện có vào `dist/`.
+
 ## Phạm vi sản phẩm
 
 - Người nộp gửi đề nghị và hóa đơn PDF; các trường thông tin có thể để trống để hệ thống trả về yêu cầu bổ sung (U1). Hóa đơn PDF là tệp bắt buộc.
@@ -23,11 +35,11 @@ FinRef hỗ trợ tiếp nhận và rà soát đề nghị thanh toán dựa tr�
 - Hệ thống chưa đối chiếu ngân sách thực theo mã, chính sách chi tiêu, PO hoặc lịch sử thanh toán. Hạn mức ngày là giới hạn phê duyệt, không chứng minh hồ sơ nằm trong ngân sách.
 - AI không xác nhận tính xác thực của hóa đơn, nguồn phát hành hoặc chữ ký số.
 - `demo.html` chỉ mô phỏng giao diện và preview luật trên trình duyệt; không đọc PDF thật, không gọi AI/backend và không đại diện cho dữ liệu production.
-- Mã nguồn hiện có không tự chứng minh rằng production đã chạy đúng cùng commit hoặc đã áp dụng mọi migration. Lần rà soát gần nhất và các giới hạn xác minh được ghi tại [VALIDATION.md](VALIDATION.md).
+- Mã nguồn hiện có không tự chứng minh rằng production đã chạy đúng cùng commit hoặc đã áp dụng mọi migration. Lần rà soát gần nhất và các giới hạn xác minh được ghi tại [VALIDATION.md](docs/VALIDATION.md).
 
 ## Trạng thái xác minh
 
-Lần kiểm tra trực tiếp ứng dụng production gần nhất được ghi nhận ngày 12/10/2026. Khi đó, bộ **17 ca Verify** hiển thị đạt; đây là preview `FinRefRules.verify()` phía trình duyệt, không phải kiểm thử end-to-end. Lần kiểm tra đó cũng ghi nhận lỗi khi chuyển giữa các PDF ở vai trò Quản lý. Chưa xác minh lại lỗi này trên production sau các thay đổi mã nguồn tiếp theo. Chi tiết nằm trong [VALIDATION.md](VALIDATION.md).
+Lần kiểm tra trực tiếp ứng dụng production gần nhất được ghi nhận ngày 12/10/2026. Khi đó, bộ **17 ca Verify** hiển thị đạt; đây là preview `FinRefRules.verify()` phía trình duyệt, không phải kiểm thử end-to-end. Lần kiểm tra đó cũng ghi nhận lỗi khi chuyển giữa các PDF ở vai trò Quản lý. Chưa xác minh lại lỗi này trên production sau các thay đổi mã nguồn tiếp theo. Chi tiết nằm trong [VALIDATION.md](docs/VALIDATION.md).
 
 Người dùng xác nhận ba tài khoản được dùng để rà soát thuộc về ba nhân sự thật. Chưa thu thập trích dẫn phỏng vấn hoặc tài liệu độc lập để xác minh mức độ sử dụng/tổ chức.
 

@@ -13,9 +13,19 @@ if (!(supabaseAnonKey.startsWith('sb_publishable_') || role === 'anon')) {
   throw new Error('SUPABASE_ANON_KEY must be a publishable key or legacy anon key. Never a secret/service_role key.');
 }
 fs.mkdirSync(out, { recursive: true });
-// Explicit allowlist: SQL, account scripts and .local credentials are never deployed.
-for (const name of ['index.html','app.js','api.js','invoice-matching.js','rules.js','styles.css','demo.html','demo.js']) {
-  fs.copyFileSync(path.join(root, name), path.join(out, name));
+// Explicit output allowlist: SQL, account scripts and .local credentials are never deployed.
+const publicFiles = {
+  'index.html': 'web/index.html',
+  'app.js': 'web/app.js',
+  'api.js': 'web/api.js',
+  'invoice-matching.js': 'shared/invoice-matching.js',
+  'rules.js': 'web/rules.js',
+  'styles.css': 'web/styles.css',
+  'demo.html': 'web/demo.html',
+  'demo.js': 'web/demo.js',
+};
+for (const [name, source] of Object.entries(publicFiles)) {
+  fs.copyFileSync(path.join(root, source), path.join(out, name));
 }
 const pdfjsRoot = path.join(root, 'node_modules', 'pdfjs-dist');
 const pdfjsBuild = path.join(pdfjsRoot, 'build');

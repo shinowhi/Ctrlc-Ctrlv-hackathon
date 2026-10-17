@@ -1,4 +1,4 @@
-const test=require('node:test');const assert=require('node:assert/strict');const {normalizeAnalysis}=require('../ai.js');
+const test=require('node:test');const assert=require('node:assert/strict');const {normalizeAnalysis}=require('./helpers/ai-analysis.cjs');
 const payload={amount:12500000,vendor:'Sao Mai',invoiceNumber:'INV-01',invoiceDate:'2026-09-22',category:'printing'};
 const doc={...payload,readable:true,paper:true,stamp:true,signature:true};
 const raw=()=>({invoice:{...doc,documentKind:'invoice'},request:{...doc,documentKind:'request'},confidence:0.99,category:'printing',flags:[]});

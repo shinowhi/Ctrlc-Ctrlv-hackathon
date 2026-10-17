@@ -1,4 +1,4 @@
-const test=require('node:test');const assert=require('node:assert/strict');const Api=require('../api.js');
+const test=require('node:test');const assert=require('node:assert/strict');const Api=require('../web/api.js');
 const memory=()=>({getItem:()=>null,setItem:()=>{},removeItem:()=>{}});
 test('Expired session refreshes once for concurrent reads',async()=>{
   const previous=global.fetch;let refreshCount=0;let reads=0;

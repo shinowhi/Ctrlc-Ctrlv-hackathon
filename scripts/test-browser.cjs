@@ -2,8 +2,13 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),http=require('node:http');
 const {PGlite}=require('@electric-sql/pglite');
 const {chromium}=require(process.env.PLAYWRIGHT_PATH||'playwright');
-const {normalizeAnalysis}=require('../ai');
+const {normalizeAnalysis}=require('../tests/helpers/ai-analysis.cjs');
 const root=path.resolve(__dirname,'..');
+const browserAssets={
+ 'index.html':'web/index.html','app.js':'web/app.js','api.js':'web/api.js',
+ 'invoice-matching.js':'shared/invoice-matching.js','rules.js':'web/rules.js',
+ 'styles.css':'web/styles.css','demo.html':'web/demo.html','demo.js':'web/demo.js'
+};
 async function main(){
  const db=new PGlite();let browser,server;const errors=[];
  const ids={applicant:'11111111-1111-4111-8111-111111111111',treasurer:'22222222-2222-4222-8222-222222222222',cfo:'33333333-3333-4333-8333-333333333333'};
@@ -17,7 +22,7 @@ async function main(){
  let gate=Promise.resolve();
  function locked(fn){const next=gate.then(fn);gate=next.catch(()=>{});return next;}
  async function as(role,sql,params=[]){return locked(async()=>{await db.query("select set_config('request.jwt.claim.sub',$1,false)",[ids[role]]);await db.exec('set role authenticated');try{return (await db.query(sql,params)).rows;}finally{await db.exec('reset role');}});}
- server=http.createServer((req,res)=>{const file=new URL(req.url,'http://local').pathname.slice(1)||'index.html';if(!['index.html','app.js','api.js','rules.js','verify-ui.js','styles.css','config.js','demo.html','demo.js'].includes(file)){res.writeHead(404).end();return;}res.setHeader('Content-Type',file.endsWith('.html')?'text/html':file.endsWith('.css')?'text/css':'text/javascript');res.end(file==='config.js'?'window.FINREF_CONFIG={supabaseUrl:"https://test.supabase.co",supabaseAnonKey:"sb_publishable_test"};':fs.readFileSync(path.join(root,file)));});
+ server=http.createServer((req,res)=>{const file=new URL(req.url,'http://local').pathname.slice(1)||'index.html';if(file!=='config.js'&&!Object.hasOwn(browserAssets,file)){res.writeHead(404).end();return;}res.setHeader('Content-Type',file.endsWith('.html')?'text/html':file.endsWith('.css')?'text/css':'text/javascript');res.end(file==='config.js'?'window.FINREF_CONFIG={supabaseUrl:"https://test.supabase.co",supabaseAnonKey:"sb_publishable_test"};':fs.readFileSync(path.join(root,browserAssets[file])));});
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const origin='http://127.0.0.1:'+server.address().port;
  browser=await chromium.launch({headless:true,...(process.env.CHROME_PATH?{executablePath:process.env.CHROME_PATH}:{channel:'chrome'})});
  const page=await browser.newPage({viewport:{width:1440,height:1000}});page.on('pageerror',e=>errors.push(e.message));

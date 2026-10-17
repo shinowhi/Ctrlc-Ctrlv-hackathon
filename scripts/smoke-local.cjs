@@ -1,7 +1,7 @@
 // Fast, dependency-free smoke check for the invoice decision preview.
 // It does not call OpenAI or Supabase.
 const assert = require('node:assert/strict');
-const rules = require('../rules.js');
+const rules = require('../web/rules.js');
 
 const all = {pdf: true, fieldsMatch: true, totalsConsistent: true, confidenceSufficient: true};
 const cases = [
