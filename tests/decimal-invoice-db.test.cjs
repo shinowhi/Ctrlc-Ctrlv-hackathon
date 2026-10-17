@@ -2,7 +2,7 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const {createFreshDatabase}=require('./helpers/fresh-database.cjs');
 const {readForm,minimalSummary}=require('../shared/private-intake');
 const {assess}=require('../api/analyze-evidence');
-test('private intake stores exact currency cents without identities and blocks unconverted FX approval',async()=>{
+test('private intake stores exact currency cents with allowed form fields and blocks unconverted FX approval',async()=>{
  const user='11111111-1111-4111-8111-111111111111',db=await createFreshDatabase([user]);
  try{
  await db.query('insert into profiles values($1,$2,$3)',[user,'Applicant','applicant']);
@@ -14,12 +14,12 @@ test('private intake stores exact currency cents without identities and blocks u
  const extraction={fields:{invoiceKind:{value:'VAT',confidence:.99,evidence:'VAT'},invoiceDate:{value:'2026-07-10'},totalAmount:money(51.94),amountBeforeTax:money(47.22),vatAmount:money(4.72),discountAmount:money(0),amountDue:money(0)}};
  const summary=minimalSummary(form,extraction,assess({payload:form,amount:form.amount},extraction));
  assert.equal(summary.currency,'CNY');assert.equal(summary.totalsConsistent,true);
- assert.ok(!JSON.stringify(summary).includes('PRIVATE'));assert.ok(!JSON.stringify(summary).includes('26000000000025988000'));
+ assert.equal(summary.displayForm.requester,'PRIVATE NAME');assert.ok(!JSON.stringify(summary).includes('26000000000025988000'));
  await db.exec('set role service_role');
  const submit=async(s)=>(await db.query('select * from submit_private_request($1,$2,0,$3,$4::jsonb)',[crypto.randomUUID(),user,path,JSON.stringify(s)])).rows[0];
- const r=await submit({...summary,requester:'SENSITIVE',evidence:'SENSITIVE'});
+ const r=await submit({...summary,requester:'SENSITIVE',evidence:'SENSITIVE',displayForm:{...summary.displayForm,taxCode:'SENSITIVE',address:'SENSITIVE',invoiceNumber:'SENSITIVE'}});
  assert.equal(Number(r.amount),51.94);assert.equal(r.payload.amount,51.94);assert.equal(r.payload.currency,'CNY');assert.equal(r.checks.ai.fields.totalAmount.value,51.94);
- assert.ok(!JSON.stringify(r).includes('SENSITIVE'));assert.equal(r.status,'TREASURER_REVIEW');
+ assert.ok(!JSON.stringify(r).includes('SENSITIVE'));assert.equal(r.payload.requester,'PRIVATE NAME');assert.equal(r.payload.vendor,'测试电子有限公司');assert.equal(r.checks.redaction_policy,2);assert.ok(!('invoiceNumber' in r.payload));assert.equal(r.status,'TREASURER_REVIEW');
  assert.equal(Number((await submit({...summary,amount:.01})).amount),.01);
  const defaultCurrency={...summary,amount:52000};delete defaultCurrency.currency;
  assert.equal((await submit(defaultCurrency)).payload.currency,'VND');
@@ -28,7 +28,10 @@ test('private intake stores exact currency cents without identities and blocks u
  await assert.rejects(submit({...summary,currency:'XYZ'}),/Invalid currency/);
  await assert.rejects(submit({...summary,currency:'VND'}),/VND/);
  await assert.rejects(db.query("update requests set status='APPROVED',approved_at=now() where id=$1",[r.id]),/Ngoại tệ cần tỷ giá/);
- await db.exec('reset role');await db.exec('set role authenticated');
+ await assert.rejects(submit({...summary,redactionPolicy:1}),/policy required/);
+ await db.exec('reset role');
+ const audit=(await db.query('select * from audit_events where request_id=$1',[r.id])).rows;assert.ok(!JSON.stringify(audit).includes('SENSITIVE'));
+ await db.exec('set role authenticated');
  await assert.rejects(db.query('select * from submit_request($1,$2::jsonb,$3,null,0)',[crypto.randomUUID(),JSON.stringify(payload),path]),/permission denied/);
  }finally{await db.close();}
 });

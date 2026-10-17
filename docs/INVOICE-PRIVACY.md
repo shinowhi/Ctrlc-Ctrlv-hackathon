@@ -1,3 +1,5 @@
+> Bản local mới theo yêu cầu ngày 17/10/2026 được mô tả trong [SELECTIVE-REDACTION.md](SELECTIVE-REDACTION.md). Phần dưới ghi lại chính sách v1; chưa thay đổi dữ liệu lịch sử.
+
 # MVP bảo vệ dữ liệu hóa đơn — 17/10/2026
 
 ## Phạm vi đã chốt
