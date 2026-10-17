@@ -55,7 +55,7 @@
         </summary>
         <div class="request-card-body">
           <div class="request-form-toolbar"><button class="text-button" id="cancelEdit" type="button">Làm trống form</button></div>
-          <form id="paymentForm">
+          <form id="paymentForm" autocomplete="off"><p class="notice">Tên và dữ liệu nhập tự do chỉ dùng để đối chiếu tạm, không lưu trong hồ sơ. Bản gốc gửi Azure để đọc; bạn phải kiểm tra và xác nhận mọi trang đã che trước khi lưu Supabase. Khi bổ sung cần nhập lại dữ liệu không được lưu.</p>
           <section class="form-section request-form-section--requester">
             <div class="section-title"><span class="step-number">1</span><div><h3>Người đề nghị</h3><span>Ai gửi hồ sơ và thuộc bộ phận nào?</span></div></div>
             <div class="form-grid two-col">
@@ -84,7 +84,7 @@
           </section>
           <section class="form-section">
             <div class="section-title"><span class="step-number">4</span><div><h3>Hóa đơn PDF</h3><span>PDF là tệp bắt buộc để gửi hồ sơ.</span></div></div>
-            <p class="muted">Loại hóa đơn được ghi nhận tự động là điện tử. Tệp cần ở dạng PDF (có chữ chọn/copy hoặc PDF scan), tối đa 10 MB.</p>
+            <p class="muted">Loại hóa đơn được ghi nhận tự động là điện tử. Tệp cần ở dạng PDF (có chữ chọn/copy hoặc PDF scan), tối đa 4 MB và 2 trang theo Azure F0.</p>
             <label class="field file-field">Hóa đơn (PDF)<input id="invoiceFile" type="file" accept="application/pdf,.pdf" required></label>
           </section>
           <p class="optional-fields-note form-submission-note">Có thể gửi khi còn thiếu trường thông tin; hệ thống sẽ đánh dấu và yêu cầu bổ sung. Chỉ tệp hóa đơn PDF là bắt buộc.</p>
@@ -131,7 +131,7 @@
         <div class="vendor-page-actions"><button class="text-button" id="backToOverview" type="button">← Quay lại hồ sơ thanh toán</button></div>
         <section class="clay-card vendor-card" id="vendors-card">
           <div class="card-heading"><div><span class="eyebrow">DANH MỤC DÙNG CHUNG</span><h2 id="vendorDirectoryHeading">Quản lý nhà cung cấp</h2><p class="muted">Tra cứu tên pháp lý, mã số thuế và bí danh đã xác minh.</p></div></div>
-          <div class="vendor-management-grid">
+          <p class="notice">MVP bảo mật tạm ngừng lưu thêm tên, MST và bí danh nhà cung cấp. Danh mục cũ được giữ nguyên để tham khảo.</p><div class="vendor-management-grid hidden">
             <form id="vendorCreateForm" class="vendor-management-form">
               <h3>Thêm nhà cung cấp</h3>
               <label class="field">Tên pháp lý<input id="vendorLegalName" required maxlength="250" autocomplete="organization"></label>
@@ -154,7 +154,7 @@
           </details>
         </section>
         <section class="clay-card vendor-card hidden" id="vendorReviewNotesCard">
-          <div class="card-heading"><div><span class="eyebrow">CHỈ GIÁM ĐỐC TÀI CHÍNH</span><h2>Ghi chú cập nhật danh mục nhà cung cấp</h2><p class="muted">Gồm nhà cung cấp mới hoặc bí danh OCR chưa có trong danh mục; kèm MST và hóa đơn gốc để CFO xem xét.</p></div></div>
+          <div class="card-heading"><div><span class="eyebrow">CHỈ GIÁM ĐỐC TÀI CHÍNH</span><h2>Ghi chú cập nhật danh mục nhà cung cấp</h2><p class="muted">Ghi chú lịch sử trước chế độ bảo mật. Hồ sơ mới không tạo ghi chú chứa tên hoặc mã định danh.</p></div></div>
           <div id="vendorReviewNotesMessage" class="vendor-directory-message" role="status" aria-live="polite">Đang tải ghi chú…</div>
           <details class="vendor-list-collapse" open>
             <summary><span>Danh sách ghi chú</span><span class="vendor-list-toggle"><span class="vendor-list-open">Thu gọn</span><span class="vendor-list-closed">Mở danh sách</span></span></summary>
@@ -165,6 +165,6 @@
     </main>
   </div>
   <noscript>Bạn cần bật JavaScript để đăng nhập.</noscript>
-  <script src="config.js"></script><script src="api.js"></script><script src="invoice-matching.js"></script><script src="rules.js"></script><script src="app.js"></script>
+  <script src="config.js"></script><script src="api.js"></script><script src="invoice-matching.js"></script><script src="rules.js"></script><script src="invoice-privacy.js"></script><script src="app.js"></script>
 </body>
 </html>

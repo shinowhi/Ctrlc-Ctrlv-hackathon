@@ -2,6 +2,8 @@
 
 **Cập nhật:** 15/10/2026
 
+**Thay đổi cục bộ 17/10/2026:** MVP bảo mật hóa đơn chuyển sang Azure xử lý tạm → người nộp xác nhận từng trang đã che → chỉ lưu PDF dựng lại và kết quả tối thiểu; kiểm tra trùng chuyển thủ công. Chưa deploy. Xem [phạm vi, migration và giới hạn](docs/INVOICE-PRIVACY.md). Các mô tả provider/OpenAI và luồng duyệt dưới đây là baseline trước thay đổi này.
+
 FinRef hỗ trợ tiếp nhận và rà soát đề nghị thanh toán dựa trên hóa đơn PDF, trích xuất dữ kiện bằng AI, chuyển các điểm chưa chắc cho người phụ trách, và lưu quyết định cùng nhật ký. FinRef không thực hiện chuyển tiền.
 
 ## Liên kết
